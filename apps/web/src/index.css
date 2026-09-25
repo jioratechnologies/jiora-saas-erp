@@ -3,32 +3,30 @@
 @tailwind utilities;
 
 /*
- * Design tokens, shadcn/ui convention (space-separated HSL triples, not hex
- * — Tailwind's opacity modifiers like bg-primary/50 depend on that format).
+ * Design tokens, shadcn & HeroUI convention (space-separated HSL triples).
  *
  * Only --primary and --primary-foreground are ever touched at runtime, by
- * ThemeProvider (src/theme/ThemeProvider.tsx) — that's the entire
- * white-labelling mechanism (see docs/adr/0008-theming-css-variables.md).
- * Everything else here is the platform's own fixed design system.
+ * ThemeProvider (src/theme/ThemeProvider.tsx) for tenant white-labelling.
+ * Everything else here is the platform's adaptive theme system.
  */
 :root {
   --background: 0 0% 100%;
-  --foreground: 222 20% 12%;
+  --foreground: 222 25% 10%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222 20% 12%;
+  --card-foreground: 222 25% 10%;
 
   --primary: 209 58% 30%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 210 20% 96%;
-  --secondary-foreground: 222 20% 12%;
+  --secondary-foreground: 222 25% 10%;
 
   --muted: 210 20% 96%;
-  --muted-foreground: 215 15% 45%;
+  --muted-foreground: 215 16% 40%;
 
   --accent: 210 20% 94%;
-  --accent-foreground: 222 20% 12%;
+  --accent-foreground: 222 25% 10%;
 
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
@@ -36,48 +34,71 @@
   --success: 142 71% 33%;
   --success-foreground: 0 0% 100%;
 
-  --border: 214 20% 88%;
-  --input: 214 20% 88%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
   --ring: 209 58% 30%;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 }
 
 :root[data-theme="dark"],
 .dark {
-  --background: 222 25% 9%;
-  --foreground: 210 20% 96%;
-  --card: 222 22% 12%;
-  --card-foreground: 210 20% 96%;
-  --secondary: 222 18% 16%;
-  --secondary-foreground: 210 20% 96%;
-  --muted: 222 18% 16%;
-  --muted-foreground: 215 15% 65%;
-  --accent: 222 18% 18%;
-  --accent-foreground: 210 20% 96%;
-  --border: 222 15% 22%;
-  --input: 222 15% 22%;
+  --background: 240 10% 4%;
+  --foreground: 0 0% 98%;
+
+  --card: 240 5% 9%;
+  --card-foreground: 0 0% 98%;
+
+  --secondary: 240 4% 15%;
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 240 4% 15%;
+  --muted-foreground: 240 5% 65%;
+
+  --accent: 240 4% 17%;
+  --accent-foreground: 0 0% 98%;
+
+  --destructive: 0 62% 45%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 70% 38%;
+  --success-foreground: 0 0% 100%;
+
+  --border: 240 4% 18%;
+  --input: 240 4% 18%;
+  --ring: 209 58% 50%;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not(.light) {
-    --background: 222 25% 9%;
-    --foreground: 210 20% 96%;
-    --card: 222 22% 12%;
-    --card-foreground: 210 20% 96%;
-    --secondary: 222 18% 16%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 222 18% 16%;
-    --muted-foreground: 215 15% 65%;
-    --accent: 222 18% 18%;
-    --accent-foreground: 210 20% 96%;
-    --border: 222 15% 22%;
-    --input: 222 15% 22%;
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 5% 9%;
+    --card-foreground: 0 0% 98%;
+
+    --secondary: 240 4% 15%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 4% 15%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 240 4% 17%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 70% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
   }
 }
 
 body {
-  @apply bg-background text-foreground antialiased;
+  @apply bg-background text-foreground antialiased transition-colors duration-150;
 }
 
 * {

@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 
+import { formatErrorMessage } from "../../lib/error-formatter";
+
 export type ToastVariant = "default" | "primary" | "success" | "error" | "warning" | "info";
 
 export interface ToastItem {
@@ -23,7 +25,7 @@ export interface ToastInput {
 interface ToastContextValue {
   toast: (input: ToastInput) => void;
   success: (title: string, description?: string) => void;
-  error: (title: string, description?: string) => void;
+  error: (title: string, errorOrDesc?: unknown) => void;
   warning: (title: string, description?: string) => void;
   info: (title: string, description?: string) => void;
   dismiss: (id: string) => void;
@@ -40,8 +42,12 @@ export const toast = {
   show: (input: ToastInput) => globalToastHandler?.(input),
   success: (title: string, description?: string) =>
     globalToastHandler?.({ title, description, variant: "success" }),
-  error: (title: string, description?: string) =>
-    globalToastHandler?.({ title, description, variant: "error" }),
+  error: (title: string, errorOrDesc?: unknown) =>
+    globalToastHandler?.({
+      title,
+      description: errorOrDesc ? formatErrorMessage(errorOrDesc) : undefined,
+      variant: "error",
+    }),
   warning: (title: string, description?: string) =>
     globalToastHandler?.({ title, description, variant: "warning" }),
   info: (title: string, description?: string) =>
@@ -77,7 +83,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value: ToastContextValue = {
     toast: addToast,
     success: (title, desc) => addToast({ title, description: desc, variant: "success" }),
-    error: (title, desc) => addToast({ title, description: desc, variant: "error" }),
+    error: (title, errOrDesc) =>
+      addToast({ title, description: errOrDesc ? formatErrorMessage(errOrDesc) : undefined, variant: "error" }),
     warning: (title, desc) => addToast({ title, description: desc, variant: "warning" }),
     info: (title, desc) => addToast({ title, description: desc, variant: "info" }),
     dismiss,

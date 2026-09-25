@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PERMISSION_CATALOG, isPlatformPermission } from "@saas-erp/permissions";
 import { TENANT_OWNER_ROLE } from "@saas-erp/shared-types";
@@ -36,11 +36,18 @@ export class RbacService {
 
   async createRole(tx: Prisma.TransactionClient, tenantId: string, name: string, permissionKeys: string[]) {
     this.assertAssignable(permissionKeys);
-    const role = await tx.role.create({ data: { tenantId, name, isProtected: false } });
-    await tx.rolePermission.createMany({
-      data: permissionKeys.map((permissionKey) => ({ roleId: role.id, permissionKey })),
-    });
-    return tx.role.findUniqueOrThrow({ where: { id: role.id }, include: { permissions: true } });
+    try {
+      const role = await tx.role.create({ data: { tenantId, name: name.trim(), isProtected: false } });
+      await tx.rolePermission.createMany({
+        data: permissionKeys.map((permissionKey) => ({ roleId: role.id, permissionKey })),
+      });
+      return tx.role.findUniqueOrThrow({ where: { id: role.id }, include: { permissions: true } });
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        throw new ConflictException(`A role named "${name.trim()}" already exists.`);
+      }
+      throw err;
+    }
   }
 
   async updateRole(
@@ -55,7 +62,14 @@ export class RbacService {
     if (role.isProtected) {
       throw new ForbiddenException(`"${TENANT_OWNER_ROLE}" is protected and cannot be edited`);
     }
-    await tx.role.update({ where: { id: roleId }, data: { name } });
+    try {
+      await tx.role.update({ where: { id: roleId }, data: { name: name.trim() } });
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        throw new ConflictException(`A role named "${name.trim()}" already exists.`);
+      }
+      throw err;
+    }
     await tx.rolePermission.deleteMany({ where: { roleId } });
     await tx.rolePermission.createMany({
       data: permissionKeys.map((permissionKey) => ({ roleId, permissionKey })),
