@@ -14,8 +14,10 @@ import {
 } from "lucide-react";
 import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
+import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
+import { DateInput } from "../../components/ui/date-input";
 import { Badge } from "../../components/ui/badge";
 import { User } from "../../components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
@@ -439,42 +441,33 @@ export function LeavePage() {
           }}
           className="space-y-3.5"
         >
-          <div>
-            <label className="text-xs font-medium text-foreground block mb-1">Leave Policy *</label>
-            <select
-              value={selectedTypeId}
-              onChange={(e) => setSelectedTypeId(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              required
-            >
-              <option value="">Select leave category</option>
-              {leaveTypes?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.code}) — {t.annualQuota} days/yr
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="Leave Policy *"
+            value={selectedTypeId}
+            onChange={(e) => setSelectedTypeId(e.target.value)}
+            required
+          >
+            <option value="">Select leave category</option>
+            {leaveTypes?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.code}) — {t.annualQuota} days/yr
+              </option>
+            ))}
+          </Select>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Start Date *</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">End Date *</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                required
-              />
-            </div>
+            <DateInput
+              label="Start Date *"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+            />
+            <DateInput
+              label="End Date *"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              required
+            />
           </div>
 
           <div>

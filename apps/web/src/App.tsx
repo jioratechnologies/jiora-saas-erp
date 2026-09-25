@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./auth/auth-store";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { ConfirmProvider } from "./hooks/use-confirm";
-import { ToastProvider } from "./components/ui/toast";
+import { ToastProvider, ToastBridge } from "./components/ui/toast";
 import { RequireAuth } from "./routes/RequireAuth";
 import { AppShell } from "./routes/AppShell";
 import { CallbackPage } from "./routes/CallbackPage";
@@ -31,6 +31,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <ToastProvider>
+          <ToastBridge />
           <ConfirmProvider>
             <BrowserRouter>
             <Routes>

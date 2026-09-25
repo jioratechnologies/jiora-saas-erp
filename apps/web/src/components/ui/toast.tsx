@@ -1,202 +1,276 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { CheckCircle, AlertCircle, Info, X, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-import { formatErrorMessage } from "../../lib/error-formatter";
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-export type ToastVariant = "default" | "primary" | "success" | "error" | "warning" | "info";
+type ToastVariant = "success" | "error" | "info" | "warning";
 
-export interface ToastItem {
+interface ToastItem {
   id: string;
-  title: string;
-  description?: string;
   variant: ToastVariant;
-  duration: number;
-}
-
-export interface ToastInput {
   title: string;
   description?: string;
-  variant?: ToastVariant;
-  duration?: number;
+  createdAt: number;
 }
 
 interface ToastContextValue {
-  toast: (input: ToastInput) => void;
-  success: (title: string, description?: string) => void;
-  error: (title: string, errorOrDesc?: unknown) => void;
-  warning: (title: string, description?: string) => void;
-  info: (title: string, description?: string) => void;
-  dismiss: (id: string) => void;
+  toasts: ToastItem[];
+  add: (variant: ToastVariant, title: string, description?: string) => void;
+  remove: (id: string) => void;
 }
+
+// ─── Context ─────────────────────────────────────────────────────────────────
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-let globalToastHandler: ((input: ToastInput) => void) | null = null;
-
-/**
- * Imperative toast function usable anywhere (including outside React components or in event callbacks)
- */
-export const toast = {
-  show: (input: ToastInput) => globalToastHandler?.(input),
-  success: (title: string, description?: string) =>
-    globalToastHandler?.({ title, description, variant: "success" }),
-  error: (title: string, errorOrDesc?: unknown) =>
-    globalToastHandler?.({
-      title,
-      description: errorOrDesc ? formatErrorMessage(errorOrDesc) : undefined,
-      variant: "error",
-    }),
-  warning: (title: string, description?: string) =>
-    globalToastHandler?.({ title, description, variant: "warning" }),
-  info: (title: string, description?: string) =>
-    globalToastHandler?.({ title, description, variant: "info" }),
-};
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-  const dismiss = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  const addToast = useCallback((input: ToastInput) => {
-    const id = Math.random().toString(36).slice(2, 9);
-    const item: ToastItem = {
-      id,
-      title: input.title,
-      description: input.description,
-      variant: input.variant ?? "default",
-      duration: input.duration ?? 4000,
-    };
-    setToasts((prev) => [...prev.slice(-4), item]); // keep at most 5 toasts
-  }, []);
-
-  useEffect(() => {
-    globalToastHandler = addToast;
-    return () => {
-      globalToastHandler = null;
-    };
-  }, [addToast]);
-
-  const value: ToastContextValue = {
-    toast: addToast,
-    success: (title, desc) => addToast({ title, description: desc, variant: "success" }),
-    error: (title, errOrDesc) =>
-      addToast({ title, description: errOrDesc ? formatErrorMessage(errOrDesc) : undefined, variant: "error" }),
-    warning: (title, desc) => addToast({ title, description: desc, variant: "warning" }),
-    info: (title, desc) => addToast({ title, description: desc, variant: "info" }),
-    dismiss,
-  };
-
-  return (
-    <ToastContext.Provider value={value}>
-      {children}
-      {typeof document !== "undefined" &&
-        createPortal(
-          <div
-            aria-live="polite"
-            aria-label="Notifications"
-            className="fixed bottom-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0"
-          >
-            {toasts.map((t) => (
-              <ToastCard key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
-            ))}
-          </div>,
-          document.body,
-        )}
-    </ToastContext.Provider>
-  );
+function useToastContext() {
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error("useToastContext must be used inside <ToastProvider>");
+  return ctx;
 }
 
-function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) {
+// ─── Individual Toast Item ────────────────────────────────────────────────────
+
+const ICONS: Record<ToastVariant, typeof CheckCircle> = {
+  success: CheckCircle,
+  error: AlertCircle,
+  info: Info,
+  warning: AlertCircle,
+};
+
+const ICON_COLORS: Record<ToastVariant, string> = {
+  success: "text-emerald-500",
+  error: "text-red-500",
+  info: "text-blue-500",
+  warning: "text-amber-500",
+};
+
+const BORDER_COLORS: Record<ToastVariant, string> = {
+  success: "border-l-emerald-500",
+  error: "border-l-red-500",
+  info: "border-l-blue-500",
+  warning: "border-l-amber-500",
+};
+
+const AUTO_DISMISS_MS = 5000;
+
+// ─── Stacked Toast Container ──────────────────────────────────────────────────
+
+const MAX_VISIBLE = 3;
+
+function ToastStack({ toasts, remove }: { toasts: ToastItem[]; remove: (id: string) => void }) {
+  const [hovered, setHovered] = useState(false);
+  const timerRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const startTimer = useCallback(
+    (id: string) => {
+      if (timerRefs.current.has(id)) return;
+      const t = setTimeout(() => {
+        remove(id);
+        timerRefs.current.delete(id);
+      }, AUTO_DISMISS_MS);
+      timerRefs.current.set(id, t);
+    },
+    [remove],
+  );
+
+  const clearTimer = useCallback((id: string) => {
+    const t = timerRefs.current.get(id);
+    if (t) {
+      clearTimeout(t);
+      timerRefs.current.delete(id);
+    }
+  }, []);
+
   useEffect(() => {
-    if (toast.duration <= 0) return;
-    const timer = setTimeout(onDismiss, toast.duration);
-    return () => clearTimeout(timer);
-  }, [toast.duration, onDismiss]);
+    if (hovered) {
+      // Pause all timers when hovered
+      toasts.forEach((t) => clearTimer(t.id));
+    } else {
+      // Restart timers when not hovered
+      toasts.forEach((t) => startTimer(t.id));
+    }
+  }, [hovered, toasts, startTimer, clearTimer]);
 
-  const variantStyles: Record<
-    ToastVariant,
-    { icon: typeof CheckCircle2; iconColor: string; bgBadge: string }
-  > = {
-    default: {
-      icon: Info,
-      iconColor: "text-foreground",
-      bgBadge: "bg-muted text-foreground",
-    },
-    primary: {
-      icon: Info,
-      iconColor: "text-primary",
-      bgBadge: "bg-primary/10 text-primary",
-    },
-    success: {
-      icon: CheckCircle2,
-      iconColor: "text-emerald-500",
-      bgBadge: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    },
-    error: {
-      icon: AlertCircle,
-      iconColor: "text-red-500",
-      bgBadge: "bg-red-500/10 text-red-600 dark:text-red-400",
-    },
-    warning: {
-      icon: AlertTriangle,
-      iconColor: "text-amber-500",
-      bgBadge: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    },
-    info: {
-      icon: Info,
-      iconColor: "text-sky-500",
-      bgBadge: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-    },
-  };
+  useEffect(() => {
+    // Auto-start timers for new toasts
+    toasts.forEach((t) => {
+      if (!hovered) startTimer(t.id);
+    });
+    return () => {
+      // Cleanup timers for removed toasts
+      const ids = new Set(toasts.map((t) => t.id));
+      for (const [id] of timerRefs.current) {
+        if (!ids.has(id)) clearTimer(id);
+      }
+    };
+  }, [toasts, hovered, startTimer, clearTimer]);
 
-  const current = variantStyles[toast.variant];
-  const IconComponent = current.icon;
+  if (toasts.length === 0) return null;
+
+  const collapsed = !hovered && toasts.length > 1;
+  const visibleToasts = hovered ? toasts : toasts.slice(-MAX_VISIBLE);
 
   return (
     <div
-      role="alert"
-      className={cn(
-        "pointer-events-auto relative flex w-full items-start gap-3 rounded-2xl border border-zinc-200 dark:border-zinc-800",
-        "bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md p-4 text-zinc-900 dark:text-zinc-100",
-        "shadow-lg shadow-black/5 dark:shadow-black/20",
-        "animate-in fade-in slide-in-from-bottom-3 duration-200",
-      )}
+      className="fixed bottom-6 right-6 z-[200] flex flex-col items-end gap-0"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <span
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-          current.bgBadge,
-        )}
-      >
-        <IconComponent className={cn("h-4 w-4", current.iconColor)} />
-      </span>
+      {/* Expand hint shown when collapsed and multiple toasts */}
+      {collapsed && toasts.length > 1 && (
+        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-full px-2.5 py-1 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <ChevronDown className="h-3 w-3" />
+          {toasts.length} notifications — hover to expand
+        </div>
+      )}
 
-      <div className="flex-1 pt-0.5">
-        <h4 className="text-sm font-semibold leading-snug">{toast.title}</h4>
-        {toast.description && (
-          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-            {toast.description}
-          </p>
+      {/* Toast stack */}
+      <div
+        className={cn(
+          "relative flex flex-col items-end transition-all duration-300 ease-in-out",
+          collapsed ? "gap-0" : "gap-2.5",
         )}
+        style={
+          collapsed
+            ? {
+                // Stack effect: shift each card slightly
+                height: `${64 + (Math.min(toasts.length, MAX_VISIBLE) - 1) * 8}px`,
+              }
+            : undefined
+        }
+      >
+        {visibleToasts.map((toast, i) => {
+          const reverseIndex = collapsed ? visibleToasts.length - 1 - i : 0;
+          const Icon = ICONS[toast.variant];
+
+          return (
+            <div
+              key={toast.id}
+              className={cn(
+                "w-[360px] overflow-hidden rounded-2xl border border-l-4 bg-white dark:bg-zinc-900 shadow-xl shadow-black/10 transition-all duration-300 ease-in-out",
+                BORDER_COLORS[toast.variant],
+                collapsed && "absolute bottom-0 animate-in fade-in-0",
+              )}
+              style={
+                collapsed
+                  ? {
+                      transform: `translateY(-${reverseIndex * 8}px) scale(${1 - reverseIndex * 0.03})`,
+                      transformOrigin: "bottom right",
+                      zIndex: visibleToasts.length - reverseIndex,
+                      opacity: 1 - reverseIndex * 0.15,
+                    }
+                  : {
+                      animationDuration: "200ms",
+                    }
+              }
+            >
+              {/* Progress bar */}
+              <div
+                className={cn(
+                  "h-0.5 w-full origin-left",
+                  toast.variant === "success" && "bg-emerald-500",
+                  toast.variant === "error" && "bg-red-500",
+                  toast.variant === "info" && "bg-blue-500",
+                  toast.variant === "warning" && "bg-amber-500",
+                )}
+                style={{
+                  animation: hovered ? "none" : `shrink ${AUTO_DISMISS_MS}ms linear forwards`,
+                }}
+              />
+
+              <div className="flex items-start gap-3 px-4 py-3.5">
+                <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", ICON_COLORS[toast.variant])} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground leading-tight">{toast.title}</p>
+                  {toast.description && (
+                    <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{toast.description}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    clearTimer(toast.id);
+                    remove(toast.id);
+                  }}
+                  className="mt-0.5 shrink-0 rounded-lg p-1 text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <button
-        onClick={onDismiss}
-        className="rounded-lg p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <style>{`
+        @keyframes shrink {
+          from { transform: scaleX(1); }
+          to   { transform: scaleX(0); }
+        }
+      `}</style>
     </div>
   );
 }
 
-export function useToast() {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error("useToast() must be used within <ToastProvider>");
-  return ctx;
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const add = useCallback((variant: ToastVariant, title: string, description?: string) => {
+    setToasts((prev) => {
+      // Deduplicate: skip if same variant+title was added within last 2s
+      const now = Date.now();
+      const isDupe = prev.some(
+        (t) => t.variant === variant && t.title === title && now - t.createdAt < 2000,
+      );
+      if (isDupe) return prev;
+      const id = `${now}-${Math.random().toString(36).slice(2)}`;
+      return [...prev, { id, variant, title, description, createdAt: now }];
+    });
+  }, []);
+
+  const remove = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  return (
+    <ToastContext.Provider value={{ toasts, add, remove }}>
+      {children}
+      <ToastStack toasts={toasts} remove={remove} />
+    </ToastContext.Provider>
+  );
 }
+
+// ─── Public toast API (singleton-style) ──────────────────────────────────────
+// Call toast.success / toast.error / toast.info from anywhere
+
+let _add: ToastContextValue["add"] | null = null;
+
+/** Internal bridge component — mount once inside <ToastProvider> */
+export function ToastBridge() {
+  const ctx = useToastContext();
+  useEffect(() => {
+    _add = ctx.add;
+    return () => { _add = null; };
+  }, [ctx.add]);
+  return null;
+}
+
+function ensureAdd(variant: ToastVariant, title: string, description?: string) {
+  if (_add) {
+    _add(variant, title, description);
+  } else {
+    // Fallback — should never happen if ToastProvider is mounted
+    console.warn(`[toast.${variant}]`, title, description);
+  }
+}
+
+export const toast = {
+  success: (title: string, description?: string) => ensureAdd("success", title, description),
+  error: (title: string, description?: string) => ensureAdd("error", title, description),
+  info: (title: string, description?: string) => ensureAdd("info", title, description),
+  warning: (title: string, description?: string) => ensureAdd("warning", title, description),
+};
+

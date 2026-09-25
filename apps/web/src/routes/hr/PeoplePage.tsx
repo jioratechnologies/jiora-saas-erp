@@ -20,6 +20,8 @@ import { api, ApiError } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
+import { DateInput } from "../../components/ui/date-input";
 import { Badge } from "../../components/ui/badge";
 import { User, Avatar } from "../../components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
@@ -531,64 +533,48 @@ export function PeoplePage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Department</label>
-              <select
-                value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Select Department</option>
-                {departments?.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Designation</label>
-              <select
-                value={designationId}
-                onChange={(e) => setDesignationId(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Select Designation</option>
-                {designations?.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Department"
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+            >
+              <option value="">Select Department</option>
+              {departments?.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </Select>
+            <Select
+              label="Designation"
+              value={designationId}
+              onChange={(e) => setDesignationId(e.target.value)}
+            >
+              <option value="">Select Designation</option>
+              {designations?.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Reporting Manager</label>
-              <select
-                value={managerId}
-                onChange={(e) => setManagerId(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">None (Top-Level Executive)</option>
-                {people
-                  ?.filter((p) => p.status === "ACTIVE")
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} ({p.designation?.name || p.email})
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Joining Date</label>
-              <Input
-                type="date"
-                value={joiningDate}
-                onChange={(e) => setJoiningDate(e.target.value)}
-              />
-            </div>
+            <Select
+              label="Reporting Manager"
+              value={managerId}
+              onChange={(e) => setManagerId(e.target.value)}
+            >
+              <option value="">None (Top-Level Executive)</option>
+              {people
+                ?.filter((p) => p.status === "ACTIVE")
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.firstName} {p.lastName} ({p.designation?.name || p.email})
+                  </option>
+                ))}
+            </Select>
+            <DateInput
+              label="Joining Date"
+              value={joiningDate}
+              onChange={(e) => setJoiningDate(e.target.value)}
+            />
           </div>
 
           <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
@@ -741,22 +727,18 @@ export function PeoplePage() {
                       className="h-8 text-xs"
                     />
                   </div>
-                  <div>
-                    <label className="text-[11px] font-medium text-foreground block mb-1">
-                      Category
-                    </label>
-                    <select
+                    <Select
+                      label="Category"
                       value={docCategory}
                       onChange={(e) => setDocCategory(e.target.value as any)}
-                      className="w-full h-8 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="h-8 text-xs"
                     >
                       <option value="KYC">KYC Document</option>
                       <option value="RESUME">Resume / CV</option>
                       <option value="CONTRACT">Contract / Offer Letter</option>
                       <option value="CERTIFICATE">Certificate / Degree</option>
                       <option value="OTHER">Other Record</option>
-                    </select>
-                  </div>
+                    </Select>
                 </div>
 
                 <div className="flex items-center gap-2">

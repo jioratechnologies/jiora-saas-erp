@@ -5,6 +5,7 @@ import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
+import { DateInput } from "../../components/ui/date-input";
 import { Badge } from "../../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { PageHeader } from "../../components/page-header";
@@ -225,15 +226,12 @@ export function HolidaysPage() {
             />
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-foreground block mb-1">Date *</label>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
-          </div>
+          <DateInput
+            label="Date *"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
 
           <div className="flex items-center gap-2 pt-1">
             <input
