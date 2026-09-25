@@ -1,0 +1,58 @@
+# Local self-hosted deployment, built from source.
+#
+# Adds the api + web app containers on top of the shared infra stack
+# (docker-compose.yml), building their images from this repo's own
+# Dockerfiles. Use this when you have the source checked out and want
+# everything — infra AND the app — running in Docker, without needing
+# anything published to a registry first.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Compare with docker-compose.images.yml, which runs the app from
+# already-published images instead of building — see that file's header.
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://app_runtime:app_runtime_dev_password@pgbouncer:5432/saaserp
+      DIRECT_URL: postgres://saaserp:saaserp_dev_password@postgres:5432/saaserp?schema=public
+      MONGO_URL: mongodb://saaserp:saaserp_dev_password@mongo:27017/saaserp_audit?authSource=admin
+      VALKEY_URL: redis://valkey:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: saaserp
+      MINIO_SECRET_KEY: saaserp_dev_password
+      MINIO_BUCKET: saas-erp-documents
+      ZITADEL_ISSUER: http://localhost:8081
+      ZITADEL_PROJECT_ID: ""
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_ZITADEL_ISSUER: http://localhost:8081
+        VITE_ZITADEL_CLIENT_ID: ""
+        VITE_API_BASE_URL: http://localhost:3000
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      # 5174, not 5173/80 — this machine's port-conflict note in
+      # docker-compose.yml applies here too.
+      - "5174:80"

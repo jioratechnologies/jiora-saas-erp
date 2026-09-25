@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": "./",
+    // Deliberately NOT incremental: nest-cli.json's deleteOutDir wipes dist/
+    // on every build, but not tsconfig.tsbuildinfo — tsc then trusts the
+    // stale cache and skips re-emitting files that no longer exist,
+    // producing a silent "Cannot find module './x'" at runtime. Project's
+    // small enough that a full rebuild is fast regardless.
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src"]
+}

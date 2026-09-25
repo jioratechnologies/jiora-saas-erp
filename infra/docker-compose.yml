@@ -1,0 +1,203 @@
+name: saas-erp-dev
+# Host ports are deliberately non-default (5433, 6433, 6380, 9010/9011, 8081) because this
+# dev machine already runs other projects on the standard ports — see
+# docs/onboarding/GETTING_STARTED.md.
+#
+# Every secret below is `${VAR:-dev-default}` — safe to run as-is for local dev with no
+# .env file at all, but every value is overridable. For a real self-hosted deployment,
+# copy .env.deploy.example to .env in this directory and set real values for all of
+# them — see docker-compose.images.yml's header for the full from-env deploy flow.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saaserp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-saaserp}
+      # Read by infra/postgres/init/02-create-app-runtime-role.sh on first boot only.
+      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:-app_runtime_dev_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saaserp} -d ${POSTGRES_DB:-saaserp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # app_runtime, NOT saaserp: the app must never connect as the table owner,
+      # or Postgres RLS policies below would silently not apply to it.
+      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD:-app_runtime_dev_password}@postgres:5432/${POSTGRES_DB:-saaserp}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: scram-sha-256
+      # Prisma sends `search_path` as a connection startup parameter; PgBouncer
+      # rejects unknown startup parameters unless told to ignore them.
+      IGNORE_STARTUP_PARAMETERS: "search_path,extra_float_digits"
+    ports:
+      - "6433:5432"
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${POSTGRES_USER:-saaserp}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-saaserp_dev_password}
+      MONGO_INITDB_DATABASE: saaserp_audit
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "60", "1"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - valkeydata:/data
+
+  minio:
+    # Docker Hub's minio/minio was pulled; MinIO now publishes to quay.io only.
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-saaserp}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-saaserp_dev_password}
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      - miniodata:/data
+
+  mailpit:
+    # Local SMTP catcher for dev — nothing here ever leaves the machine. Every
+    # email Zitadel (or later, the app) tries to send lands in Mailpit's web
+    # inbox instead of a real mailbox. Zitadel's own SMTP settings still need
+    # to be pointed at this via its Console (Instance > Settings > SMTP
+    # Provider), NOT via env — see docs/onboarding/GETTING_STARTED.md step 4a.
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      # Zitadel's SMTP settings form requires a username, and sends an AUTH
+      # command even against a provider that doesn't need one — Mailpit
+      # rejects unsolicited AUTH by default ("502 Command not implemented").
+      # Accept it (any credentials) rather than fighting Zitadel's form.
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # web inbox
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    restart: unless-stopped
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY:-MasterkeyNeedsToHave32Characters}" --tlsMode disabled
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: ${POSTGRES_USER:-saaserp}
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: ${POSTGRES_USER:-saaserp}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: "false"
+      # Host port 8080 is taken by an unrelated project on this machine (akmatori-proxy) —
+      # Zitadel is reachable on 8081 instead. ExternalPort must match the host port, since
+      # Zitadel issues browser-facing URLs (OIDC discovery, JWKS) based on it.
+      ZITADEL_EXTERNALPORT: "8081"
+      ZITADEL_EXTERNALDOMAIN: localhost
+      # New instances default to requiring Login V2, a separate UI container the core
+      # redirects to at /ui/v2/login — without it running, sign-in 404s. Fall back to the
+      # bundled legacy login (served from core at /ui/login) instead of running a second
+      # container for this single-instance dev/self-hosted setup.
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME:-platform-admin@saas-erp.local}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:-Sup3rAdmin!Dev}
+    ports:
+      - "8081:8080"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - tempo
+      - loki
+      - prometheus
+
+  tempo:
+    image: grafana/tempo:latest
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./otel/tempo-config.yaml:/etc/tempo.yaml:ro
+      - tempodata:/var/tempo
+    ports:
+      - "3200:3200"
+
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - lokidata:/loki
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./otel/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3300:3000"
+    depends_on:
+      - tempo
+      - loki
+      - prometheus
+
+volumes:
+  pgdata:
+  mongodata:
+  valkeydata:
+  miniodata:
+  tempodata:
+  lokidata:
+  promdata:
+  grafanadata:

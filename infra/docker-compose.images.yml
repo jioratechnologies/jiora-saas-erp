@@ -1,0 +1,53 @@
+# Self-hosted deployment from already-published images — no source checkout
+# needed on the deploy host, no build step. Every value that differs between
+# a local build and a real deployment (image references, secrets, external
+# hostname) comes from .env, not this file — copy infra/.env.deploy.example
+# to infra/.env and fill it in before running this.
+#
+# Usage:
+#   cd infra
+#   cp .env.deploy.example .env
+#   # edit .env — at minimum the *_IMAGE refs and every secret
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml up -d
+#
+# Compare with docker-compose.build.yml, which builds these same two
+# services from local Dockerfiles instead of pulling published images.
+
+services:
+  api:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-saaserp}
+      DIRECT_URL: postgres://${POSTGRES_USER:-saaserp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saaserp}?schema=public
+      MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
+      VALKEY_URL: redis://valkey:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-saas-erp-documents}
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER}
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      PORT: "3000"
+    ports:
+      - "${API_PORT:-3000}:3000"
+
+  web:
+    # Note: VITE_* vars are baked into this image at build time (see
+    # apps/web/Dockerfile) — they cannot be changed at container start like
+    # the api's env vars can. If VITE_API_BASE_URL etc. need to change, a
+    # new image has to be built and published with the new build args.
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-5174}:80"

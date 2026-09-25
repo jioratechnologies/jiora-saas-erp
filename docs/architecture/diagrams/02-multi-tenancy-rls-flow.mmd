@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant U as Browser
+    participant API as NestJS (ZitadelAuthGuard)
+    participant DB as Postgres (app_runtime role)
+
+    U->>API: Request + Bearer JWT
+    API->>API: verify JWT via Zitadel JWKS (jose)
+    API->>DB: SELECT * FROM auth_lookup_by_subject(sub)<br/>(SECURITY DEFINER, bypasses RLS narrowly)
+    DB-->>API: userId, tenantId, isPlatformContext, permissionKeys
+    API->>API: PermissionsGuard checks @RequirePermission(...)
+    API->>DB: BEGIN
+    API->>DB: SELECT set_config('app.tenant_id', tenantId, true)
+    API->>DB: SELECT set_config('app.is_platform_context', ..., true)
+    Note over DB: SET LOCAL, not SET — required under<br/>PgBouncer transaction pooling (ADR 0007)
+    API->>DB: actual query (e.g. SELECT * FROM departments)
+    DB->>DB: RLS policy filters to current tenant_id
+    DB-->>API: only this tenant's rows
+    API->>DB: COMMIT
+    API-->>U: response

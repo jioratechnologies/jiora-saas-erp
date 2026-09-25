@@ -1,0 +1,38 @@
+flowchart TB
+    subgraph Client["Browser"]
+        WEB["apps/web<br/>React + Vite<br/>ThemeProvider, TanStack Query"]
+    end
+
+    subgraph Platform["saas-erp platform"]
+        API["apps/api<br/>NestJS (modular monolith)"]
+        PGB["PgBouncer<br/>(transaction pooling)"]
+        PG["PostgreSQL 17<br/>tenants, users, roles, RBAC<br/>Row-Level Security"]
+        MONGO["MongoDB<br/>audit / activity log"]
+        VALKEY["Valkey<br/>BullMQ queue + cache"]
+        MINIO["MinIO<br/>documents, evidence, payslips"]
+        ZITADEL["Zitadel<br/>AuthN: login, MFA, OIDC"]
+    end
+
+    subgraph Observability["Observability"]
+        OTEL["OTel Collector"]
+        TEMPO["Tempo (traces)"]
+        LOKI["Loki (logs)"]
+        PROM["Prometheus (metrics)"]
+        GRAFANA["Grafana (dashboards)"]
+    end
+
+    WEB -->|"REST + Bearer JWT"| API
+    WEB -->|"OIDC login (PKCE)"| ZITADEL
+    API -->|"verify JWT via JWKS"| ZITADEL
+    API -->|"DATABASE_URL"| PGB --> PG
+    API -.->|"DIRECT_URL, migrations only"| PG
+    API --> MONGO
+    API --> VALKEY
+    API --> MINIO
+    API -->|"OTLP"| OTEL
+    OTEL --> TEMPO
+    OTEL --> LOKI
+    OTEL --> PROM
+    GRAFANA --> TEMPO
+    GRAFANA --> LOKI
+    GRAFANA --> PROM

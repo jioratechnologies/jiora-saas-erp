@@ -1,0 +1,12 @@
+flowchart TD
+    A["Platform: create tenant<br/>(POST /platform/tenants)"] --> B["admin role seeded automatically<br/>(RbacService.seedTenantOwnerRole)"]
+    B --> C["Tenant Admin: set org profile,<br/>theme, branding<br/>(admin/org)"]
+    C --> D["Tenant Admin: create departments<br/>and designations<br/>(admin/departments, admin/designations)"]
+    D --> E["Tenant Admin: build custom roles<br/>from the permission catalog<br/>(admin/roles — Role Builder)"]
+    E --> F["Tenant Admin: invite users,<br/>assign department/designation/roles<br/>(admin/users/invite)"]
+    F --> G["Invited user logs in via Zitadel<br/>for the first time"]
+    G --> H["POST /auth/claim-invite links<br/>the Zitadel identity to the invited User row"]
+    H --> I["User can now access whatever<br/>their assigned role(s) permit"]
+
+    style A fill:#1F4E78,color:#fff
+    style I fill:#1F4E78,color:#fff

@@ -1,0 +1,15 @@
+flowchart TD
+    A["User clicks Sign in<br/>(apps/web)"] --> B["Redirect to Zitadel<br/>(Authorization Code + PKCE)"]
+    B --> C["User logs in at Zitadel<br/>(password, MFA)"]
+    C --> D["Zitadel redirects to /callback<br/>with authorization code"]
+    D --> E["oidc-client-ts exchanges code<br/>for access + id token"]
+    E --> F["POST /auth/claim-invite<br/>(first login only)"]
+    F --> G{"Pending invite<br/>matches verified email?"}
+    G -- yes --> H["claim_invite() links<br/>zitadel_subject_id to User row"]
+    G -- no / already claimed --> I["no-op, continue"]
+    H --> J["Subsequent requests:<br/>Authorization: Bearer &lt;access token&gt;"]
+    I --> J
+    J --> K["ZitadelAuthGuard verifies token,<br/>resolves AuthContext via auth_lookup_by_subject()"]
+    K --> L["PermissionsGuard checks<br/>@RequirePermission(key) against<br/>AuthContext.permissionKeys"]
+    L -- missing --> M["403 Forbidden"]
+    L -- granted --> N["Controller runs query via<br/>PrismaService.runInTenantContext(...)"]

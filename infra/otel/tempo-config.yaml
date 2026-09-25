@@ -1,0 +1,18 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    # Retention tuning (compactor.compaction.block_retention) is left at this
+    # image's default for local dev — the block moved between Tempo versions
+    # and isn't worth pinning here.

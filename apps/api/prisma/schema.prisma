@@ -1,0 +1,135 @@
+// Single source of truth for the database. See docs/adr/0001-multi-tenancy-shared-schema-rls.md
+// for why this is one shared schema with tenant_id + Row-Level Security, not one schema per tenant.
+//
+// DATABASE_URL points at PgBouncer (transaction pooling) — used by the app at runtime.
+// DIRECT_URL points straight at Postgres — used only by `prisma migrate` for DDL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// A tenant = one client organisation running on the platform (e.g. Sachhi Saheli).
+model Tenant {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  customDomain  String?   @unique @map("custom_domain")
+  primaryColor  String    @default("#1F4E78") @map("primary_color")
+  logoUrl       String?   @map("logo_url")
+  showPoweredBy Boolean   @default(true) @map("show_powered_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  suspendedAt   DateTime? @map("suspended_at")
+
+  users         User[]
+  departments   Department[]
+  designations  Designation[]
+  roles         Role[]
+
+  @@map("tenants")
+}
+
+/// A department within one tenant's organisation (e.g. "Programme", "Finance").
+model Department {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@map("departments")
+}
+
+/// A designation/job title within one tenant (e.g. "Programme Officer").
+model Designation {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@map("designations")
+}
+
+/// A person who can log in. tenantId is null for platform users (super_admin/developer/maintainer).
+/// Identity (email, password, MFA) lives in Zitadel — this row is the app-side profile + role
+/// assignment, linked back to Zitadel by zitadelSubjectId (the OIDC "sub" claim).
+///
+/// zitadelSubjectId is null between "invited" and "claimed": Admin invites a
+/// user by email (no Zitadel account required yet); the row is claimed —
+/// zitadelSubjectId filled in — the first time that email successfully logs
+/// in via Zitadel. Postgres allows multiple NULLs under a UNIQUE constraint,
+/// so many pending invites can coexist. See UsersService.claimInvite.
+model User {
+  id               String    @id @default(uuid())
+  tenantId         String?   @map("tenant_id")
+  zitadelSubjectId String?   @unique @map("zitadel_subject_id")
+  email            String
+  displayName      String    @map("display_name")
+  departmentId     String?   @map("department_id")
+  designationId    String?   @map("designation_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  deactivatedAt    DateTime? @map("deactivated_at")
+
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  roles       UserRole[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+/// A role: either a platform role (tenantId null — super_admin/developer/maintainer) or a
+/// tenant-scoped role (the seeded, protected "admin" owner role, or a custom role the tenant's
+/// admin built via the Role Builder).
+model Role {
+  id          String   @id @default(uuid())
+  tenantId    String?  @map("tenant_id")
+  name        String
+  isProtected Boolean  @default(false) @map("is_protected")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+/// One permission grant on a role. `permissionKey` references the static catalog in
+/// packages/permissions (not a DB table — the catalog is code, not data, so it ships with a
+/// deploy rather than needing a data migration to add a new permission).
+model RolePermission {
+  roleId        String @map("role_id")
+  permissionKey String @map("permission_key")
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionKey])
+  @@map("role_permissions")
+}
+
+/// A user's assignment to a role. A user can hold more than one role.
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}

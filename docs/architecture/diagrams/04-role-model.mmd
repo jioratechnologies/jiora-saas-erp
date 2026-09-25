@@ -1,0 +1,24 @@
+flowchart TB
+    subgraph Platform["Platform roles — tenant_id IS NULL, fixed, never editable"]
+        SA["super_admin"]
+        DEV["developer"]
+        MAINT["maintainer"]
+    end
+
+    subgraph TenantX["Tenant: e.g. Sachhi Saheli"]
+        ADMIN["admin<br/>(seeded automatically at tenant creation,<br/>isProtected = true, cannot be edited/deleted)"]
+        CUSTOM1["Custom role: e.g. HR<br/>(built via Role Builder)"]
+        CUSTOM2["Custom role: e.g. Field Staff<br/>(built via Role Builder)"]
+    end
+
+    CATALOG["packages/permissions<br/>fixed permission catalog<br/>(platform.*, admin.*, ...)"]
+
+    CATALOG -->|"platform.* only"| SA
+    CATALOG -->|"platform.* only"| DEV
+    CATALOG -->|"platform.* only"| MAINT
+    CATALOG -->|"all non-platform.* keys,<br/>granted at seed time"| ADMIN
+    CATALOG -->|"admin picks a subset"| CUSTOM1
+    CATALOG -->|"admin picks a subset"| CUSTOM2
+
+    ADMIN -.->|"can create/edit/delete"| CUSTOM1
+    ADMIN -.->|"can create/edit/delete"| CUSTOM2

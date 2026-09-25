@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+.git
+docs
+infra/*data
+*.docx

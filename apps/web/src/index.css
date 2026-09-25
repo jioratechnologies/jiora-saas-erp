@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Default (un-branded) theme. ThemeProvider overwrites --primary and
+ * --primary-foreground at runtime with the current tenant's colors — see
+ * src/theme/ThemeProvider.tsx and docs/adr/0008-theming-css-variables.md.
+ * Values are space-separated HSL triples (shadcn/ui convention), not full
+ * color strings, so Tailwind's opacity modifiers (bg-primary/50) work.
+ */
+:root {
+  --primary: 209 58% 30%;
+  --primary-foreground: 0 0% 100%;
+  --background: 0 0% 100%;
+  --foreground: 222 20% 12%;
+  --border: 214 20% 88%;
+  --muted: 210 20% 96%;
+  --muted-foreground: 215 15% 45%;
+}
+
+body {
+  @apply bg-background text-foreground;
+}
