@@ -50,5 +50,40 @@ export function LandingRedirect() {
     );
   }
 
-  return <Navigate to={me.isPlatformContext ? "/platform/tenants" : "/admin/org"} replace />;
+  if (me.isPlatformContext) {
+    return <Navigate to="/platform/tenants" replace />;
+  }
+
+  // Route to the first authorized admin module
+  if (me.permissionKeys.includes("admin.org.read")) {
+    return <Navigate to="/admin/org" replace />;
+  }
+  if (me.permissionKeys.includes("admin.department.read")) {
+    return <Navigate to="/admin/departments" replace />;
+  }
+  if (me.permissionKeys.includes("admin.designation.read")) {
+    return <Navigate to="/admin/designations" replace />;
+  }
+  if (me.permissionKeys.includes("admin.role.read")) {
+    return <Navigate to="/admin/roles" replace />;
+  }
+  if (me.permissionKeys.includes("admin.user.read")) {
+    return <Navigate to="/admin/users" replace />;
+  }
+
+  // Welcome state for roles without Phase 1 administrative module permissions (e.g. HR role prior to Phase 2)
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-6">
+      <div className="max-w-md text-center p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
+        <h2 className="text-xl font-bold tracking-tight text-foreground">Welcome to saas-erp</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          You are signed in with the{" "}
+          <strong className="text-foreground">{me.roles && me.roles.length > 0 ? me.roles.join(", ") : "Member"}</strong> role.
+        </p>
+        <p className="mt-3 text-xs text-muted-foreground">
+          You do not have access to administrative setup. HR Core operations (attendance, leave, employee records) will be available in Phase 2.
+        </p>
+      </div>
+    </div>
+  );
 }

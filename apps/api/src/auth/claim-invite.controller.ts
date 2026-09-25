@@ -59,11 +59,23 @@ export class ClaimInviteController {
    */
   @Get("me")
   @UseGuards(ZitadelAuthGuard)
-  me(@CurrentUser() user: AuthContext) {
+  async me(@CurrentUser() user: AuthContext) {
+    let roles: string[] = [];
+    if (user.tenantId) {
+      const userRoles = await this.prisma.runInTenantContext(
+        { tenantId: user.tenantId, isPlatformContext: false },
+        (tx) => tx.userRole.findMany({ where: { userId: user.userId }, include: { role: true } }),
+      );
+      roles = userRoles.map((ur) => ur.role.name);
+    } else if (user.isPlatformContext) {
+      roles = ["Platform Admin"];
+    }
+
     return {
       userId: user.userId,
       tenantId: user.tenantId,
       isPlatformContext: user.isPlatformContext,
+      roles,
       permissionKeys: Array.from(user.permissionKeys),
     };
   }

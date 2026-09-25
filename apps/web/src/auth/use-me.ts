@@ -6,6 +6,7 @@ export interface Me {
   userId: string;
   tenantId: string | null;
   isPlatformContext: boolean;
+  roles?: string[];
   permissionKeys: string[];
 }
 

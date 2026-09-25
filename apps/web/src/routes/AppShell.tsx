@@ -22,12 +22,19 @@ import { Avatar } from "../components/ui/avatar";
 import { useTheme } from "../theme/ThemeProvider";
 import { cn } from "../lib/utils";
 
-const navItems = [
-  { to: "/admin/org", label: "Organisation", icon: Building2 },
-  { to: "/admin/departments", label: "Departments", icon: Network },
-  { to: "/admin/designations", label: "Designations", icon: IdCard },
-  { to: "/admin/roles", label: "Roles", icon: ShieldCheck },
-  { to: "/admin/users", label: "Users", icon: Users },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: any;
+  permission?: string;
+}
+
+const navItems: NavItem[] = [
+  { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.read" },
+  { to: "/admin/departments", label: "Departments", icon: Network, permission: "admin.department.read" },
+  { to: "/admin/designations", label: "Designations", icon: IdCard, permission: "admin.designation.read" },
+  { to: "/admin/roles", label: "Roles", icon: ShieldCheck, permission: "admin.role.read" },
+  { to: "/admin/users", label: "Users", icon: Users, permission: "admin.user.read" },
 ];
 
 /**
@@ -59,6 +66,16 @@ export function AppShell() {
   };
 
   const displayName = (user?.profile.name as string | undefined) ?? user?.profile.email ?? "Account";
+  const userRoleLabel = me?.isPlatformContext
+    ? "Platform Admin"
+    : me?.roles && me.roles.length > 0
+    ? me.roles.join(", ")
+    : "Tenant Member";
+
+  const allowedNavItems = navItems.filter((item) => {
+    if (!item.permission) return true;
+    return me?.permissionKeys?.includes(item.permission);
+  });
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
@@ -168,7 +185,7 @@ export function AppShell() {
         {/* Navigation items */}
         <nav className="flex-1 space-y-1.5 px-3 py-4 overflow-y-auto">
           {!me?.isPlatformContext &&
-            navItems.map(({ to, label, icon: Icon }) => (
+            allowedNavItems.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -189,6 +206,12 @@ export function AppShell() {
                 {!collapsed && <span className="truncate">{label}</span>}
               </NavLink>
             ))}
+
+          {!me?.isPlatformContext && allowedNavItems.length === 0 && !collapsed && (
+            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+              No admin modules assigned.
+            </div>
+          )}
 
           {me?.isPlatformContext && (
             <NavLink
@@ -281,8 +304,8 @@ export function AppShell() {
             <Avatar name={displayName} size="sm" isBordered status="online" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-bold leading-tight text-foreground">{displayName}</p>
-              <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                {me?.isPlatformContext ? "Platform" : "Tenant admin"}
+              <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 truncate" title={userRoleLabel}>
+                {userRoleLabel}
               </p>
             </div>
             <button
