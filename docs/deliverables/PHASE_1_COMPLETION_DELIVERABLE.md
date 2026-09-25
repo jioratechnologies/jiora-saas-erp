@@ -20,16 +20,16 @@ This document serves as the formal record of all technical components, features,
 
 ```mermaid
 graph TD
-    User["Web Browser (React + Vite)"] -->|OIDC Login / MFA| Zitadel["Zitadel AuthN (Port 8081)"]
-    User -->|Bearer JWT| NestAPI["NestJS Backend API (Port 3000)"]
-    NestAPI -->|Zitadel Token Validation| Zitadel
-    NestAPI -->|SET LOCAL app.current_tenant_id| PgBouncer["PgBouncer Pooler (Port 6433)"]
+    User["Web Browser (React + Vite)"] -->|"OIDC Login / MFA"| Zitadel["Zitadel AuthN (Port 8081)"]
+    User -->|"Bearer JWT"| NestAPI["NestJS Backend API (Port 3000)"]
+    NestAPI -->|"Zitadel Token Validation"| Zitadel
+    NestAPI -->|"SET LOCAL app.current_tenant_id"| PgBouncer["PgBouncer Pooler (Port 6433)"]
     PgBouncer --> Postgres["PostgreSQL 17 (Port 5433)"]
-    Postgres -->|Row-Level Security (RLS)| IsolatedData["Isolated Tenant Data"]
-    NestAPI -->|Queue Jobs| Valkey["Valkey / Redis (Port 6380)"]
-    NestAPI -->|Audit Logs| Mongo["MongoDB (Port 27017)"]
-    NestAPI -->|Object Storage| MinIO["MinIO S3 (Port 9010)"]
-    NestAPI -->|Traces & Metrics| OTel["OTel → Grafana (Port 3300)"]
+    Postgres -->|"Row-Level Security RLS"| IsolatedData["Isolated Tenant Data"]
+    NestAPI -->|"Queue Jobs"| Valkey["Valkey / Redis (Port 6380)"]
+    NestAPI -->|"Audit Logs"| Mongo["MongoDB (Port 27017)"]
+    NestAPI -->|"Object Storage"| MinIO["MinIO S3 (Port 9010)"]
+    NestAPI -->|"Traces & Metrics"| OTel["OTel to Grafana (Port 3300)"]
 ```
 
 ### Core Architecture Highlights
