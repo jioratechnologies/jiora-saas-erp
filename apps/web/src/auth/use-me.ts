@@ -26,6 +26,8 @@ export function useMe() {
     queryFn: () => api.get<Me>("/auth/me"),
     enabled: isLoggedIn,
     retry: false,
+    staleTime: 0,           // always treat as stale so permissions are never served from cache
+    refetchOnWindowFocus: true, // re-fetch when user switches back to tab
   });
 
   const notProvisioned = query.error instanceof ApiError && query.error.status === 401;
