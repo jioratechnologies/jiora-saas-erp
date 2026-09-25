@@ -14,6 +14,10 @@ import { SimpleNamedListPage } from "./routes/SimpleNamedListPage";
 import { AdminRolesPage } from "./routes/AdminRolesPage";
 import { AdminUsersPage } from "./routes/AdminUsersPage";
 import { PlatformTenantsPage } from "./routes/PlatformTenantsPage";
+import { PeoplePage } from "./routes/hr/PeoplePage";
+import { AttendancePage } from "./routes/hr/AttendancePage";
+import { LeavePage } from "./routes/hr/LeavePage";
+import { HolidaysPage } from "./routes/hr/HolidaysPage";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +54,10 @@ export function App() {
                 />
                 <Route path="/admin/roles" element={<AdminRolesPage />} />
                 <Route path="/admin/users" element={<AdminUsersPage />} />
+                <Route path="/hr/people" element={<PeoplePage />} />
+                <Route path="/hr/attendance" element={<AttendancePage />} />
+                <Route path="/hr/leave" element={<LeavePage />} />
+                <Route path="/hr/holidays" element={<HolidaysPage />} />
                 <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
               </Route>
             </Routes>

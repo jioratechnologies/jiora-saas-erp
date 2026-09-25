@@ -54,7 +54,21 @@ export function LandingRedirect() {
     return <Navigate to="/platform/tenants" replace />;
   }
 
-  // Route to the first authorized admin module
+  // Route to authorized HR or Admin modules
+  if (me.permissionKeys.includes("hr.person.read")) {
+    return <Navigate to="/hr/people" replace />;
+  }
+  if (me.permissionKeys.includes("hr.attendance.read")) {
+    return <Navigate to="/hr/attendance" replace />;
+  }
+  if (me.permissionKeys.includes("hr.leave.read")) {
+    return <Navigate to="/hr/leave" replace />;
+  }
+  if (me.permissionKeys.includes("hr.holiday.read")) {
+    return <Navigate to="/hr/holidays" replace />;
+  }
+
+  // Admin modules
   if (me.permissionKeys.includes("admin.org.read")) {
     return <Navigate to="/admin/org" replace />;
   }
@@ -71,7 +85,7 @@ export function LandingRedirect() {
     return <Navigate to="/admin/users" replace />;
   }
 
-  // Welcome state for roles without Phase 1 administrative module permissions (e.g. HR role prior to Phase 2)
+  // Welcome state for roles without specific page permissions
   return (
     <div className="flex min-h-[60vh] items-center justify-center p-6">
       <div className="max-w-md text-center p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
@@ -81,7 +95,7 @@ export function LandingRedirect() {
           <strong className="text-foreground">{me.roles && me.roles.length > 0 ? me.roles.join(", ") : "Member"}</strong> role.
         </p>
         <p className="mt-3 text-xs text-muted-foreground">
-          You do not have access to administrative setup. HR Core operations (attendance, leave, employee records) will be available in Phase 2.
+          Please contact your organisation administrator if you need access to specific HR or operational modules.
         </p>
       </div>
     </div>

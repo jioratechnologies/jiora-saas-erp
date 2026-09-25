@@ -26,10 +26,16 @@ model Tenant {
   createdAt     DateTime  @default(now()) @map("created_at")
   suspendedAt   DateTime? @map("suspended_at")
 
-  users         User[]
-  departments   Department[]
-  designations  Designation[]
-  roles         Role[]
+  users           User[]
+  departments     Department[]
+  designations    Designation[]
+  roles           Role[]
+  persons         Person[]
+  personDocuments PersonDocument[]
+  attendances     Attendance[]
+  leaveTypes      LeaveType[]
+  leaveRequests   LeaveRequest[]
+  holidays        Holiday[]
 
   @@map("tenants")
 }
@@ -41,8 +47,9 @@ model Department {
   name      String
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users  User[]
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users   User[]
+  persons Person[]
 
   @@unique([tenantId, name])
   @@map("departments")
@@ -55,8 +62,9 @@ model Designation {
   name      String
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users  User[]
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users   User[]
+  persons Person[]
 
   @@unique([tenantId, name])
   @@map("designations")
@@ -86,6 +94,7 @@ model User {
   department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
   roles       UserRole[]
+  person      Person?
 
   @@unique([tenantId, email])
   @@map("users")
@@ -132,4 +141,202 @@ model UserRole {
 
   @@id([userId, roleId])
   @@map("user_roles")
+}
+
+// ==========================================
+// Phase 2: HR Core Enums & Models
+// ==========================================
+
+enum PersonType {
+  EMPLOYEE
+  VOLUNTEER
+}
+
+enum PersonStatus {
+  JOINED
+  PROBATION
+  ACTIVE
+  NOTICE_PERIOD
+  EXITED
+}
+
+enum DocumentCategory {
+  KYC
+  RESUME
+  JOINING_LETTER
+  CONTRACT
+  OTHER
+}
+
+enum AttendanceMode {
+  OFFICE
+  REMOTE
+  FIELD
+  ON_DUTY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+}
+
+enum LeaveApplicability {
+  EMPLOYEE_ONLY
+  ALL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Unified Person Master for both Employees and Volunteers
+model Person {
+  id               String       @id @default(uuid())
+  tenantId         String       @map("tenant_id")
+  userId           String?      @unique @map("user_id")
+  personType       PersonType   @default(EMPLOYEE) @map("person_type")
+  status           PersonStatus @default(ACTIVE)
+  firstName        String       @map("first_name")
+  lastName         String       @map("last_name")
+  email            String
+  phone            String?
+  gender           String?
+  dob              DateTime?
+  address          String?
+  emergencyContact String?      @map("emergency_contact")
+  
+  departmentId     String?      @map("department_id")
+  designationId    String?      @map("designation_id")
+  managerId        String?      @map("manager_id")
+  
+  joiningDate      DateTime     @default(now()) @map("joining_date")
+  confirmationDate DateTime?    @map("confirmation_date")
+  exitDate         DateTime?    @map("exit_date")
+  exitReason       String?      @map("exit_reason")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department     Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation    Designation?     @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  manager        Person?          @relation("ReportingHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports  Person[]         @relation("ReportingHierarchy")
+  documents      PersonDocument[]
+  attendances    Attendance[]
+  leaveRequests  LeaveRequest[]
+  approvedLeaves LeaveRequest[]   @relation("LeaveApprover")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, personType, status])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, designationId])
+  @@index([tenantId, managerId])
+  @@map("persons")
+}
+
+model PersonDocument {
+  id         String           @id @default(uuid())
+  tenantId   String           @map("tenant_id")
+  personId   String           @map("person_id")
+  name       String
+  fileKey    String           @map("file_key")
+  mimeType   String           @map("mime_type")
+  sizeBytes  Int              @map("size_bytes")
+  category   DocumentCategory @default(OTHER)
+  uploadedAt DateTime         @default(now()) @map("uploaded_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, personId, category])
+  @@map("person_documents")
+}
+
+model Attendance {
+  id           String           @id @default(uuid())
+  tenantId     String           @map("tenant_id")
+  personId     String           @map("person_id")
+  date         DateTime         @db.Date
+  checkInTime  DateTime         @map("check_in_time")
+  checkOutTime DateTime?        @map("check_out_time")
+  mode         AttendanceMode   @default(OFFICE)
+  latitude     Float?
+  longitude    Float?
+  locationName String?          @map("location_name")
+  notes        String?
+  status       AttendanceStatus @default(PRESENT)
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, personId, date])
+  @@index([tenantId, date, status])
+  @@index([tenantId, personId, checkInTime])
+  @@map("attendances")
+}
+
+model LeaveType {
+  id           String             @id @default(uuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  code         String
+  annualQuota  Int                @default(12) @map("annual_quota")
+  applicableTo LeaveApplicability @default(ALL) @map("applicable_to")
+  isActive     Boolean            @default(true) @map("is_active")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leaveRequests LeaveRequest[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id            String      @id @default(uuid())
+  tenantId      String      @map("tenant_id")
+  personId      String      @map("person_id")
+  leaveTypeId   String      @map("leave_type_id")
+  startDate     DateTime    @map("start_date") @db.Date
+  endDate       DateTime    @map("end_date") @db.Date
+  daysCount     Int         @default(1) @map("days_count")
+  reason        String
+  status        LeaveStatus @default(PENDING)
+  approverId    String?     @map("approver_id")
+  decisionNotes String?     @map("decision_notes")
+  decidedAt     DateTime?   @map("decided_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person    Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  approver  Person?   @relation("LeaveApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, approverId, status])
+  @@index([tenantId, personId, status])
+  @@index([tenantId, startDate, endDate])
+  @@map("leave_requests")
+}
+
+model Holiday {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  name       String
+  date       DateTime @db.Date
+  isOptional Boolean  @default(false) @map("is_optional")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, name])
+  @@index([tenantId, date])
+  @@map("holidays")
 }

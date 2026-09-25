@@ -15,6 +15,10 @@ import {
   Laptop,
   Menu,
   X as CloseIcon,
+  Clock,
+  PlaneTakeoff,
+  CalendarDays,
+  UserCheck,
 } from "lucide-react";
 import { useAuthStore } from "../auth/auth-store";
 import { useMe } from "../auth/use-me";
@@ -27,14 +31,22 @@ interface NavItem {
   label: string;
   icon: any;
   permission?: string;
+  section: "hr" | "admin";
 }
 
 const navItems: NavItem[] = [
-  { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.read" },
-  { to: "/admin/departments", label: "Departments", icon: Network, permission: "admin.department.read" },
-  { to: "/admin/designations", label: "Designations", icon: IdCard, permission: "admin.designation.read" },
-  { to: "/admin/roles", label: "Roles", icon: ShieldCheck, permission: "admin.role.read" },
-  { to: "/admin/users", label: "Users", icon: Users, permission: "admin.user.read" },
+  // HR Core Module
+  { to: "/hr/people", label: "People", icon: Users, permission: "hr.person.read", section: "hr" },
+  { to: "/hr/attendance", label: "Attendance", icon: Clock, permission: "hr.attendance.read", section: "hr" },
+  { to: "/hr/leave", label: "Leave", icon: PlaneTakeoff, permission: "hr.leave.read", section: "hr" },
+  { to: "/hr/holidays", label: "Holidays", icon: CalendarDays, permission: "hr.holiday.read", section: "hr" },
+
+  // Admin Module
+  { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.read", section: "admin" },
+  { to: "/admin/departments", label: "Departments", icon: Network, permission: "admin.department.read", section: "admin" },
+  { to: "/admin/designations", label: "Designations", icon: IdCard, permission: "admin.designation.read", section: "admin" },
+  { to: "/admin/roles", label: "Roles", icon: ShieldCheck, permission: "admin.role.read", section: "admin" },
+  { to: "/admin/users", label: "Users", icon: UserCheck, permission: "admin.user.read", section: "admin" },
 ];
 
 /**
@@ -72,10 +84,13 @@ export function AppShell() {
     ? me.roles.join(", ")
     : "Tenant Member";
 
-  const allowedNavItems = navItems.filter((item) => {
-    if (!item.permission) return true;
-    return me?.permissionKeys?.includes(item.permission);
-  });
+  const hrNavItems = navItems.filter(
+    (item) => item.section === "hr" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
+  );
+  const adminNavItems = navItems.filter(
+    (item) => item.section === "admin" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
+  );
+  const hasNavItems = hrNavItems.length > 0 || adminNavItems.length > 0;
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
@@ -184,33 +199,83 @@ export function AppShell() {
 
         {/* Navigation items */}
         <nav className="flex-1 space-y-1.5 px-3 py-4 overflow-y-auto">
-          {!me?.isPlatformContext &&
-            allowedNavItems.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                title={collapsed ? label : undefined}
-                className={({ isActive }) =>
-                  cn(
-                    "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
-                    collapsed
-                      ? "h-11 w-11 mx-auto justify-center"
-                      : "gap-3 px-3.5 py-2.5",
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
-                      : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
-                  )
-                }
-              >
-                <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
-                {!collapsed && <span className="truncate">{label}</span>}
-              </NavLink>
-            ))}
+          {!me?.isPlatformContext && (
+            <>
+              {/* HR Core Section */}
+              {hrNavItems.length > 0 && (
+                <div className="space-y-1">
+                  {!collapsed && (
+                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                      HR Core
+                    </p>
+                  )}
+                  {hrNavItems.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      title={collapsed ? label : undefined}
+                      className={({ isActive }) =>
+                        cn(
+                          "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
+                          collapsed
+                            ? "h-11 w-11 mx-auto justify-center"
+                            : "gap-3 px-3.5 py-2.5",
+                          isActive
+                            ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                        )
+                      }
+                    >
+                      <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
+                      {!collapsed && <span className="truncate">{label}</span>}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
 
-          {!me?.isPlatformContext && allowedNavItems.length === 0 && !collapsed && (
-            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-              No admin modules assigned.
-            </div>
+              {/* Section Divider */}
+              {hrNavItems.length > 0 && adminNavItems.length > 0 && (
+                <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-2")} />
+              )}
+
+              {/* Administration Section */}
+              {adminNavItems.length > 0 && (
+                <div className="space-y-1">
+                  {!collapsed && (
+                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                      Administration
+                    </p>
+                  )}
+                  {adminNavItems.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      title={collapsed ? label : undefined}
+                      className={({ isActive }) =>
+                        cn(
+                          "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
+                          collapsed
+                            ? "h-11 w-11 mx-auto justify-center"
+                            : "gap-3 px-3.5 py-2.5",
+                          isActive
+                            ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                        )
+                      }
+                    >
+                      <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
+                      {!collapsed && <span className="truncate">{label}</span>}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+
+              {!hasNavItems && !collapsed && (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  No modules assigned to your role.
+                </div>
+              )}
+            </>
           )}
 
           {me?.isPlatformContext && (

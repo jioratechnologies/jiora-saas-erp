@@ -35,6 +35,19 @@ export const PERMISSION_CATALOG: Permission[] = [
   { key: "admin.user.invite", description: "Invite a new user", module: "admin" },
   { key: "admin.user.write", description: "Edit a user's profile or role assignment", module: "admin" },
   { key: "admin.user.deactivate", description: "Deactivate a user", module: "admin" },
+
+  // HR Module (Phase 2: HR Core) — tenant-scoped, assignable via Role Builder.
+  { key: "hr.person.read", description: "View employee and volunteer directory", module: "hr" },
+  { key: "hr.person.write", description: "Create/edit employee and volunteer profiles and upload documents", module: "hr" },
+  { key: "hr.person.exit", description: "Process resignation, exit checklist, and record closure", module: "hr" },
+  { key: "hr.attendance.checkin", description: "Submit daily and remote check-in / check-out", module: "hr" },
+  { key: "hr.attendance.read", description: "View attendance records and logs", module: "hr" },
+  { key: "hr.attendance.manage", description: "Regularize or modify attendance logs", module: "hr" },
+  { key: "hr.leave.apply", description: "Submit leave requests", module: "hr" },
+  { key: "hr.leave.read", description: "View leave balances and request status", module: "hr" },
+  { key: "hr.leave.approve", description: "Approve or reject subordinate leave requests", module: "hr" },
+  { key: "hr.holiday.read", description: "View annual holiday calendar", module: "hr" },
+  { key: "hr.holiday.write", description: "Manage holiday calendar and leave types", module: "hr" },
 ];
 
 export const PLATFORM_ONLY_MODULES = ["platform"] as const;

@@ -6,6 +6,9 @@ import { RbacModule } from "./rbac/rbac.module";
 import { HealthModule } from "./health/health.module";
 import { TenantsModule } from "./tenants/tenants.module";
 import { AdminModule } from "./admin/admin.module";
+import { CacheModule } from "./cache/cache.module";
+import { StorageModule } from "./storage/storage.module";
+import { HrModule } from "./hr/hr.module";
 
 @Module({
   imports: [
@@ -16,6 +19,9 @@ import { AdminModule } from "./admin/admin.module";
     HealthModule,
     TenantsModule,
     AdminModule,
+    CacheModule,
+    StorageModule,
+    HrModule,
   ],
 })
 export class AppModule {}
