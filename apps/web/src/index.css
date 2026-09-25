@@ -3,22 +3,83 @@
 @tailwind utilities;
 
 /*
- * Default (un-branded) theme. ThemeProvider overwrites --primary and
- * --primary-foreground at runtime with the current tenant's colors — see
- * src/theme/ThemeProvider.tsx and docs/adr/0008-theming-css-variables.md.
- * Values are space-separated HSL triples (shadcn/ui convention), not full
- * color strings, so Tailwind's opacity modifiers (bg-primary/50) work.
+ * Design tokens, shadcn/ui convention (space-separated HSL triples, not hex
+ * — Tailwind's opacity modifiers like bg-primary/50 depend on that format).
+ *
+ * Only --primary and --primary-foreground are ever touched at runtime, by
+ * ThemeProvider (src/theme/ThemeProvider.tsx) — that's the entire
+ * white-labelling mechanism (see docs/adr/0008-theming-css-variables.md).
+ * Everything else here is the platform's own fixed design system.
  */
 :root {
-  --primary: 209 58% 30%;
-  --primary-foreground: 0 0% 100%;
   --background: 0 0% 100%;
   --foreground: 222 20% 12%;
-  --border: 214 20% 88%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 20% 12%;
+
+  --primary: 209 58% 30%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 20% 96%;
+  --secondary-foreground: 222 20% 12%;
+
   --muted: 210 20% 96%;
   --muted-foreground: 215 15% 45%;
+
+  --accent: 210 20% 94%;
+  --accent-foreground: 222 20% 12%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 71% 33%;
+  --success-foreground: 0 0% 100%;
+
+  --border: 214 20% 88%;
+  --input: 214 20% 88%;
+  --ring: 209 58% 30%;
+
+  --radius: 0.5rem;
+}
+
+:root[data-theme="dark"],
+.dark {
+  --background: 222 25% 9%;
+  --foreground: 210 20% 96%;
+  --card: 222 22% 12%;
+  --card-foreground: 210 20% 96%;
+  --secondary: 222 18% 16%;
+  --secondary-foreground: 210 20% 96%;
+  --muted: 222 18% 16%;
+  --muted-foreground: 215 15% 65%;
+  --accent: 222 18% 18%;
+  --accent-foreground: 210 20% 96%;
+  --border: 222 15% 22%;
+  --input: 222 15% 22%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) {
+    --background: 222 25% 9%;
+    --foreground: 210 20% 96%;
+    --card: 222 22% 12%;
+    --card-foreground: 210 20% 96%;
+    --secondary: 222 18% 16%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 222 18% 16%;
+    --muted-foreground: 215 15% 65%;
+    --accent: 222 18% 18%;
+    --accent-foreground: 210 20% 96%;
+    --border: 222 15% 22%;
+    --input: 222 15% 22%;
+  }
 }
 
 body {
-  @apply bg-background text-foreground;
+  @apply bg-background text-foreground antialiased;
+}
+
+* {
+  @apply border-border;
 }

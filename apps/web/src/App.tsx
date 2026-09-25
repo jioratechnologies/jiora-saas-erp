@@ -3,6 +3,8 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./auth/auth-store";
 import { ThemeProvider } from "./theme/ThemeProvider";
+import { ConfirmProvider } from "./hooks/use-confirm";
+import { ToastProvider } from "./components/ui/toast";
 import { RequireAuth } from "./routes/RequireAuth";
 import { AppShell } from "./routes/AppShell";
 import { CallbackPage } from "./routes/CallbackPage";
@@ -24,33 +26,37 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/callback" element={<CallbackPage />} />
-            <Route
-              element={
-                <RequireAuth>
-                  <AppShell />
-                </RequireAuth>
-              }
-            >
-              <Route path="/" element={<LandingRedirect />} />
-              <Route path="/admin/org" element={<AdminOrgPage />} />
+        <ToastProvider>
+          <ConfirmProvider>
+            <BrowserRouter>
+            <Routes>
+              <Route path="/callback" element={<CallbackPage />} />
               <Route
-                path="/admin/departments"
-                element={<SimpleNamedListPage title="Departments" apiPath="/admin/departments" />}
-              />
-              <Route
-                path="/admin/designations"
-                element={<SimpleNamedListPage title="Designations" apiPath="/admin/designations" />}
-              />
-              <Route path="/admin/roles" element={<AdminRolesPage />} />
-              <Route path="/admin/users" element={<AdminUsersPage />} />
-              <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </ThemeProvider>
-    </QueryClientProvider>
+                element={
+                  <RequireAuth>
+                    <AppShell />
+                  </RequireAuth>
+                }
+              >
+                <Route path="/" element={<LandingRedirect />} />
+                <Route path="/admin/org" element={<AdminOrgPage />} />
+                <Route
+                  path="/admin/departments"
+                  element={<SimpleNamedListPage title="Departments" apiPath="/admin/departments" />}
+                />
+                <Route
+                  path="/admin/designations"
+                  element={<SimpleNamedListPage title="Designations" apiPath="/admin/designations" />}
+                />
+                <Route path="/admin/roles" element={<AdminRolesPage />} />
+                <Route path="/admin/users" element={<AdminUsersPage />} />
+                <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </ConfirmProvider>
+      </ToastProvider>
+    </ThemeProvider>
+  </QueryClientProvider>
   );
 }

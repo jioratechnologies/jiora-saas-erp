@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { userManager } from "../auth/oidc";
 import { api } from "../api/client";
 
@@ -17,5 +18,10 @@ export function CallbackPage() {
       .finally(() => navigate("/", { replace: true }));
   }, [navigate]);
 
-  return <p className="p-6 text-muted-foreground">Signing you in…</p>;
+  return (
+    <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Signing you in…
+    </div>
+  );
 }
