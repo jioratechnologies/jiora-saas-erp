@@ -204,3 +204,40 @@ As specified in [docs/deliverables/Sachhi_Saheli_Admin_HR_Module_Flow.docx](file
 4. **Reimbursements & Claims**: Travel and expense claim submission and approval workflows.
 5. **Basic Payroll & Payslips**: Fixed salary component setup and monthly payslip generation for employees.
 6. **Exit Management**: Resignation/termination workflow, exit checklist, and record closure.
+
+---
+
+## 7. Observability, Telemetry & Audit Logging Strategy
+
+### Engineering Decision Record: Pre-Staging Activation Over Local Overhead
+
+**Decision**: Defer local active streaming of OpenTelemetry, Grafana, Loki, and Prometheus until pre-production staging. Proceed directly with Phase 2 (HR Core Module) using standard console logging.
+
+### Rationale
+1. **Non-Invasive Architecture (Zero Technical Debt)**:
+   - In Node.js / NestJS, OpenTelemetry relies on **runtime auto-instrumentation** (`@opentelemetry/auto-instrumentations-node`), which transparently wraps `http`, `express`, `pg`, and Prisma at startup.
+   - It requires **no modifications** to controllers, services, or entity business logic. Whether added across 5 endpoints or 50 endpoints, activation requires only a single startup hook (`tracing.ts`) loaded in `apps/api/src/main.ts`.
+2. **Local Machine Performance & Resource Efficiency**:
+   - Running the full observability container stack (`otel-collector`, `tempo`, `loki`, `prometheus`, `grafana`) adds 5 persistent background processes consuming **1.5 GB – 2.0 GB of RAM** and continuous Docker I/O.
+   - During local feature development, developers inspect requests and state directly via browser DevTools (Network & Console) and terminal output. Grafana dashboards provide no added value during local form/component crafting.
+3. **Audit Logging Decoupled via Interceptors**:
+   - User compliance and business audit trails (*"User X invited User Y"*, *"HR approved Leave"*) will be captured via a global NestJS `AuditInterceptor` writing to MongoDB (`saaserp_audit`).
+   - Being an interceptor, it attaches globally to all existing and future routes without refactoring past endpoints.
+
+### Observability Activation Plan (Pre-Staging Checklist)
+When preparing for staging / multi-user deployment:
+1. **Install OTel SDK**:
+   ```bash
+   pnpm --filter @saas-erp/api add @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-http
+   ```
+2. **Add `apps/api/src/tracing.ts`**:
+   Initialize `NodeSDK` pointing to `http://localhost:4318` before `NestFactory.create()`.
+3. **Start Observability Containers**:
+   ```bash
+   docker compose -f infra/docker-compose.yml up -d otel-collector tempo loki prometheus grafana
+   ```
+4. **Implement Global `AuditInterceptor`**:
+   Connect to MongoDB (`saaserp_audit`) to record user actions, tenant IDs, timestamps, and request metadata.
+5. **Verify Dashboards in Grafana**:
+   Access `http://localhost:3300` to visualize traces in Tempo, application logs in Loki, and latency/error rates in Prometheus.
+
