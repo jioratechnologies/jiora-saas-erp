@@ -43,5 +43,30 @@ export interface AppUser {
   zitadelSubjectId: string | null; // null until the invite is claimed on first login
   email: string;
   displayName: string;
+  phone?: string | null;
+  avatarUrl?: string | null;
   roleIds: string[];
 }
+
+export type DocumentStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type DocumentCategory = "KYC" | "RESUME" | "JOINING_LETTER" | "CONTRACT" | "OTHER";
+
+export interface PersonDocumentItem {
+  id: string;
+  tenantId: string;
+  personId: string;
+  name: string;
+  fileKey: string;
+  mimeType: string;
+  sizeBytes: number;
+  category: DocumentCategory;
+  documentNumber?: string | null;
+  status: DocumentStatus;
+  rejectionReason?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  uploadedAt: string;
+  downloadUrl?: string;
+  url?: string;
+}
+

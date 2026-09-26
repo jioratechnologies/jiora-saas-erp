@@ -49,7 +49,7 @@ const statusColors: Record<AvatarStatus, { bg: string; ping?: boolean }> = {
   away: { bg: "bg-amber-500" },
 };
 
-// Deterministic vibrant palettes inspired by HeroUI for initials
+// Deterministic vibrant palettes for initials
 const namePalettes = [
   "bg-gradient-to-br from-indigo-500 to-purple-600 text-white",
   "bg-gradient-to-br from-blue-500 to-cyan-600 text-white",
@@ -70,7 +70,7 @@ function getPaletteForName(name: string): string {
 }
 
 /**
- * HeroUI-styled Avatar with bordered rings, smooth corner radius,
+ * Avatar with bordered rings, smooth corner radius,
  * fallback initials, gradient hues, and status indicators.
  */
 export function Avatar({
@@ -151,7 +151,7 @@ export interface UserProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 /**
- * HeroUI User compound component combining avatar with user metadata.
+ * User compound component combining avatar with user metadata.
  */
 export function User({ name, description, avatarProps, className, ...props }: UserProps) {
   return (

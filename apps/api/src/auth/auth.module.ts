@@ -2,6 +2,7 @@ import { Global, Module } from "@nestjs/common";
 import { ZitadelAuthGuard } from "./zitadel-auth.guard";
 import { PermissionsGuard } from "./permissions.guard";
 import { ClaimInviteController } from "./claim-invite.controller";
+import { ProfileController } from "./profile.controller";
 
 /**
  * @Global: every module can use ZitadelAuthGuard/PermissionsGuard without
@@ -13,7 +14,7 @@ import { ClaimInviteController } from "./claim-invite.controller";
  */
 @Global()
 @Module({
-  controllers: [ClaimInviteController],
+  controllers: [ClaimInviteController, ProfileController],
   providers: [ZitadelAuthGuard, PermissionsGuard],
   exports: [ZitadelAuthGuard, PermissionsGuard],
 })

@@ -20,7 +20,7 @@ import { PermissionsGuard } from "../auth/permissions.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthContext } from "../auth/auth-context";
 import { PersonsService } from "./persons.service";
-import { CreatePersonDto, ExitPersonDto, UpdatePersonDto, UploadDocumentDto } from "./dto/person.dto";
+import { CreatePersonDto, ExitPersonDto, ReviewDocumentDto, UpdatePersonDto, UploadDocumentDto } from "./dto/person.dto";
 
 @ApiTags("hr/persons")
 @ApiBearerAuth()
@@ -98,6 +98,18 @@ export class PersonsController {
     @Param("documentId") documentId: string,
   ) {
     return this.service.getDocumentUrl(user.tenantId!, id, documentId);
+  }
+
+  @Patch(":id/documents/:documentId/review")
+  @RequirePermission("hr.person.write")
+  @ApiOperation({ summary: "Review KYC or compliance document (Approve or Reject)" })
+  reviewDocument(
+    @CurrentUser() user: AuthContext,
+    @Param("id") id: string,
+    @Param("documentId") documentId: string,
+    @Body() dto: ReviewDocumentDto,
+  ) {
+    return this.service.reviewDocument(user.tenantId!, id, documentId, user.userId, dto);
   }
 
   @Delete(":id/documents/:documentId")

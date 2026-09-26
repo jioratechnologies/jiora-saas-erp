@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import type { Tenant } from "@saas-erp/shared-types";
 import {
   Building2,
   Network,
@@ -19,11 +21,14 @@ import {
   PlaneTakeoff,
   CalendarDays,
   UserCheck,
+  UserCog,
 } from "lucide-react";
+import { api } from "../api/client";
 import { useAuthStore } from "../auth/auth-store";
 import { useMe } from "../auth/use-me";
 import { Avatar } from "../components/ui/avatar";
 import { useTheme } from "../theme/ThemeProvider";
+import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { cn } from "../lib/utils";
 
 interface NavItem {
@@ -51,7 +56,7 @@ const navItems: NavItem[] = [
 
 /**
  * Shared shell with collapsible sidebar (icon-only when collapsed),
- * Dark / Light theme switcher, and HeroUI aesthetics.
+ * Dark / Light theme switcher, and modern rounded aesthetics.
  */
 export function AppShell() {
   const signOut = useAuthStore((s) => s.signOut);
@@ -66,6 +71,23 @@ export function AppShell() {
     return false;
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+
+  // Tenant branding
+  const { data: org } = useQuery({
+    queryKey: ["org", "theme"],
+    queryFn: () => api.get<Tenant>("/admin/org"),
+    enabled: Boolean(user),
+    staleTime: 60 * 1000,
+  });
+
+  // User profile
+  const { data: profileData } = useQuery({
+    queryKey: ["auth", "profile"],
+    queryFn: () => api.get<any>("/auth/profile"),
+    enabled: Boolean(user),
+    staleTime: 30 * 1000,
+  });
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -77,12 +99,21 @@ export function AppShell() {
     });
   };
 
-  const displayName = (user?.profile.name as string | undefined) ?? user?.profile.email ?? "Account";
+  const displayName =
+    profileData?.user?.displayName ||
+    (user?.profile.name as string | undefined) ||
+    user?.profile.email ||
+    "Account";
+
   const userRoleLabel = me?.isPlatformContext
     ? "Platform Admin"
     : me?.roles && me.roles.length > 0
     ? me.roles.join(", ")
     : "Tenant Member";
+
+  const avatarUrl = profileData?.user?.avatarUrl || profileData?.person?.avatarUrl;
+  const orgName = org?.name || "saas-erp";
+  const orgLogo = org?.logoUrl;
 
   const hrNavItems = navItems.filter(
     (item) => item.section === "hr" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
@@ -96,19 +127,27 @@ export function AppShell() {
     <div className="flex min-h-screen bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
       {/* Mobile Top Header (visible on small/collapsed screens) */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 sticky top-0 z-40">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => setMobileOpen((o) => !o)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800 text-foreground hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800 text-foreground hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
             title={mobileOpen ? "Close menu" : "Open menu"}
             aria-label="Toggle navigation menu"
           >
             {mobileOpen ? <CloseIcon className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
-            S
-          </span>
-          <span className="text-base font-bold tracking-tight text-foreground">saas-erp</span>
+          {orgLogo ? (
+            <img
+              src={orgLogo}
+              alt={orgName}
+              className="h-7 w-7 rounded-lg object-contain border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+            />
+          ) : (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
+              {orgName.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          <span className="text-base font-bold tracking-tight text-foreground truncate">{orgName}</span>
         </div>
         <button
           type="button"
@@ -154,11 +193,21 @@ export function AppShell() {
           <div className="flex flex-col items-center gap-2.5 py-4 border-b border-zinc-100 dark:border-zinc-900">
             <button
               onClick={toggleCollapsed}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm shadow-primary/25 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
-              title="Click to expand sidebar"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl overflow-hidden hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+              title={`Expand sidebar (${orgName})`}
               aria-label="Expand sidebar"
             >
-              S
+              {orgLogo ? (
+                <img
+                  src={orgLogo}
+                  alt={orgName}
+                  className="h-9 w-9 rounded-xl object-contain border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+                />
+              ) : (
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm shadow-primary/25">
+                  {orgName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
             </button>
             <button
               onClick={toggleCollapsed}
@@ -172,11 +221,19 @@ export function AppShell() {
         ) : (
           <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-100 dark:border-zinc-900">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm shadow-primary/25">
-                S
-              </span>
-              <span className="truncate text-base font-bold tracking-tight text-foreground">
-                saas-erp
+              {orgLogo ? (
+                <img
+                  src={orgLogo}
+                  alt={orgName}
+                  className="h-8 w-8 shrink-0 rounded-xl object-contain border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+                />
+              ) : (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm shadow-primary/25">
+                  {orgName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <span className="truncate text-base font-bold tracking-tight text-foreground" title={orgName}>
+                {orgName}
               </span>
             </div>
             <button
@@ -365,18 +422,37 @@ export function AppShell() {
 
         {/* User Profile Footer */}
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 border-t border-zinc-100 dark:border-zinc-900 px-4 py-3.5">
-            <Avatar name={displayName} size="sm" isBordered status="online" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-bold leading-tight text-foreground">{displayName}</p>
-              <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 truncate" title={userRoleLabel}>
-                {userRoleLabel}
-              </p>
-            </div>
+          <div className="flex items-center gap-2.5 border-t border-zinc-100 dark:border-zinc-900 px-3 py-3">
+            <button
+              type="button"
+              onClick={() => setEditProfileOpen(true)}
+              className="flex items-center gap-2.5 min-w-0 flex-1 p-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors text-left cursor-pointer group"
+              title="Click to view and edit your profile & KYC"
+            >
+              <Avatar
+                name={displayName}
+                src={avatarUrl || undefined}
+                size="sm"
+                isBordered
+                status="online"
+                className="shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="truncate text-xs font-bold leading-tight text-foreground group-hover:text-primary transition-colors">
+                    {displayName}
+                  </p>
+                  <UserCog className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1" />
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 truncate" title={userRoleLabel}>
+                  {userRoleLabel}
+                </p>
+              </div>
+            </button>
             <button
               onClick={signOut}
               title="Sign out"
-              className="rounded-lg p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+              className="rounded-lg p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -384,11 +460,11 @@ export function AppShell() {
         ) : (
           <div className="flex flex-col items-center gap-2 border-t border-zinc-100 dark:border-zinc-900 py-3">
             <button
-              onClick={toggleCollapsed}
-              title="Click to expand sidebar"
+              onClick={() => setEditProfileOpen(true)}
+              title="My Account & KYC Profile"
               className="flex h-9 w-9 items-center justify-center rounded-xl hover:ring-2 hover:ring-primary/40 transition-all cursor-pointer"
             >
-              <Avatar name={displayName} size="sm" isBordered status="online" />
+              <Avatar name={displayName} src={avatarUrl || undefined} size="sm" isBordered status="online" />
             </button>
             <button
               onClick={toggleCollapsed}
@@ -415,6 +491,9 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
+
+      {/* Account & KYC Edit Profile Modal */}
+      <EditProfileModal isOpen={editProfileOpen} onClose={() => setEditProfileOpen(false)} />
     </div>
   );
 }

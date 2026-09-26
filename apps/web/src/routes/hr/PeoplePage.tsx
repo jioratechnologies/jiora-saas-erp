@@ -15,23 +15,50 @@ import {
   Mail,
   LogOut,
   AlertTriangle,
+  MoreVertical,
+  Copy,
+  ExternalLink,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Lock,
+  Eye,
+  Edit3,
+  HeartHandshake,
+  ShieldCheck,
+  Building2,
+  Filter,
 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import { Button } from "../../components/ui/button";
+import { ButtonGroup } from "../../components/ui/button-group";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
+import { DatePicker } from "../../components/ui/date-picker";
 import { DateInput } from "../../components/ui/date-input";
+import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "../../components/ui/dropdown";
+import { FileDropzone } from "../../components/ui/file-dropzone";
 import { Badge } from "../../components/ui/badge";
 import { User, Avatar } from "../../components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { PageHeader } from "../../components/page-header";
 import { QueryState } from "../../components/query-state";
 import { Modal, Drawer } from "../../components/ui/modal";
+import { PhoneInput } from "../../components/ui/phone-input";
 import { useConfirm } from "../../hooks/use-confirm";
 import { toast } from "../../components/ui/toast";
 import { useAuthStore } from "../../auth/auth-store";
+import { useMe } from "../../auth/use-me";
 import { formatErrorMessage } from "../../lib/error-formatter";
+import {
+  INPUT_LIMITS,
+  EMERGENCY_RELATIONS,
+  parseEmergencyContact,
+  formatEmergencyContact,
+  type EmergencyRelation,
+} from "../../lib/input-constraints";
+import { cn } from "../../lib/utils";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -48,25 +75,36 @@ interface DesignationOption {
 interface PersonDocument {
   id: string;
   name: string;
-  category: "KYC" | "RESUME" | "CONTRACT" | "CERTIFICATE" | "OTHER";
+  category: "KYC" | "RESUME" | "JOINING_LETTER" | "CONTRACT" | "OTHER";
   fileKey: string;
-  fileSize: number;
+  sizeBytes?: number;
+  fileSize?: number;
   mimeType: string;
-  createdAt: string;
+  documentNumber?: string | null;
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  uploadedAt?: string;
+  createdAt?: string;
 }
 
 interface Person {
   id: string;
   personType: "EMPLOYEE" | "VOLUNTEER";
-  status: "ACTIVE" | "ON_NOTICE" | "EXITED";
+  status: "JOINED" | "PROBATION" | "ACTIVE" | "NOTICE_PERIOD" | "EXITED";
   firstName: string;
   lastName: string;
   email: string;
   phone?: string | null;
+  whatsapp?: string | null;
   gender?: string | null;
   dob?: string | null;
   address?: string | null;
+  currentAddress?: string | null;
+  permanentAddress?: string | null;
   emergencyContact?: string | null;
+  avatarUrl?: string | null;
   joiningDate?: string | null;
   exitDate?: string | null;
   exitReason?: string | null;
@@ -83,17 +121,48 @@ interface Person {
 export function PeoplePage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: me } = useMe();
+  const canManage = Boolean(me?.isPlatformContext || me?.permissionKeys?.includes("hr.person.write"));
 
   // Filter States
   const [personTypeFilter, setPersonTypeFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
   const [search, setSearch] = useState("");
 
   // Modals & Drawer State
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [exitModalOpen, setExitModalOpen] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectDocId, setRejectDocId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  // Edit Person & Reporting State
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editWhatsapp, setEditWhatsapp] = useState("");
+  const [editSameAsPhone, setEditSameAsPhone] = useState(true);
+  const [editDepartmentId, setEditDepartmentId] = useState("");
+  const [editDesignationId, setEditDesignationId] = useState("");
+  const [editManagerId, setEditManagerId] = useState("");
+  const [editStatus, setEditStatus] = useState<Person["status"]>("ACTIVE");
+  const [editPersonType, setEditPersonType] = useState<"EMPLOYEE" | "VOLUNTEER">("EMPLOYEE");
+  const [editAddress, setEditAddress] = useState("");
+  const [editCurrentAddress, setEditCurrentAddress] = useState("");
+  const [editPermanentAddress, setEditPermanentAddress] = useState("");
+  const [editSameAsCurrentAddress, setEditSameAsCurrentAddress] = useState(true);
+  const [editEmergencyPhone, setEditEmergencyPhone] = useState("");
+  const [editEmergencyRelation, setEditEmergencyRelation] = useState<EmergencyRelation>("Spouse");
+  const [editEmergencyName, setEditEmergencyName] = useState("");
+
+  // In-App Document Viewer State
+  const [viewDocModalOpen, setViewDocModalOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<PersonDocument | null>(null);
+  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // New Person Form State
   const [newPersonType, setNewPersonType] = useState<"EMPLOYEE" | "VOLUNTEER">("EMPLOYEE");
@@ -108,7 +177,8 @@ export function PeoplePage() {
 
   // Document Upload State
   const [docName, setDocName] = useState("");
-  const [docCategory, setDocCategory] = useState<"KYC" | "RESUME" | "CONTRACT" | "CERTIFICATE" | "OTHER">("KYC");
+  const [docNumber, setDocNumber] = useState("");
+  const [docCategory, setDocCategory] = useState<"KYC" | "RESUME" | "CONTRACT" | "OTHER">("KYC");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingDoc, setUploadingDoc] = useState(false);
 
@@ -122,11 +192,12 @@ export function PeoplePage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["hr", "people", personTypeFilter, statusFilter, search],
+    queryKey: ["hr", "people", personTypeFilter, statusFilter, departmentFilter, search],
     queryFn: () => {
       const params = new URLSearchParams();
       if (personTypeFilter !== "ALL") params.set("personType", personTypeFilter);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (departmentFilter !== "ALL") params.set("departmentId", departmentFilter);
       if (search.trim()) params.set("search", search.trim());
       return api.get<Person[]>(`/hr/persons?${params.toString()}`);
     },
@@ -141,6 +212,14 @@ export function PeoplePage() {
     queryKey: ["admin", "designations"],
     queryFn: () => api.get<DesignationOption[]>("/admin/designations"),
   });
+
+  const { data: myProfile } = useQuery({
+    queryKey: ["auth", "profile"],
+    queryFn: () => api.get<any>("/auth/profile"),
+  });
+  const myDepartmentId = departments?.find(
+    (d) => d.name === myProfile?.user?.department || d.name === myProfile?.person?.department
+  )?.id;
 
   // Selected person detail query for Drawer
   const { data: selectedPerson, refetch: refetchSelectedPerson } = useQuery({
@@ -220,33 +299,122 @@ export function PeoplePage() {
     setJoiningDate("");
   };
 
+  const reviewDoc = useMutation({
+    mutationFn: ({ docId, status, rejectionReason }: { docId: string; status: "APPROVED" | "REJECTED"; rejectionReason?: string }) =>
+      api.patch(`/hr/persons/${selectedPersonId}/documents/${docId}/review`, { status, rejectionReason }),
+    onSuccess: (_, vars) => {
+      refetchSelectedPerson();
+      toast.success(
+        vars.status === "APPROVED" ? "Document Approved" : "Document Rejected",
+        vars.status === "APPROVED"
+          ? "KYC document verified and locked."
+          : "Document marked as rejected with reason.",
+      );
+    },
+    onError: (err: any) => {
+      toast.error("Review failed", err.message || "Failed to update document status.");
+    },
+  });
+
+  const handleOpenEditModal = (p: Person) => {
+    setEditFirstName(p.firstName || "");
+    setEditLastName(p.lastName || "");
+    setEditPhone(p.phone || "");
+    setEditWhatsapp(p.whatsapp || p.phone || "");
+    setEditSameAsPhone(!p.whatsapp || p.whatsapp === p.phone);
+    setEditDepartmentId(p.departmentId || "");
+    setEditDesignationId(p.designationId || "");
+    setEditManagerId(p.managerId || "");
+    setEditStatus(p.status || "ACTIVE");
+    setEditPersonType(p.personType || "EMPLOYEE");
+    
+    const currAddr = p.currentAddress || p.address || "";
+    const permAddr = p.permanentAddress || currAddr;
+    setEditCurrentAddress(currAddr);
+    setEditPermanentAddress(permAddr);
+    setEditSameAsCurrentAddress(!p.permanentAddress || p.permanentAddress === currAddr);
+    setEditAddress(currAddr);
+
+    const parsed = parseEmergencyContact(p.emergencyContact);
+    setEditEmergencyPhone(parsed.phone);
+    setEditEmergencyRelation((parsed.relation as EmergencyRelation) || "Spouse");
+    setEditEmergencyName(parsed.name);
+
+    setEditModalOpen(true);
+  };
+
+  const updatePersonMutation = useMutation({
+    mutationFn: () => {
+      const emergencyContact = formatEmergencyContact(editEmergencyPhone, editEmergencyRelation, editEmergencyName);
+      const finalWhatsapp = editSameAsPhone ? editPhone.trim() : editWhatsapp.trim();
+      const finalPermAddr = editSameAsCurrentAddress ? editCurrentAddress.trim() : editPermanentAddress.trim();
+      return api.patch(`/hr/persons/${selectedPersonId}`, {
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        phone: editPhone.trim(),
+        whatsapp: finalWhatsapp,
+        departmentId: editDepartmentId || null,
+        designationId: editDesignationId || null,
+        managerId: editManagerId || null,
+        status: editStatus,
+        personType: editPersonType,
+        currentAddress: editCurrentAddress.trim(),
+        permanentAddress: finalPermAddr,
+        address: editCurrentAddress.trim(),
+        emergencyContact,
+      });
+    },
+    onSuccess: () => {
+      setEditModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
+      refetchSelectedPerson();
+      toast.success("Profile updated", "Reporting manager, department, and profile details saved.");
+    },
+    onError: (err: any) => {
+      toast.error("Update failed", err.message || "Failed to update person.");
+    },
+  });
+
+  const handleOpenDocViewer = async (doc: PersonDocument) => {
+    setPreviewDoc(doc);
+    setPreviewDocUrl(null);
+    setLoadingPreview(true);
+    setViewDocModalOpen(true);
+    try {
+      const data = await api.get<{ downloadUrl?: string; url?: string }>(
+        `/hr/persons/${selectedPersonId}/documents/${doc.id}/url`
+      );
+      setPreviewDocUrl(data.downloadUrl || data.url || null);
+    } catch (err: any) {
+      toast.error("Preview failed", err.message || "Could not generate preview link.");
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   const handleUploadDocument = async () => {
     if (!selectedPersonId || !selectedFile || !docName.trim()) return;
 
+    if (docCategory === "KYC" && !docNumber.trim()) {
+      toast.error("Document Number required", "Please enter the document / ID number for KYC verification.");
+      return;
+    }
+
     try {
       setUploadingDoc(true);
-      const accessToken = useAuthStore.getState().user?.access_token;
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("name", docName.trim());
       formData.append("category", docCategory);
-
-      const res = await fetch(`${API_BASE_URL}/hr/persons/${selectedPersonId}/documents`, {
-        method: "POST",
-        headers: {
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const rawText = await res.text().catch(() => "");
-        throw new Error(formatErrorMessage(rawText || res.statusText));
+      if (docCategory === "KYC" && docNumber.trim()) {
+        formData.append("documentNumber", docNumber.trim());
       }
 
+      await api.upload(`/hr/persons/${selectedPersonId}/documents`, formData);
+
       setDocName("");
+      setDocNumber("");
       setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
       refetchSelectedPerson();
       toast.success("Document uploaded", "File uploaded securely to MinIO object storage.");
     } catch (err: any) {
@@ -258,18 +426,29 @@ export function PeoplePage() {
 
   const handleDownloadDoc = async (docId: string, docName: string) => {
     try {
-      const data = await api.get<{ url: string }>(
+      const data = await api.get<{ url?: string; downloadUrl?: string }>(
         `/hr/persons/${selectedPersonId}/documents/${docId}/url`,
       );
-      if (data?.url) {
-        window.open(data.url, "_blank");
+      const targetUrl = data?.downloadUrl || data?.url;
+      if (targetUrl) {
+        const link = document.createElement("a");
+        link.href = targetUrl;
+        link.download = docName || "document";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        toast.error("Download failed", "Download URL could not be generated.");
       }
     } catch (err: any) {
       toast.error("Download failed", err.message || "Could not generate download link.");
     }
   };
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes?: number | null) => {
+    if (!bytes || isNaN(bytes) || bytes <= 0) return "0 B";
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -291,38 +470,56 @@ export function PeoplePage() {
       {/* Filters and Search Bar */}
       <Card>
         <CardContent className="p-4 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground mr-1">Type:</span>
-            {["ALL", "EMPLOYEE", "VOLUNTEER"].map((t) => (
-              <button
-                key={t}
-                onClick={() => setPersonTypeFilter(t)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  personTypeFilter === t
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t === "ALL" ? "All People" : t === "EMPLOYEE" ? "Employees" : "Volunteers"}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground mr-1">Type:</span>
+              <ButtonGroup size="sm">
+                {(["ALL", "EMPLOYEE", "VOLUNTEER"] as const).map((t) => (
+                  <Button
+                    key={t}
+                    variant={personTypeFilter === t ? "default" : "outline"}
+                    onClick={() => setPersonTypeFilter(t)}
+                    className="text-xs h-7 px-2.5"
+                  >
+                    {t === "ALL" ? "All People" : t === "EMPLOYEE" ? "Employees" : "Volunteers"}
+                  </Button>
+                ))}
+              </ButtonGroup>
+            </div>
 
             <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
 
-            <span className="text-xs font-semibold text-muted-foreground mr-1">Status:</span>
-            {["ALL", "ACTIVE", "ON_NOTICE", "EXITED"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  statusFilter === s
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-muted-foreground hover:text-foreground"
-                }`}
+            {/* Department HR Scope Filter */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground mr-1">Dept:</span>
+              <Select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="h-7 text-xs py-0 w-44"
               >
-                {s === "ALL" ? "All" : s.replace("_", " ")}
-              </button>
-            ))}
+                <option value="ALL">All Departments</option>
+                {departments?.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </Select>
+
+              {myDepartmentId && (
+                <Button
+                  size="sm"
+                  variant={departmentFilter === myDepartmentId ? "default" : "outline"}
+                  onClick={() =>
+                    setDepartmentFilter(departmentFilter === myDepartmentId ? "ALL" : myDepartmentId)
+                  }
+                  className="text-xs h-7 px-2.5 gap-1 shrink-0"
+                  title="Filter to my assigned department for task escalation"
+                >
+                  <Building2 className="h-3 w-3" />
+                  <span>My Dept</span>
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="relative sm:w-64">
@@ -331,11 +528,33 @@ export function PeoplePage() {
               placeholder="Search by name or email…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 text-xs"
+              className="pl-9 h-9 text-s"
             />
           </div>
         </CardContent>
       </Card>
+
+      {/* Department HR Mode Active Banner */}
+      {departmentFilter !== "ALL" && (
+        <div className="flex items-center justify-between p-3 rounded-2xl bg-primary/5 border border-primary/20 text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-primary shrink-0" />
+            <span className="font-semibold text-foreground">
+              Department HR Mode:{" "}
+              {departments?.find((d) => d.id === departmentFilter)?.name || "Selected Department"}
+            </span>
+            <span className="text-muted-foreground hidden sm:inline">
+              • Focused scope for task escalation, attendance, and approvals ({people?.length ?? 0} members)
+            </span>
+          </div>
+          <button
+            onClick={() => setDepartmentFilter("ALL")}
+            className="text-primary hover:underline text-xs font-semibold cursor-pointer"
+          >
+            Reset to All
+          </button>
+        </div>
+      )}
 
       {/* People Table */}
       <Card>
@@ -371,6 +590,7 @@ export function PeoplePage() {
                           name={`${p.firstName} ${p.lastName}`}
                           description={p.email}
                           avatarProps={{
+                            src: p.avatarUrl || undefined,
                             size: "sm",
                             isBordered: true,
                             status: p.status === "ACTIVE" ? "online" : undefined,
@@ -409,29 +629,59 @@ export function PeoplePage() {
                           variant={
                             p.status === "ACTIVE"
                               ? "success"
-                              : p.status === "ON_NOTICE"
-                              ? "warning"
-                              : "secondary"
+                              : p.status === "NOTICE_PERIOD"
+                                ? "warning"
+                                : "secondary"
                           }
                           dot
                           size="sm"
                         >
                           {p.status === "ACTIVE"
                             ? "Active"
-                            : p.status === "ON_NOTICE"
-                            ? "On Notice"
-                            : "Exited"}
+                            : p.status === "NOTICE_PERIOD"
+                              ? "Notice Period"
+                              : p.status === "JOINED"
+                                ? "Joined"
+                                : p.status === "PROBATION"
+                                  ? "Probation"
+                                  : "Exited"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedPersonId(p.id)}
-                          className="text-xs font-medium text-primary hover:text-primary hover:bg-primary/10"
-                        >
-                          View
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedPersonId(p.id)}
+                            className="text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 h-8 px-2.5"
+                          >
+                            View
+                          </Button>
+                          <Dropdown>
+                            <DropdownTrigger>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownTrigger>
+                            <DropdownMenu align="end">
+                              <DropdownItem
+                                icon={<ExternalLink className="h-3.5 w-3.5" />}
+                                onClick={() => setSelectedPersonId(p.id)}
+                              >
+                                View Profile
+                              </DropdownItem>
+                              <DropdownItem
+                                icon={<Copy className="h-3.5 w-3.5" />}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(p.email);
+                                  toast.success("Email copied", p.email);
+                                }}
+                              >
+                                Copy Email
+                              </DropdownItem>
+                            </DropdownMenu>
+                          </Dropdown>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -466,11 +716,10 @@ export function PeoplePage() {
               <button
                 type="button"
                 onClick={() => setNewPersonType("EMPLOYEE")}
-                className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-sm font-semibold transition-all ${
-                  newPersonType === "EMPLOYEE"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:text-foreground"
-                }`}
+                className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-sm font-semibold transition-all ${newPersonType === "EMPLOYEE"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 <Briefcase className="h-4 w-4" />
                 Employee
@@ -478,11 +727,10 @@ export function PeoplePage() {
               <button
                 type="button"
                 onClick={() => setNewPersonType("VOLUNTEER")}
-                className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-sm font-semibold transition-all ${
-                  newPersonType === "VOLUNTEER"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:text-foreground"
-                }`}
+                className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-sm font-semibold transition-all ${newPersonType === "VOLUNTEER"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 <UserCheck className="h-4 w-4" />
                 Volunteer
@@ -497,6 +745,7 @@ export function PeoplePage() {
                 placeholder="Ramesh"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
+                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
                 required
               />
             </div>
@@ -506,31 +755,30 @@ export function PeoplePage() {
                 placeholder="Kumar"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
+                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
                 required
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Email Address *</label>
-              <Input
-                type="email"
-                placeholder="ramesh@example.org"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Phone Number</label>
-              <Input
-                placeholder="+91 9876543210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Email Address *</label>
+            <Input
+              type="email"
+              placeholder="ramesh@example.org"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={INPUT_LIMITS.EMAIL_MAX}
+              required
+            />
           </div>
+
+          <PhoneInput
+            label="Phone Number"
+            value={phone}
+            onChange={setPhone}
+            placeholder="Mobile number"
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <Select
@@ -570,10 +818,10 @@ export function PeoplePage() {
                   </option>
                 ))}
             </Select>
-            <DateInput
+            <DatePicker
               label="Joining Date"
               value={joiningDate}
-              onChange={(e) => setJoiningDate(e.target.value)}
+              onChange={(val) => setJoiningDate(val)}
             />
           </div>
 
@@ -591,92 +839,151 @@ export function PeoplePage() {
         </form>
       </Modal>
 
-      {/* Person Detail Drawer */}
+      {/* Person Detail Drawer with Sticky Rich Header */}
       <Drawer
         isOpen={!!selectedPersonId}
         onClose={() => setSelectedPersonId(null)}
-        title={selectedPerson ? `${selectedPerson.firstName} ${selectedPerson.lastName}` : "Profile Details"}
-        description={selectedPerson?.email}
         width="xl"
+        headerContent={
+          selectedPerson ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar
+                    name={`${selectedPerson.firstName} ${selectedPerson.lastName}`}
+                    src={selectedPerson.avatarUrl || undefined}
+                    size="lg"
+                    isBordered
+                    status={selectedPerson.status === "ACTIVE" ? "online" : undefined}
+                    className="h-12 w-12 text-sm shadow-xs shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-foreground text-base truncate">
+                        {selectedPerson.firstName} {selectedPerson.lastName}
+                      </h4>
+                      <Badge
+                        variant={selectedPerson.personType === "EMPLOYEE" ? "default" : "secondary"}
+                        className="text-[10px]"
+                      >
+                        {selectedPerson.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
+                      </Badge>
+                      <Badge
+                        variant={
+                          selectedPerson.status === "ACTIVE"
+                            ? "success"
+                            : selectedPerson.status === "NOTICE_PERIOD"
+                              ? "warning"
+                              : "secondary"
+                        }
+                        dot
+                        className="text-[10px]"
+                      >
+                        {selectedPerson.status === "NOTICE_PERIOD" ? "Notice Period" : selectedPerson.status}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{selectedPerson.email}</p>
+                    <p className="text-xs font-semibold text-primary mt-0.5 truncate">
+                      {selectedPerson.designation?.name || "Staff Member"}
+                    </p>
+                  </div>
+                </div>
+
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleOpenEditModal(selectedPerson)}
+                    className="shrink-0 gap-1.5 text-xs rounded-xl border-primary/30 text-primary hover:bg-primary/10"
+                    title="Edit profile details, department, designation, and reporting manager"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    <span>Edit Profile & Reporting</span>
+                  </Button>
+                )}
+              </div>
+
+              {/* Sticky Meta Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
+                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <Building className="h-3 w-3 text-primary shrink-0" /> Dept
+                  </span>
+                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                    {selectedPerson.department?.name || "Not assigned"}
+                  </p>
+                </div>
+
+                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <UserCheck className="h-3 w-3 text-emerald-500 shrink-0" /> Manager
+                  </span>
+                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                    {selectedPerson.manager
+                      ? `${selectedPerson.manager.firstName} ${selectedPerson.manager.lastName}`
+                      : "None (Top Level)"}
+                  </p>
+                </div>
+
+                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <Phone className="h-3 w-3 text-muted-foreground shrink-0" /> Contact
+                  </span>
+                  <p className="font-semibold text-foreground truncate font-mono mt-0.5 text-xs">
+                    {selectedPerson.phone || "Not recorded"}
+                  </p>
+                </div>
+
+                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <Calendar className="h-3 w-3 text-muted-foreground shrink-0" /> Joined
+                  </span>
+                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                    {selectedPerson.joiningDate
+                      ? new Date(selectedPerson.joiningDate).toLocaleDateString()
+                      : "Not recorded"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : undefined
+        }
       >
         {selectedPerson && (
           <div className="space-y-6">
-            {/* Top Identity Card */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
-              <div className="flex items-center gap-3">
-                <Avatar
-                  name={`${selectedPerson.firstName} ${selectedPerson.lastName}`}
-                  size="md"
-                  isBordered
-                  status={selectedPerson.status === "ACTIVE" ? "online" : undefined}
-                />
-                <div>
-                  <h4 className="font-bold text-foreground text-sm">
-                    {selectedPerson.firstName} {selectedPerson.lastName}
-                  </h4>
-                  <p className="text-xs text-muted-foreground">{selectedPerson.designation?.name || "Staff Member"}</p>
-                </div>
+            {/* Address, WhatsApp & Emergency Contact Summary */}
+            {(selectedPerson.currentAddress || selectedPerson.permanentAddress || selectedPerson.address || selectedPerson.whatsapp || selectedPerson.emergencyContact) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {(selectedPerson.currentAddress || selectedPerson.address) && (
+                  <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                    <span className="text-muted-foreground font-medium block mb-1">Current Residential Address</span>
+                    <p className="text-foreground">{selectedPerson.currentAddress || selectedPerson.address}</p>
+                  </div>
+                )}
+                {selectedPerson.permanentAddress && (
+                  <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                    <span className="text-muted-foreground font-medium block mb-1">Permanent Address</span>
+                    <p className="text-foreground">{selectedPerson.permanentAddress}</p>
+                  </div>
+                )}
+                {selectedPerson.whatsapp && (
+                  <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                    <span className="text-muted-foreground font-medium flex items-center gap-1 mb-1">
+                      <Phone className="h-3 w-3 text-emerald-500" /> WhatsApp Number
+                    </span>
+                    <p className="text-foreground font-mono font-semibold">{selectedPerson.whatsapp}</p>
+                  </div>
+                )}
+                {selectedPerson.emergencyContact && (
+                  <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                    <span className="text-muted-foreground font-medium flex items-center gap-1 mb-1">
+                      <HeartHandshake className="h-3 w-3 text-primary" /> Emergency Contact
+                    </span>
+                    <p className="text-foreground font-mono">{selectedPerson.emergencyContact}</p>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant={selectedPerson.personType === "EMPLOYEE" ? "default" : "secondary"}
-                >
-                  {selectedPerson.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
-                </Badge>
-                <Badge
-                  variant={
-                    selectedPerson.status === "ACTIVE"
-                      ? "success"
-                      : selectedPerson.status === "ON_NOTICE"
-                      ? "warning"
-                      : "secondary"
-                  }
-                  dot
-                >
-                  {selectedPerson.status}
-                </Badge>
-              </div>
-            </div>
-
-            {/* Quick Details Grid */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                <span className="text-muted-foreground flex items-center gap-1.5 mb-1">
-                  <Building className="h-3.5 w-3.5" /> Department
-                </span>
-                <span className="font-semibold text-foreground">
-                  {selectedPerson.department?.name || "Not assigned"}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                <span className="text-muted-foreground flex items-center gap-1.5 mb-1">
-                  <UserCheck className="h-3.5 w-3.5" /> Reporting Manager
-                </span>
-                <span className="font-semibold text-foreground">
-                  {selectedPerson.manager
-                    ? `${selectedPerson.manager.firstName} ${selectedPerson.manager.lastName}`
-                    : "None"}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                <span className="text-muted-foreground flex items-center gap-1.5 mb-1">
-                  <Phone className="h-3.5 w-3.5" /> Contact
-                </span>
-                <span className="font-semibold text-foreground">
-                  {selectedPerson.phone || "Not recorded"}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                <span className="text-muted-foreground flex items-center gap-1.5 mb-1">
-                  <Calendar className="h-3.5 w-3.5" /> Joined On
-                </span>
-                <span className="font-semibold text-foreground">
-                  {selectedPerson.joiningDate
-                    ? new Date(selectedPerson.joiningDate).toLocaleDateString()
-                    : "Not recorded"}
-                </span>
-              </div>
-            </div>
+            )}
 
             {/* Direct Reports Section (if any) */}
             {selectedPerson.directReports && selectedPerson.directReports.length > 0 && (
@@ -713,7 +1020,7 @@ export function PeoplePage() {
                 </div>
               </div>
 
-              {/* Upload Form */}
+              {/* Upload Form with Asset Drag & Drop */}
               <div className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 space-y-3">
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
@@ -724,38 +1031,61 @@ export function PeoplePage() {
                       placeholder="e.g. Aadhaar Card / Resume"
                       value={docName}
                       onChange={(e) => setDocName(e.target.value)}
-                      className="h-8 text-xs"
+                      maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
+                      className="h-10 text-s"
                     />
                   </div>
-                    <Select
-                      label="Category"
-                      value={docCategory}
-                      onChange={(e) => setDocCategory(e.target.value as any)}
-                      className="h-8 text-xs"
-                    >
-                      <option value="KYC">KYC Document</option>
-                      <option value="RESUME">Resume / CV</option>
-                      <option value="CONTRACT">Contract / Offer Letter</option>
-                      <option value="CERTIFICATE">Certificate / Degree</option>
-                      <option value="OTHER">Other Record</option>
-                    </Select>
+                  <Select
+                    label="Category"
+                    value={docCategory}
+                    onChange={(e) => setDocCategory(e.target.value as any)}
+                    className="h-8 text-xs mb-8"
+                  >
+                    <option value="KYC">KYC Document</option>
+                    <option value="RESUME">Resume / CV</option>
+                    <option value="JOINING_LETTER">Joining Letter</option>
+                    <option value="CONTRACT">Contract / Agreement</option>
+                    <option value="OTHER">Other Record</option>
+                  </Select>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                    className="flex-1 text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                  />
+                {docCategory === "KYC" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-foreground block mb-1">
+                      Document / ID Number *
+                    </label>
+                    <Input
+                      placeholder="e.g. 5423-8891-1029 / ABCDE1234F / Passport No"
+                      value={docNumber}
+                      onChange={(e) => setDocNumber(e.target.value)}
+                      maxLength={INPUT_LIMITS.DOC_NUMBER_MAX}
+                      className="h-10 text-xs"
+                      required
+                    />
+                  </div>
+                )}
+
+                {/* Asset Drag & Drop Zone */}
+                <FileDropzone
+                  file={selectedFile}
+                  onFileSelect={(f) => {
+                    setSelectedFile(f);
+                    if (f && !docName.trim()) {
+                      setDocName(f.name.replace(/\.[^/.]+$/, ""));
+                    }
+                  }}
+                  disabled={uploadingDoc}
+                />
+
+                <div className="flex justify-end pt-1">
                   <Button
                     size="sm"
                     onClick={handleUploadDocument}
-                    disabled={!selectedFile || !docName.trim() || uploadingDoc}
-                    className="shrink-0 gap-1.5"
+                    disabled={!selectedFile || !docName.trim() || (docCategory === "KYC" && !docNumber.trim()) || uploadingDoc}
+                    className="gap-1.5"
                   >
                     <Upload className="h-3.5 w-3.5" />
-                    <span>{uploadingDoc ? "Uploading…" : "Upload"}</span>
+                    <span>{uploadingDoc ? "Uploading to MinIO…" : "Upload Document"}</span>
                   </Button>
                 </div>
               </div>
@@ -767,51 +1097,150 @@ export function PeoplePage() {
                     No documents uploaded for this person yet.
                   </p>
                 ) : (
-                  selectedPerson.documents?.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between p-2.5 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <FileText className="h-4 w-4 text-primary shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-semibold text-foreground truncate">{doc.name}</p>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-                            <Badge size="sm" variant="secondary">
-                              {doc.category}
-                            </Badge>
-                            <span>{formatFileSize(doc.fileSize)}</span>
-                            <span>•</span>
-                            <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                  selectedPerson.documents?.map((doc) => {
+                    const bytes = doc.sizeBytes ?? doc.fileSize ?? 0;
+                    const dateRaw = doc.uploadedAt || doc.createdAt;
+                    const dateObj = dateRaw ? new Date(dateRaw) : null;
+                    const formattedDate = dateObj && !isNaN(dateObj.getTime())
+                      ? dateObj.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+                      : "Recently uploaded";
+
+                    const isApproved = doc.status === "APPROVED";
+                    const isRejected = doc.status === "REJECTED";
+                    const isPending = doc.status === "PENDING" || !doc.status;
+
+                    return (
+                      <div
+                        key={doc.id}
+                        className={cn(
+                          "p-3 rounded-xl border text-xs transition-all flex flex-col gap-2",
+                          isApproved && "border-emerald-500/30 bg-emerald-500/5",
+                          isRejected && "border-red-500/30 bg-red-500/5",
+                          isPending && "border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-semibold text-foreground truncate">{doc.name}</p>
+                                {isApproved && (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                                    <CheckCircle className="h-3 w-3" /> Verified
+                                  </span>
+                                )}
+                                {isPending && (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                                    <Clock className="h-3 w-3" /> Pending Review
+                                  </span>
+                                )}
+                                {isRejected && (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-red-500/15 text-red-700 dark:text-red-300">
+                                    <XCircle className="h-3 w-3" /> Rejected
+                                  </span>
+                                )}
+                              </div>
+
+                              {doc.documentNumber && (
+                                <p className="text-[11px] font-mono text-foreground font-semibold mt-0.5">
+                                  ID: <span className="text-primary">{doc.documentNumber}</span>
+                                </p>
+                              )}
+
+                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                <Badge size="sm" variant="secondary">
+                                  {doc.category}
+                                </Badge>
+                                <span>{formatFileSize(bytes)}</span>
+                                <span>•</span>
+                                <span>{formattedDate}</span>
+                              </div>
+
+                              {isRejected && doc.rejectionReason && (
+                                <div className="mt-1.5 p-1.5 rounded-lg bg-red-500/10 text-[10px] text-red-600 dark:text-red-400 font-medium">
+                                  <strong>HR Note:</strong> {doc.rejectionReason}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {/* In-App View Document Button */}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenDocViewer(doc)}
+                              className="h-8 px-2 gap-1 text-xs text-primary hover:bg-primary/10 border-primary/20"
+                              title="View document inside app"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>View</span>
+                            </Button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadDoc(doc.id, doc.name)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              title="Download document file"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+
+                            {/* HR Approval / Rejection Controls for Any Document */}
+                            {canManage && (
+                              <>
+                                {!isApproved && (
+                                  <button
+                                    type="button"
+                                    onClick={() => reviewDoc.mutate({ docId: doc.id, status: "APPROVED" })}
+                                    disabled={reviewDoc.isPending}
+                                    className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition-colors text-[11px] font-semibold"
+                                    title="Approve document"
+                                  >
+                                    Approve
+                                  </button>
+                                )}
+                                {!isRejected && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRejectDocId(doc.id);
+                                      setRejectModalOpen(true);
+                                    }}
+                                    disabled={reviewDoc.isPending}
+                                    className="px-2 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[11px] font-semibold"
+                                    title="Reject document with reason"
+                                  >
+                                    Reject
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            {!isApproved && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: `Delete ${doc.name}?`,
+                                    description: "This document will be permanently removed from MinIO storage.",
+                                    confirmLabel: "Delete",
+                                  });
+                                  if (ok) deleteDoc.mutate({ docId: doc.id });
+                                }}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                title="Delete document"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleDownloadDoc(doc.id, doc.name)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                          title="Download document (presigned MinIO link)"
-                        >
-                          <Download className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={async () => {
-                            const ok = await confirm({
-                              title: `Delete ${doc.name}?`,
-                              description: "This document will be permanently removed from MinIO storage.",
-                              confirmLabel: "Delete",
-                            });
-                            if (ok) deleteDoc.mutate({ docId: doc.id });
-                          }}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                          title="Delete document"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -837,6 +1266,413 @@ export function PeoplePage() {
           </div>
         )}
       </Drawer>
+
+      {/* Edit Profile & Reporting Hierarchy Modal */}
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Edit Profile & Reporting Hierarchy"
+        description="Update departmental placement, reporting manager, status, and contact details."
+        maxWidth="lg"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updatePersonMutation.mutate();
+          }}
+          className="space-y-4"
+        >
+          {/* Person Type & Status */}
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Person Type"
+              value={editPersonType}
+              onChange={(e) => setEditPersonType(e.target.value as any)}
+            >
+              <option value="EMPLOYEE">Employee</option>
+              <option value="VOLUNTEER">Volunteer</option>
+            </Select>
+
+            <Select
+              label="Employment Status"
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value as any)}
+            >
+              <option value="ACTIVE">Active</option>
+              <option value="PROBATION">Probation</option>
+              <option value="NOTICE_PERIOD">Notice Period</option>
+              <option value="JOINED">Joined</option>
+            </Select>
+          </div>
+
+          {/* Names */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-foreground block mb-1">First Name *</label>
+              <Input
+                value={editFirstName}
+                onChange={(e) => setEditFirstName(e.target.value)}
+                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-foreground block mb-1">Last Name *</label>
+              <Input
+                value={editLastName}
+                onChange={(e) => setEditLastName(e.target.value)}
+                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
+                required
+              />
+            </div>
+          </div>
+
+          {/* Phone & WhatsApp */}
+          <div className="space-y-3">
+            <PhoneInput
+              label="Contact Mobile Number"
+              value={editPhone}
+              onChange={(val) => {
+                setEditPhone(val);
+                if (editSameAsPhone) setEditWhatsapp(val);
+              }}
+              placeholder="Mobile number"
+            />
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-foreground block">WhatsApp Number</label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
+                  <input
+                    type="checkbox"
+                    checked={editSameAsPhone}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setEditSameAsPhone(checked);
+                      if (checked) setEditWhatsapp(editPhone);
+                    }}
+                    className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
+                  />
+                  <span>Same as Phone number</span>
+                </label>
+              </div>
+              {!editSameAsPhone ? (
+                <PhoneInput
+                  value={editWhatsapp}
+                  onChange={setEditWhatsapp}
+                  placeholder="Enter WhatsApp mobile number"
+                />
+              ) : (
+                <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs font-mono text-muted-foreground flex items-center justify-between">
+                  <span>{editPhone || "Same as primary phone number"}</span>
+                  <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                    Synced with Phone
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Department & Designation */}
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Department"
+              value={editDepartmentId}
+              onChange={(e) => setEditDepartmentId(e.target.value)}
+            >
+              <option value="">(None / Unassigned)</option>
+              {departments?.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </Select>
+
+            <Select
+              label="Designation / Role"
+              value={editDesignationId}
+              onChange={(e) => setEditDesignationId(e.target.value)}
+            >
+              <option value="">(None / Unassigned)</option>
+              {designations?.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Reporting Manager */}
+          <div>
+            <Select
+              label="Reporting Manager (Hierarchy)"
+              value={editManagerId}
+              onChange={(e) => setEditManagerId(e.target.value)}
+            >
+              <option value="">None (Top-Level Executive / Board Director)</option>
+              {people
+                ?.filter(
+                  (p) =>
+                    p.status === "ACTIVE" &&
+                    p.id !== selectedPersonId &&
+                    !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
+                )
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.firstName} {p.lastName} — {p.designation?.name || p.email} ({p.department?.name || "No Dept"})
+                  </option>
+                ))}
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Top executives (like Executive Director) have no manager. Self and direct reports are filtered out to prevent circular reporting cycles.
+            </p>
+          </div>
+
+          {/* Addresses: Current & Permanent */}
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground block">Current Residential Address</label>
+              <Input
+                value={editCurrentAddress}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditCurrentAddress(val);
+                  if (editSameAsCurrentAddress) setEditPermanentAddress(val);
+                }}
+                placeholder="Current address: Flat/House, Street, City, State, Pincode"
+                maxLength={INPUT_LIMITS.ADDRESS_MAX}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-foreground block">Permanent Address</label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
+                  <input
+                    type="checkbox"
+                    checked={editSameAsCurrentAddress}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setEditSameAsCurrentAddress(checked);
+                      if (checked) setEditPermanentAddress(editCurrentAddress);
+                    }}
+                    className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
+                  />
+                  <span>Same as Current address</span>
+                </label>
+              </div>
+              {!editSameAsCurrentAddress ? (
+                <Input
+                  value={editPermanentAddress}
+                  onChange={(e) => setEditPermanentAddress(e.target.value)}
+                  placeholder="Permanent address: Hometown / Official permanent address"
+                  maxLength={INPUT_LIMITS.ADDRESS_MAX}
+                />
+              ) : (
+                <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs text-muted-foreground flex items-center justify-between">
+                  <span className="truncate">{editCurrentAddress || "Same as current residential address"}</span>
+                  <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
+                    Synced with Current
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 space-y-2.5">
+            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <HeartHandshake className="h-3.5 w-3.5 text-primary" /> Emergency Contact
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="sm:col-span-3">
+                <PhoneInput
+                  label="Emergency Phone"
+                  value={editEmergencyPhone}
+                  onChange={setEditEmergencyPhone}
+                  placeholder="Emergency contact phone"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1">Relation</label>
+                <Select
+                  value={editEmergencyRelation}
+                  onChange={(e) => setEditEmergencyRelation(e.target.value as EmergencyRelation)}
+                >
+                  {EMERGENCY_RELATIONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium text-foreground block mb-1">Contact Person Name</label>
+                <Input
+                  value={editEmergencyName}
+                  onChange={(e) => setEditEmergencyName(e.target.value)}
+                  placeholder="e.g. Ramesh Sharma"
+                  maxLength={INPUT_LIMITS.EMERGENCY_NAME_MAX}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+            <Button type="button" variant="outline" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!editFirstName.trim() || !editLastName.trim() || updatePersonMutation.isPending}>
+              {updatePersonMutation.isPending ? "Saving changes…" : "Save Changes"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* In-App Document Viewer & Review Modal */}
+      <Modal
+        isOpen={viewDocModalOpen}
+        onClose={() => {
+          setViewDocModalOpen(false);
+          setPreviewDoc(null);
+          setPreviewDocUrl(null);
+        }}
+        title={previewDoc ? previewDoc.name : "Document Viewer"}
+        description={
+          previewDoc
+            ? `${previewDoc.category} Document ${previewDoc.documentNumber ? `• ID: ${previewDoc.documentNumber}` : ""} • Uploaded on ${previewDoc.uploadedAt ? new Date(previewDoc.uploadedAt).toLocaleDateString() : "Recent"}`
+            : undefined
+        }
+        maxWidth="xl"
+      >
+        <div className="space-y-4">
+          {/* Status pill & metadata header */}
+          {previewDoc && (
+            <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/80 dark:border-zinc-800 text-xs">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant={
+                    previewDoc.status === "APPROVED"
+                      ? "success"
+                      : previewDoc.status === "REJECTED"
+                        ? "destructive"
+                        : "warning"
+                  }
+                >
+                  {previewDoc.status === "APPROVED"
+                    ? "✓ Verified by HR"
+                    : previewDoc.status === "REJECTED"
+                      ? "✕ Rejected"
+                      : "⏳ Verification Pending"}
+                </Badge>
+                {previewDoc.documentNumber && (
+                  <span className="font-mono font-semibold text-primary">
+                    ID: {previewDoc.documentNumber}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownloadDoc(previewDoc.id, previewDoc.name)}
+                  className="h-7 text-xs gap-1"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>Download</span>
+                </Button>
+                {previewDocUrl && (
+                  <a
+                    href={previewDocUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 transition-colors"
+                    title="Open in new window"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Rejection Notice if rejected */}
+          {previewDoc?.status === "REJECTED" && previewDoc.rejectionReason && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400">
+              <strong>HR Rejection Feedback:</strong> {previewDoc.rejectionReason}
+            </div>
+          )}
+
+          {/* Document Content Viewport */}
+          <div className="min-h-[50vh] max-h-[65vh] rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-950/10 dark:bg-zinc-950/40 overflow-hidden flex items-center justify-center relative">
+            {loadingPreview ? (
+              <div className="p-8 text-center space-y-2">
+                <div className="h-8 w-8 mx-auto animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <p className="text-xs text-muted-foreground">Streaming secure document preview from MinIO…</p>
+              </div>
+            ) : previewDocUrl ? (
+              previewDoc?.mimeType?.includes("image") ||
+              previewDoc?.name?.match(/\.(png|jpg|jpeg|webp)$/i) ? (
+                <img
+                  src={previewDocUrl}
+                  alt={previewDoc?.name}
+                  className="max-h-[62vh] max-w-full rounded-xl object-contain shadow-md"
+                />
+              ) : (
+                <iframe
+                  src={previewDocUrl}
+                  title={previewDoc?.name}
+                  className="w-full h-[62vh] rounded-2xl bg-white border-0"
+                />
+              )
+            ) : (
+              <div className="p-8 text-center space-y-2">
+                <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto" />
+                <p className="text-xs text-muted-foreground">Unable to render document preview.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Action Buttons */}
+          {canManage && previewDoc && (
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="text-xs text-muted-foreground">
+                Take HR verification action on this document:
+              </div>
+              <div className="flex items-center gap-2">
+                {previewDoc.status !== "REJECTED" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setRejectDocId(previewDoc.id);
+                      setRejectModalOpen(true);
+                      setViewDocModalOpen(false);
+                    }}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-500/10 border-red-500/30 text-xs gap-1.5"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                    <span>Reject</span>
+                  </Button>
+                )}
+
+                {previewDoc.status !== "APPROVED" && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      reviewDoc.mutate({ docId: previewDoc.id, status: "APPROVED" });
+                      setViewDocModalOpen(false);
+                    }}
+                    disabled={reviewDoc.isPending}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    <span>{reviewDoc.isPending ? "Approving…" : "Approve & Lock"}</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Exit Workflow Modal */}
       <Modal
@@ -883,6 +1719,63 @@ export function PeoplePage() {
               disabled={!exitDate || !exitReason.trim() || exitPerson.isPending}
             >
               {exitPerson.isPending ? "Processing…" : "Confirm Exit"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reject KYC Document Modal */}
+      <Modal
+        isOpen={rejectModalOpen}
+        onClose={() => {
+          setRejectModalOpen(false);
+          setRejectDocId(null);
+          setRejectReason("");
+        }}
+        title="Reject KYC Document"
+        description="Please provide a clear reason for rejecting this document so the user can re-upload."
+        maxWidth="md"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (rejectDocId) {
+              reviewDoc.mutate({
+                docId: rejectDocId,
+                status: "REJECTED",
+                rejectionReason: rejectReason.trim() || "Document does not meet verification guidelines",
+              });
+              setRejectModalOpen(false);
+              setRejectDocId(null);
+              setRejectReason("");
+            }
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Rejection Reason *</label>
+            <Input
+              placeholder="e.g. Blurry photograph / expiry date not visible / invalid document"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setRejectModalOpen(false);
+                setRejectDocId(null);
+                setRejectReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="destructive" disabled={!rejectReason.trim() || reviewDoc.isPending}>
+              {reviewDoc.isPending ? "Rejecting…" : "Confirm Rejection"}
             </Button>
           </div>
         </form>

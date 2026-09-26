@@ -11,12 +11,16 @@ import {
   X,
   FileCheck,
   AlertCircle,
+  Paperclip,
+  Upload,
+  FileText,
 } from "lucide-react";
 import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
+import { DatePicker } from "../../components/ui/date-picker";
 import { DateInput } from "../../components/ui/date-input";
 import { Badge } from "../../components/ui/badge";
 import { User } from "../../components/ui/avatar";
@@ -26,6 +30,15 @@ import { QueryState } from "../../components/query-state";
 import { Modal } from "../../components/ui/modal";
 import { toast } from "../../components/ui/toast";
 import { useMe } from "../../auth/use-me";
+import { useAuthStore } from "../../auth/auth-store";
+import { cn } from "../../lib/utils";
+
+export interface LeaveSupportingDoc {
+  name: string;
+  fileKey: string;
+  mimeType: string;
+  sizeBytes: number;
+}
 
 interface LeaveType {
   id: string;
@@ -41,6 +54,7 @@ interface LeaveRequest {
   endDate: string;
   daysCount: number;
   reason: string;
+  supportingDocuments?: LeaveSupportingDoc[];
   status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
   decisionNotes?: string | null;
   decidedAt?: string | null;
@@ -71,6 +85,44 @@ export function LeavePage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+  const [uploadedDocs, setUploadedDocs] = useState<LeaveSupportingDoc[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const token = useAuthStore((s) => s.user?.access_token);
+
+  // File upload for leave supporting docs
+  const handleSupportingDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingDoc(true);
+    try {
+      const newDocs: LeaveSupportingDoc[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const formData = new FormData();
+        formData.append("file", file);
+        const data = await api.upload<LeaveSupportingDoc>("/hr/leave/requests/upload-document", formData);
+        newDocs.push(data);
+      }
+      setUploadedDocs((prev) => [...prev, ...newDocs]);
+      toast.success("Files attached", `${newDocs.length} supporting document(s) uploaded.`);
+    } catch (err: any) {
+      toast.error("Upload failed", err.message || "Failed to upload document");
+    } finally {
+      setUploadingDoc(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDownloadDoc = async (fileKey: string) => {
+    try {
+      const data = await api.get<{ url: string }>(`/hr/leave/requests/document-url?key=${encodeURIComponent(fileKey)}`);
+      if (data?.url) {
+        window.open(data.url, "_blank");
+      }
+    } catch (err: any) {
+      toast.error("Download failed", err.message || "Could not retrieve document URL.");
+    }
+  };
 
   // Create Leave Type Form State
   const [typeName, setTypeName] = useState("");
@@ -116,6 +168,7 @@ export function LeavePage() {
         startDate: new Date(startDate).toISOString(),
         endDate: new Date(endDate).toISOString(),
         reason,
+        supportingDocuments: uploadedDocs,
       }),
     onSuccess: () => {
       setApplyModalOpen(false);
@@ -123,6 +176,7 @@ export function LeavePage() {
       setStartDate("");
       setEndDate("");
       setReason("");
+      setUploadedDocs([]);
       queryClient.invalidateQueries({ queryKey: ["hr", "leave", "requests"] });
       toast.success("Leave request submitted", "Your manager has been notified for approval.");
     },
@@ -286,8 +340,24 @@ export function LeavePage() {
                         <TableCell className="font-bold text-xs">
                           {req.daysCount} day{req.daysCount > 1 ? "s" : ""}
                         </TableCell>
-                        <TableCell className="text-xs max-w-xs truncate text-muted-foreground">
-                          {req.reason}
+                        <TableCell className="text-xs max-w-xs text-muted-foreground">
+                          <p className="truncate">{req.reason}</p>
+                          {req.supportingDocuments && req.supportingDocuments.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                              {req.supportingDocuments.map((doc, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleDownloadDoc(doc.fileKey)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-foreground transition-colors cursor-pointer"
+                                  title={`Download ${doc.name}`}
+                                >
+                                  <Paperclip className="h-3 w-3 text-primary shrink-0" />
+                                  <span className="truncate max-w-[120px] font-medium">{doc.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -358,8 +428,24 @@ export function LeavePage() {
                         <TableCell className="text-xs">
                           {new Date(req.startDate).toLocaleDateString()} to {new Date(req.endDate).toLocaleDateString()} ({req.daysCount}d)
                         </TableCell>
-                        <TableCell className="text-xs max-w-xs truncate text-muted-foreground">
-                          {req.reason}
+                        <TableCell className="text-xs max-w-xs text-muted-foreground">
+                          <p className="truncate">{req.reason}</p>
+                          {req.supportingDocuments && req.supportingDocuments.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                              {req.supportingDocuments.map((doc, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleDownloadDoc(doc.fileKey)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer font-medium"
+                                  title={`Download ${doc.name}`}
+                                >
+                                  <Paperclip className="h-3 w-3 shrink-0" />
+                                  <span className="truncate max-w-[120px]">{doc.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -456,17 +542,17 @@ export function LeavePage() {
           </Select>
 
           <div className="grid grid-cols-2 gap-3">
-            <DateInput
-              label="Start Date *"
+            <DatePicker
+              label="Start Date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              required
+              onChange={(val) => setStartDate(val)}
+              isRequired
             />
-            <DateInput
-              label="End Date *"
+            <DatePicker
+              label="End Date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              required
+              onChange={(val) => setEndDate(val)}
+              isRequired
             />
           </div>
 
@@ -480,6 +566,64 @@ export function LeavePage() {
               className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background p-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               required
             />
+          </div>
+
+          {/* Supporting Documents (One or Multiple) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-foreground block">
+                Supporting Documents (Optional)
+              </label>
+              <span className="text-[11px] text-muted-foreground">PDF, PNG, JPG (1 or multiple)</span>
+            </div>
+
+            <label className={cn(
+              "flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-3.5 cursor-pointer transition-colors",
+              uploadingDoc ? "opacity-60 pointer-events-none" : "hover:border-primary/50 hover:bg-primary/5 border-zinc-200 dark:border-zinc-800"
+            )}>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.docx"
+                onChange={handleSupportingDocUpload}
+                className="hidden"
+                disabled={uploadingDoc}
+              />
+              <Upload className="h-5 w-5 text-muted-foreground mb-1 animate-pulse" />
+              <p className="text-xs font-medium text-foreground text-center">
+                {uploadingDoc ? "Uploading documents…" : "Click or drag & drop one or multiple supporting documents"}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 text-center">
+                Medical certificate, travel tickets, wedding invite, official letters
+              </p>
+            </label>
+
+            {uploadedDocs.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                {uploadedDocs.map((doc, idx) => (
+                  <div
+                    key={doc.fileKey || idx}
+                    className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="truncate font-medium text-foreground">{doc.name}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        ({(doc.sizeBytes / 1024).toFixed(0)} KB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadedDocs((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-muted-foreground hover:text-red-500 p-1 cursor-pointer"
+                      title="Remove attachment"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">

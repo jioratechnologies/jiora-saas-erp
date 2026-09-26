@@ -54,7 +54,18 @@ export function LandingRedirect() {
     return <Navigate to="/platform/tenants" replace />;
   }
 
-  // Route to authorized HR or Admin modules
+  // Priority 1: Admin modules (Tenant owners and administrators land on Organisation)
+  if (me.permissionKeys.includes("admin.org.read")) {
+    return <Navigate to="/admin/org" replace />;
+  }
+  if (me.permissionKeys.includes("admin.user.read")) {
+    return <Navigate to="/admin/users" replace />;
+  }
+  if (me.permissionKeys.includes("admin.department.read")) {
+    return <Navigate to="/admin/departments" replace />;
+  }
+
+  // Priority 2: HR modules (HR specialists and managers land on Person Master)
   if (me.permissionKeys.includes("hr.person.read")) {
     return <Navigate to="/hr/people" replace />;
   }
@@ -68,21 +79,12 @@ export function LandingRedirect() {
     return <Navigate to="/hr/holidays" replace />;
   }
 
-  // Admin modules
-  if (me.permissionKeys.includes("admin.org.read")) {
-    return <Navigate to="/admin/org" replace />;
-  }
-  if (me.permissionKeys.includes("admin.department.read")) {
-    return <Navigate to="/admin/departments" replace />;
-  }
+  // Fallback Admin modules
   if (me.permissionKeys.includes("admin.designation.read")) {
     return <Navigate to="/admin/designations" replace />;
   }
   if (me.permissionKeys.includes("admin.role.read")) {
     return <Navigate to="/admin/roles" replace />;
-  }
-  if (me.permissionKeys.includes("admin.user.read")) {
-    return <Navigate to="/admin/users" replace />;
   }
 
   // Welcome state for roles without specific page permissions

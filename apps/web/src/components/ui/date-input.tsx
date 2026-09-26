@@ -8,9 +8,8 @@ export interface DateInputProps extends Omit<InputHTMLAttributes<HTMLInputElemen
 }
 
 /**
- * HeroUI-inspired Date Input — wraps a native date input with custom styling.
- * Uses the browser's native date picker but with themed borders, rounded corners,
- * and an icon — consistent with the rest of the design system.
+ * Styled Date Input — wraps a native date input with custom styling.
+ * Consistent with the design system.
  */
 export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
   ({ className, label, error, id, ...props }, ref) => {

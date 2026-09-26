@@ -85,10 +85,12 @@ model User {
   zitadelSubjectId String?   @unique @map("zitadel_subject_id")
   email            String
   displayName      String    @map("display_name")
+  phone            String?
   departmentId     String?   @map("department_id")
   designationId    String?   @map("designation_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   deactivatedAt    DateTime? @map("deactivated_at")
+  avatarUrl        String?   @map("avatar_url")
 
   tenant      Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -168,6 +170,12 @@ enum DocumentCategory {
   OTHER
 }
 
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AttendanceMode {
   OFFICE
   REMOTE
@@ -205,10 +213,14 @@ model Person {
   lastName         String       @map("last_name")
   email            String
   phone            String?
+  whatsapp         String?
   gender           String?
   dob              DateTime?
   address          String?
+  currentAddress   String?      @map("current_address")
+  permanentAddress String?      @map("permanent_address")
   emergencyContact String?      @map("emergency_contact")
+  avatarUrl        String?      @map("avatar_url")
   
   departmentId     String?      @map("department_id")
   designationId    String?      @map("designation_id")
@@ -241,20 +253,26 @@ model Person {
 }
 
 model PersonDocument {
-  id         String           @id @default(uuid())
-  tenantId   String           @map("tenant_id")
-  personId   String           @map("person_id")
-  name       String
-  fileKey    String           @map("file_key")
-  mimeType   String           @map("mime_type")
-  sizeBytes  Int              @map("size_bytes")
-  category   DocumentCategory @default(OTHER)
-  uploadedAt DateTime         @default(now()) @map("uploaded_at")
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
+  personId        String           @map("person_id")
+  name            String
+  fileKey         String           @map("file_key")
+  mimeType        String           @map("mime_type")
+  sizeBytes       Int              @map("size_bytes")
+  category        DocumentCategory @default(OTHER)
+  documentNumber  String?          @map("document_number")
+  status          DocumentStatus   @default(PENDING)
+  rejectionReason String?          @map("rejection_reason")
+  verifiedAt      DateTime?        @map("verified_at")
+  verifiedBy      String?          @map("verified_by")
+  uploadedAt      DateTime         @default(now()) @map("uploaded_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, personId, category])
+  @@index([tenantId, status])
   @@map("person_documents")
 }
 
@@ -308,8 +326,9 @@ model LeaveRequest {
   startDate     DateTime    @map("start_date") @db.Date
   endDate       DateTime    @map("end_date") @db.Date
   daysCount     Int         @default(1) @map("days_count")
-  reason        String
-  status        LeaveStatus @default(PENDING)
+  reason              String
+  supportingDocuments Json?       @default("[]") @map("supporting_documents")
+  status              LeaveStatus @default(PENDING)
   approverId    String?     @map("approver_id")
   decisionNotes String?     @map("decision_notes")
   decidedAt     DateTime?   @map("decided_at")

@@ -63,7 +63,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               onClick={() => close(false)}
               aria-hidden="true"
             />
-            {/* HeroUI-inspired Solid Dialog Card */}
+            {/* Solid Dialog Card */}
             <div
               role="alertdialog"
               aria-modal="true"

@@ -102,6 +102,7 @@ export class LeaveService {
           endDate,
           daysCount,
           reason: dto.reason.trim(),
+          supportingDocuments: (dto.supportingDocuments || []) as any,
           status: LeaveStatus.PENDING,
           approverId: person.managerId || null,
         },

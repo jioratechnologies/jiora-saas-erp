@@ -86,8 +86,9 @@ export function Modal({
 interface DrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
-  description?: string;
+  title?: ReactNode;
+  description?: ReactNode;
+  headerContent?: ReactNode;
   children: ReactNode;
   width?: "md" | "lg" | "xl";
 }
@@ -103,6 +104,7 @@ export function Drawer({
   onClose,
   title,
   description,
+  headerContent,
   children,
   width = "lg",
 }: DrawerProps) {
@@ -127,30 +129,36 @@ export function Drawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-50 overflow-hidden">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in"
         onClick={onClose}
       />
 
-      {/* Drawer Panel */}
+      {/* Drawer Panel — strictly pinned to top-0, bottom-0, right-0 */}
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 flex h-full w-full flex-col border-l border-zinc-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl transition-all animate-in slide-in-from-right duration-200",
+          "fixed top-0 bottom-0 right-0 z-10 flex h-full w-full flex-col border-l border-zinc-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl transition-all animate-in slide-in-from-right duration-200",
           drawerWidthMap[width],
         )}
       >
-        <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/80 px-6 py-4">
-          <div>
-            <h3 className="text-base font-semibold leading-tight text-foreground">{title}</h3>
-            {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+        <div className="flex items-start justify-between border-b border-zinc-100 dark:border-zinc-800/80 px-6 py-4 bg-white dark:bg-zinc-900 sticky top-0 z-20 shrink-0">
+          <div className="flex-1 min-w-0 pr-3">
+            {headerContent ? (
+              headerContent
+            ) : (
+              <div>
+                <h3 className="text-base font-semibold leading-tight text-foreground">{title}</h3>
+                {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors cursor-pointer"
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors cursor-pointer shrink-0 mt-0.5"
             aria-label="Close"
           >
             <X className="h-4 w-4" />

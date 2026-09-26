@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -7,7 +8,9 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { LeaveStatus } from "@prisma/client";
@@ -18,6 +21,8 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthContext } from "../auth/auth-context";
 import { LeaveService } from "./leave.service";
 import { PersonsService } from "./persons.service";
+import { StorageService } from "../storage/storage.service";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CreateLeaveTypeDto, DecideLeaveRequestDto, SubmitLeaveRequestDto } from "./dto/leave.dto";
 
 @ApiTags("hr/leave")
@@ -28,6 +33,7 @@ export class LeaveController {
   constructor(
     private readonly service: LeaveService,
     private readonly personsService: PersonsService,
+    private readonly storage: StorageService,
   ) {}
 
   @Get("types")
@@ -53,6 +59,38 @@ export class LeaveController {
       throw new NotFoundException("No Employee or Volunteer profile linked to your account.");
     }
     return this.service.submit(user.tenantId!, person.id, dto);
+  }
+
+  @Post("requests/upload-document")
+  @UseInterceptors(FileInterceptor("file"))
+  @RequirePermission("hr.leave.apply")
+  @ApiOperation({ summary: "Upload a supporting document for leave request" })
+  async uploadSupportingDocument(
+    @CurrentUser() user: AuthContext,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException("No file provided");
+    const cleanFileName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const fileKey = `tenants/${user.tenantId}/leave-docs/${user.userId}-${Date.now()}-${cleanFileName}`;
+    await this.storage.uploadFile(fileKey, file.buffer, file.mimetype);
+    return {
+      name: file.originalname,
+      fileKey,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+    };
+  }
+
+  @Get("requests/document-url")
+  @RequirePermission("hr.leave.read")
+  @ApiOperation({ summary: "Get presigned download URL for a leave document" })
+  async getDocumentUrl(
+    @CurrentUser() user: AuthContext,
+    @Query("key") key: string,
+  ) {
+    if (!key) throw new BadRequestException("File key is required");
+    const url = await this.storage.getPresignedUrl(key, 3600);
+    return { url };
   }
 
   @Get("requests")

@@ -84,21 +84,34 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const isLoggedIn = Boolean(user);
 
+  // Apply cached primary color immediately to avoid flicker
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("saas_erp_org_color");
+      if (cached) {
+        document.documentElement.style.setProperty("--primary", hexToHslTriple(cached));
+      }
+    }
+  }, []);
+
   const { data: org } = useQuery({
     queryKey: ["org", "theme"],
     queryFn: () => api.get<Tenant>("/admin/org"),
     enabled: isLoggedIn,
-    retry: false,
+    retry: 2,
+    staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
     const root = document.documentElement;
     if (org?.primaryColor) {
       root.style.setProperty("--primary", hexToHslTriple(org.primaryColor));
-    } else {
+      localStorage.setItem("saas_erp_org_color", org.primaryColor);
+    } else if (!isLoggedIn) {
       root.style.removeProperty("--primary");
+      localStorage.removeItem("saas_erp_org_color");
     }
-  }, [org?.primaryColor]);
+  }, [org?.primaryColor, isLoggedIn]);
 
   return (
     <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme, toggleTheme }}>

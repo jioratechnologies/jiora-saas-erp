@@ -26,6 +26,11 @@ export class CreatePersonDto {
   @IsString()
   phone?: string;
 
+  @ApiPropertyOptional({ example: "+91 9876543210" })
+  @IsOptional()
+  @IsString()
+  whatsapp?: string;
+
   @ApiPropertyOptional({ example: "Male" })
   @IsOptional()
   @IsString()
@@ -40,6 +45,16 @@ export class CreatePersonDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional({ example: "Flat 402, Sunshine Apts, Saket, New Delhi" })
+  @IsOptional()
+  @IsString()
+  currentAddress?: string;
+
+  @ApiPropertyOptional({ example: "House 12, Main Street, Varanasi, UP" })
+  @IsOptional()
+  @IsString()
+  permanentAddress?: string;
 
   @ApiPropertyOptional({ example: "+91 9876543211 (Brother)" })
   @IsOptional()
@@ -101,6 +116,11 @@ export class UpdatePersonDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  whatsapp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   gender?: string;
 
   @ApiPropertyOptional()
@@ -112,6 +132,16 @@ export class UpdatePersonDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currentAddress?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  permanentAddress?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -132,6 +162,11 @@ export class UpdatePersonDto {
   @IsOptional()
   @IsString()
   managerId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }
 
 export class ExitPersonDto {
@@ -154,4 +189,20 @@ export class UploadDocumentDto {
   @ApiProperty({ enum: DocumentCategory, default: DocumentCategory.KYC })
   @IsEnum(DocumentCategory)
   category!: DocumentCategory;
+
+  @ApiPropertyOptional({ example: "1234-5678-9012" })
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+}
+
+export class ReviewDocumentDto {
+  @ApiProperty({ enum: ["APPROVED", "REJECTED"] })
+  @IsEnum(["APPROVED", "REJECTED"])
+  status!: "APPROVED" | "REJECTED";
+
+  @ApiPropertyOptional({ example: "Document image is blurred, please upload a clear copy" })
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
 }

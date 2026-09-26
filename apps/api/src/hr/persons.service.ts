@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, PersonStatus, PersonType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
@@ -91,9 +91,12 @@ export class PersonsService {
             lastName: dto.lastName.trim(),
             email: dto.email.toLowerCase().trim(),
             phone: dto.phone?.trim(),
+            whatsapp: dto.whatsapp?.trim() || dto.phone?.trim() || null,
             gender: dto.gender,
             dob: dto.dob ? new Date(dto.dob) : null,
-            address: dto.address?.trim(),
+            address: dto.currentAddress?.trim() || dto.address?.trim() || null,
+            currentAddress: dto.currentAddress?.trim() || dto.address?.trim() || null,
+            permanentAddress: dto.permanentAddress?.trim() || dto.currentAddress?.trim() || dto.address?.trim() || null,
             emergencyContact: dto.emergencyContact?.trim(),
             departmentId: dto.departmentId || null,
             designationId: dto.designationId || null,
@@ -138,13 +141,16 @@ export class PersonsService {
           firstName: dto.firstName?.trim(),
           lastName: dto.lastName?.trim(),
           phone: dto.phone?.trim(),
+          whatsapp: dto.whatsapp !== undefined ? (dto.whatsapp?.trim() || null) : undefined,
           gender: dto.gender,
           dob: dto.dob ? new Date(dto.dob) : undefined,
-          address: dto.address?.trim(),
+          address: dto.currentAddress !== undefined ? (dto.currentAddress?.trim() || null) : (dto.address?.trim() || undefined),
+          currentAddress: dto.currentAddress !== undefined ? (dto.currentAddress?.trim() || null) : undefined,
+          permanentAddress: dto.permanentAddress !== undefined ? (dto.permanentAddress?.trim() || null) : undefined,
           emergencyContact: dto.emergencyContact?.trim(),
-          departmentId: dto.departmentId,
-          designationId: dto.designationId,
-          managerId: dto.managerId,
+          departmentId: dto.departmentId !== undefined ? (dto.departmentId || null) : undefined,
+          designationId: dto.designationId !== undefined ? (dto.designationId || null) : undefined,
+          managerId: dto.managerId !== undefined ? (dto.managerId || null) : undefined,
         },
         include: {
           department: true,
@@ -153,6 +159,8 @@ export class PersonsService {
         },
       });
 
+      // Invalidate org structure cache
+      await this.cache.del(`tenant:${tenantId}:org_structure`);
       return updated;
     });
   }
@@ -197,6 +205,8 @@ export class PersonsService {
           mimeType: file.mimetype,
           sizeBytes: file.size,
           category: dto.category,
+          documentNumber: dto.documentNumber?.trim() || null,
+          status: "PENDING",
         },
       });
     });
@@ -207,8 +217,31 @@ export class PersonsService {
       const doc = await tx.personDocument.findFirst({ where: { id: documentId, personId, tenantId } });
       if (!doc) throw new NotFoundException("Document not found");
 
-      const downloadUrl = await this.storage.getPresignedUrl(doc.fileKey, 900);
-      return { ...doc, downloadUrl };
+      const downloadUrl = await this.storage.getPresignedUrl(doc.fileKey, 900, doc.name);
+      return { ...doc, downloadUrl, url: downloadUrl };
+    });
+  }
+
+  async reviewDocument(
+    tenantId: string,
+    personId: string,
+    documentId: string,
+    reviewerId: string,
+    dto: { status: "APPROVED" | "REJECTED"; rejectionReason?: string },
+  ) {
+    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      const doc = await tx.personDocument.findFirst({ where: { id: documentId, personId, tenantId } });
+      if (!doc) throw new NotFoundException("Document not found");
+
+      return tx.personDocument.update({
+        where: { id: documentId },
+        data: {
+          status: dto.status,
+          rejectionReason: dto.status === "REJECTED" ? (dto.rejectionReason?.trim() || "Rejected by HR") : null,
+          verifiedAt: new Date(),
+          verifiedBy: reviewerId,
+        },
+      });
     });
   }
 
@@ -216,6 +249,10 @@ export class PersonsService {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const doc = await tx.personDocument.findFirst({ where: { id: documentId, personId, tenantId } });
       if (!doc) throw new NotFoundException("Document not found");
+
+      if (doc.status === "APPROVED") {
+        throw new BadRequestException("Approved KYC and compliance documents cannot be deleted.");
+      }
 
       await this.storage.deleteFile(doc.fileKey);
       await tx.personDocument.delete({ where: { id: documentId } });

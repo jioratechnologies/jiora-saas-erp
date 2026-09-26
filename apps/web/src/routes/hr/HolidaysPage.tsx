@@ -5,6 +5,7 @@ import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
+import { DatePicker } from "../../components/ui/date-picker";
 import { DateInput } from "../../components/ui/date-input";
 import { Badge } from "../../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
@@ -226,11 +227,11 @@ export function HolidaysPage() {
             />
           </div>
 
-          <DateInput
-            label="Date *"
+          <DatePicker
+            label="Date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
+            onChange={(val) => setDate(val)}
+            isRequired
           />
 
           <div className="flex items-center gap-2 pt-1">

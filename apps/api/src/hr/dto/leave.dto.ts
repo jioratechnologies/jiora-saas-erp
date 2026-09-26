@@ -42,6 +42,13 @@ export class SubmitLeaveRequestDto {
   @IsString()
   @IsNotEmpty()
   reason!: string;
+
+  @ApiPropertyOptional({
+    description: "Array of supporting document attachments with name, fileKey, sizeBytes, mimeType",
+    example: [{ name: "medical-certificate.pdf", fileKey: "...", sizeBytes: 102400, mimeType: "application/pdf" }],
+  })
+  @IsOptional()
+  supportingDocuments?: any[];
 }
 
 export class DecideLeaveRequestDto {

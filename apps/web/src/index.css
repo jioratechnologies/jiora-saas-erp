@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Design tokens, shadcn & HeroUI convention (space-separated HSL triples).
+ * Design tokens and theme convention (space-separated HSL triples).
  *
  * Only --primary and --primary-foreground are ever touched at runtime, by
  * ThemeProvider (src/theme/ThemeProvider.tsx) for tenant white-labelling.
