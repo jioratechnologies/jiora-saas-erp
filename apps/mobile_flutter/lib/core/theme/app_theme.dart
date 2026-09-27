@@ -4,8 +4,10 @@ class AppTheme {
   static const Color primary = Color(0xFFE11D48); // HeroUI rose primary
   static const Color primaryHover = Color(0xFFBE123C);
   static const Color darkBg = Color(0xFF09090B); // zinc-950
+  static const Color darkBackground = darkBg;
   static const Color darkCard = Color(0xFF18181B); // zinc-900
   static const Color darkBorder = Color(0xFF27272A); // zinc-800
+  static const Color darkMutedText = Color(0xFFA1A1AA); // zinc-400
   static const Color lightBg = Color(0xFFF8FAFC);
   static const Color lightCard = Colors.white;
   static const Color lightBorder = Color(0xFFE2E8F0);

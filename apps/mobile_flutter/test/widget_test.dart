@@ -1,11 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:saas_erp_mobile/core/auth/zitadel_auth_service.dart';
 import 'package:saas_erp_mobile/core/network/api_client.dart';
 import 'package:saas_erp_mobile/main.dart';
 
 void main() {
   testWidgets('SaaS ERP Mobile app smoke test', (WidgetTester tester) async {
     final client = ApiClient();
-    await tester.pumpWidget(SaaSErpApp(apiClient: client));
+    final authService = ZitadelAuthService(apiClient: client);
+    await tester.pumpWidget(SaaSErpApp(
+      apiClient: client,
+      authService: authService,
+      initialAuthenticated: false,
+    ));
     expect(find.byType(SaaSErpApp), findsOneWidget);
   });
 }

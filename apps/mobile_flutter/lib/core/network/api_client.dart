@@ -1,14 +1,17 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
-  static const String defaultBaseUrl = 'http://10.0.2.2:3000'; // Standard Android emulator localhost
+  static String get defaultBaseUrl =>
+      kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
 
   String baseUrl;
   String? token;
 
-  ApiClient({this.baseUrl = defaultBaseUrl, this.token});
+  ApiClient({String? baseUrl, this.token})
+      : baseUrl = baseUrl ?? defaultBaseUrl;
 
   static Future<ApiClient> create() async {
     final prefs = await SharedPreferences.getInstance();
@@ -21,6 +24,12 @@ class ApiClient {
     token = newToken;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', newToken);
+  }
+
+  Future<void> clearToken() async {
+    token = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
   }
 
   Future<void> saveBaseUrl(String newUrl) async {
