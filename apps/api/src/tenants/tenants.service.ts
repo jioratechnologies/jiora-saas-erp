@@ -54,6 +54,43 @@ export class TenantsService {
     });
   }
 
+  async getPublicBranding(slug: string) {
+    return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
+      const tenant = await tx.tenant.findUnique({
+        where: { slug },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          customDomain: true,
+          logoUrl: true,
+          primaryColor: true,
+          showPoweredBy: true,
+        },
+      });
+      if (!tenant) throw new NotFoundException(`Organisation "${slug}" not found`);
+      return tenant;
+    });
+  }
+
+  async listPublicTenants() {
+    return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
+      return tx.tenant.findMany({
+        where: { suspendedAt: null },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          customDomain: true,
+          logoUrl: true,
+          primaryColor: true,
+          showPoweredBy: true,
+        },
+        orderBy: { name: "asc" },
+      });
+    });
+  }
+
   async updateTheme(tenantId: string, dto: UpdateTenantThemeDto) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       await this.assertExists(tx, tenantId);

@@ -17,13 +17,16 @@ class AppTheme {
   static const Color rose = Color(0xFFF43F5E);
   static const Color amber = Color(0xFFF59E0B);
 
-  static ThemeData get darkTheme {
+  static ThemeData get darkTheme => createDynamicTheme(primary);
+
+  static ThemeData createDynamicTheme(Color brandColor) {
     return ThemeData(
       brightness: Brightness.dark,
       scaffoldBackgroundColor: darkBg,
-      primaryColor: primary,
-      colorScheme: const ColorScheme.dark(
-        primary: primary,
+      primaryColor: brandColor,
+      colorScheme: ColorScheme.dark(
+        primary: brandColor,
+        secondary: brandColor,
         surface: darkCard,
       ),
       cardTheme: CardThemeData(
@@ -46,7 +49,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primary,
+          backgroundColor: brandColor,
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -66,10 +69,10 @@ class AppTheme {
           ),
         ),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: darkCard,
-        selectedItemColor: primary,
-        unselectedItemColor: Color(0xFFA1A1AA),
+        selectedItemColor: brandColor,
+        unselectedItemColor: const Color(0xFFA1A1AA),
         type: BottomNavigationBarType.fixed,
         elevation: 0,
       ),

@@ -3,6 +3,7 @@ import 'core/auth/auth_models.dart';
 import 'core/auth/zitadel_auth_service.dart';
 import 'core/network/api_client.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/branding_service.dart';
 import 'features/attendance/attendance_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/claims/claims_screen.dart';
@@ -13,13 +14,22 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final apiClient = await ApiClient.create();
   final authService = ZitadelAuthService(apiClient: apiClient);
+  final brandingService = BrandingService(apiClient: apiClient);
+
+  // Initialize branding from local storage or default pilot tenant
+  await brandingService.init();
 
   // Check for Zitadel OIDC callback code or existing saved session
   final isAuthenticated = await authService.handleAuthCallbackOrRestoreSession();
+  if (isAuthenticated) {
+    // Sync active tenant branding for the authenticated user
+    await brandingService.syncFromLoggedInOrg();
+  }
 
   runApp(SaaSErpApp(
     apiClient: apiClient,
     authService: authService,
+    brandingService: brandingService,
     initialAuthenticated: isAuthenticated,
   ));
 }
@@ -27,12 +37,14 @@ void main() async {
 class SaaSErpApp extends StatefulWidget {
   final ApiClient apiClient;
   final ZitadelAuthService authService;
+  final BrandingService brandingService;
   final bool initialAuthenticated;
 
   const SaaSErpApp({
     super.key,
     required this.apiClient,
     required this.authService,
+    required this.brandingService,
     this.initialAuthenticated = false,
   });
 
@@ -49,35 +61,47 @@ class _SaaSErpAppState extends State<SaaSErpApp> {
     _isAuthenticated = widget.initialAuthenticated || widget.authService.currentUser != null;
   }
 
-  void _onLoginSuccess() {
-    setState(() {
-      _isAuthenticated = true;
-    });
+  void _onLoginSuccess() async {
+    await widget.brandingService.syncFromLoggedInOrg();
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = true;
+      });
+    }
   }
 
   void _onSignOut() async {
     await widget.authService.signOut();
-    setState(() {
-      _isAuthenticated = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SaaS ERP Mobile',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: _isAuthenticated
-          ? AppShell(
-              apiClient: widget.apiClient,
-              authService: widget.authService,
-              onSignOut: _onSignOut,
-            )
-          : LoginScreen(
-              authService: widget.authService,
-              onLoginSuccess: _onLoginSuccess,
-            ),
+    return ValueListenableBuilder<TenantBranding>(
+      valueListenable: widget.brandingService.brandingNotifier,
+      builder: (context, branding, _) {
+        return MaterialApp(
+          title: branding.name,
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.createDynamicTheme(branding.primaryColor),
+          home: _isAuthenticated
+              ? AppShell(
+                  apiClient: widget.apiClient,
+                  authService: widget.authService,
+                  brandingService: widget.brandingService,
+                  onSignOut: _onSignOut,
+                )
+              : LoginScreen(
+                  authService: widget.authService,
+                  brandingService: widget.brandingService,
+                  onLoginSuccess: _onLoginSuccess,
+                ),
+        );
+      },
     );
   }
 }
@@ -85,12 +109,14 @@ class _SaaSErpAppState extends State<SaaSErpApp> {
 class AppShell extends StatefulWidget {
   final ApiClient apiClient;
   final ZitadelAuthService authService;
+  final BrandingService brandingService;
   final VoidCallback onSignOut;
 
   const AppShell({
     super.key,
     required this.apiClient,
     required this.authService,
+    required this.brandingService,
     required this.onSignOut,
   });
 
@@ -112,9 +138,14 @@ class _AppShellState extends State<AppShell> {
       PayslipsScreen(apiClient: widget.apiClient),
       ClaimsScreen(apiClient: widget.apiClient),
     ];
+
+    // Refresh organization branding upon mounting shell
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.brandingService.syncFromLoggedInOrg();
+    });
   }
 
-  void _showUserProfileModal(BuildContext context, UserProfile? user) {
+  void _showUserProfileModal(BuildContext context, UserProfile? user, TenantBranding branding) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.darkCard,
@@ -143,7 +174,7 @@ class _AppShellState extends State<AppShell> {
                 children: [
                   CircleAvatar(
                     radius: 26,
-                    backgroundColor: const Color(0xFFE11D48),
+                    backgroundColor: branding.primaryColor,
                     child: Text(
                       user != null && user.displayName.isNotEmpty
                           ? user.displayName[0].toUpperCase()
@@ -185,6 +216,9 @@ class _AppShellState extends State<AppShell> {
               const Divider(color: AppTheme.darkBorder),
               const SizedBox(height: 12),
 
+              _buildDetailRow('Organisation', branding.name),
+              if (branding.slug.isNotEmpty && branding.slug != 'default')
+                _buildDetailRow('Workspace Slug', branding.slug),
               if (user != null) ...[
                 if (user.designationName != null || user.departmentName != null)
                   _buildDetailRow(
@@ -199,7 +233,7 @@ class _AppShellState extends State<AppShell> {
                 ),
                 _buildDetailRow(
                   'Auth Provider',
-                  'Zitadel OIDC (PKCE)',
+                  'Zitadel OIDC',
                 ),
               ],
               const SizedBox(height: 24),
@@ -220,7 +254,7 @@ class _AppShellState extends State<AppShell> {
                 ),
                 icon: const Icon(Icons.logout_rounded, size: 20),
                 label: const Text(
-                  'Sign Out from Zitadel',
+                  'Sign Out from Workspace',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -258,6 +292,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final user = widget.authService.currentUser;
+    final branding = widget.brandingService.current;
 
     return Scaffold(
       appBar: AppBar(
@@ -265,55 +300,65 @@ class _AppShellState extends State<AppShell> {
         elevation: 0,
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE11D48),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.shield_rounded, size: 16, color: Colors.white),
-            ),
+            branding.buildLogo(size: 32, borderRadius: 8),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'SaaS ERP',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    branding.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                Text(
-                  user?.displayName ?? 'Online',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.darkMutedText,
+                  Text(
+                    user?.displayName ?? 'Online',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.darkMutedText,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          // Zitadel OIDC status chip
+          // Dynamic brand indicator chip
           Container(
             margin: const EdgeInsets.symmetric(vertical: 12),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: AppTheme.emerald.withOpacity(0.12),
+              color: branding.primaryColor.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.emerald.withOpacity(0.3)),
+              border: Border.all(color: branding.primaryColor.withOpacity(0.4)),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_outline, size: 12, color: AppTheme.emerald),
-                SizedBox(width: 4),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: branding.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
                 Text(
-                  'Zitadel',
-                  style: TextStyle(fontSize: 11, color: AppTheme.emerald, fontWeight: FontWeight.bold),
+                  branding.slug != 'default' ? branding.slug : 'Enterprise',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: branding.primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -322,7 +367,7 @@ class _AppShellState extends State<AppShell> {
           IconButton(
             icon: CircleAvatar(
               radius: 15,
-              backgroundColor: const Color(0xFFE11D48).withOpacity(0.3),
+              backgroundColor: branding.primaryColor.withOpacity(0.3),
               child: Text(
                 user != null && user.displayName.isNotEmpty
                     ? user.displayName[0].toUpperCase()
@@ -334,7 +379,7 @@ class _AppShellState extends State<AppShell> {
                 ),
               ),
             ),
-            onPressed: () => _showUserProfileModal(context, user),
+            onPressed: () => _showUserProfileModal(context, user, branding),
           ),
           const SizedBox(width: 8),
         ],
