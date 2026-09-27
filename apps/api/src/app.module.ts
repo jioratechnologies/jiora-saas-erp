@@ -9,6 +9,7 @@ import { AdminModule } from "./admin/admin.module";
 import { CacheModule } from "./cache/cache.module";
 import { StorageModule } from "./storage/storage.module";
 import { HrModule } from "./hr/hr.module";
+import { PayrollModule } from "./payroll/payroll.module";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { HrModule } from "./hr/hr.module";
     CacheModule,
     StorageModule,
     HrModule,
+    PayrollModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,17 @@
+# Copy this file to local.properties (gitignored) and fill in real values.
+# Android Studio manages sdk.dir automatically — leave it if already present.
+
+# Next.js API base URL. 10.0.2.2 is how the Android EMULATOR reaches your
+# host machine's localhost — use your real deployed URL for a physical
+# device or a production build.
+API_BASE_URL=http://10.0.2.2:3000/
+
+# Same Supabase project as the website (.env.local NEXT_PUBLIC_SUPABASE_URL
+# / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) — the app authenticates teachers
+# directly against Supabase Auth, then calls the Next.js attendance API
+# with the resulting access token.
+SUPABASE_URL=https://tneumkqfkayyzinpfapy.supabase.co
+SUPABASE_ANON_KEY=
+
+# dev | production — see ATTENDANCE_PLAN.md and gradle.properties.
+attendanceMode=dev

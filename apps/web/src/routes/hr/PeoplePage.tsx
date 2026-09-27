@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   UserPlus,
@@ -59,6 +59,7 @@ import {
   type EmergencyRelation,
 } from "../../lib/input-constraints";
 import { cn } from "../../lib/utils";
+import { exportToCsv } from "../../lib/csv-export";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -108,6 +109,14 @@ interface Person {
   joiningDate?: string | null;
   exitDate?: string | null;
   exitReason?: string | null;
+  exitChecklist?: {
+    assetReturn?: boolean;
+    idCardReturn?: boolean;
+    knowledgeHandover?: boolean;
+    financeClearance?: boolean;
+    notes?: string;
+    completedAt?: string;
+  } | null;
   departmentId?: string | null;
   department?: DepartmentOption | null;
   designationId?: string | null;
@@ -137,6 +146,18 @@ export function PeoplePage() {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectDocId, setRejectDocId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+
+  // Bulk Import State
+  const [bulkImportModalOpen, setBulkImportModalOpen] = useState(false);
+  const [bulkCsvText, setBulkCsvText] = useState("");
+  const [bulkParsedRows, setBulkParsedRows] = useState<any[]>([]);
+
+  // Exit Checklist Drawer State
+  const [assetReturn, setAssetReturn] = useState(false);
+  const [idCardReturn, setIdCardReturn] = useState(false);
+  const [knowledgeHandover, setKnowledgeHandover] = useState(false);
+  const [financeClearance, setFinanceClearance] = useState(false);
+  const [exitClearanceNotes, setExitClearanceNotes] = useState("");
 
   // Edit Person & Reporting State
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -227,6 +248,132 @@ export function PeoplePage() {
     queryFn: () => api.get<Person>(`/hr/persons/${selectedPersonId}`),
     enabled: !!selectedPersonId,
   });
+
+  useEffect(() => {
+    if (selectedPerson) {
+      const chk = selectedPerson.exitChecklist || {};
+      setAssetReturn(!!chk.assetReturn);
+      setIdCardReturn(!!chk.idCardReturn);
+      setKnowledgeHandover(!!chk.knowledgeHandover);
+      setFinanceClearance(!!chk.financeClearance);
+      setExitClearanceNotes(chk.notes || "");
+    }
+  }, [selectedPerson]);
+
+  const updateExitChecklist = useMutation({
+    mutationFn: ({ personId, checklist, isFinalized }: { personId: string; checklist: any; isFinalized?: boolean }) =>
+      api.patch(`/hr/persons/${personId}/exit-checklist`, { ...checklist, isFinalized }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
+      toast.success("Exit checklist updated", "Offboarding clearance record saved.");
+    },
+    onError: (err) => {
+      toast.error("Failed to update exit checklist", (err as Error).message);
+    },
+  });
+
+  const bulkImport = useMutation({
+    mutationFn: (records: any[]) =>
+      api.post<{ total: number; importedCount: number; failedCount: number; errors: any[] }>(
+        "/hr/persons/bulk-import",
+        { records }
+      ),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
+      toast.success("Bulk import completed", `Imported ${res.importedCount} of ${res.total} staff members.`);
+      setBulkImportModalOpen(false);
+      setBulkCsvText("");
+      setBulkParsedRows([]);
+    },
+    onError: (err) => {
+      toast.error("Bulk import failed", (err as Error).message);
+    },
+  });
+
+  const handleExportStaffDirectory = () => {
+    if (!people || people.length === 0) {
+      toast.error("No staff to export", "No records found matching current filters.");
+      return;
+    }
+    const headers = [
+      "First Name",
+      "Last Name",
+      "Email",
+      "Phone",
+      "Person Type",
+      "Status",
+      "Department",
+      "Designation",
+      "Reporting Manager",
+      "Joining Date",
+      "Exit Date",
+      "Exit Reason",
+    ];
+    const rows = people.map((p) => [
+      p.firstName,
+      p.lastName,
+      p.email,
+      p.phone || "",
+      p.personType,
+      p.status,
+      p.department?.name || "",
+      p.designation?.name || "",
+      p.manager ? `${p.manager.firstName} ${p.manager.lastName}` : "",
+      p.joiningDate ? new Date(p.joiningDate).toLocaleDateString() : "",
+      p.exitDate ? new Date(p.exitDate).toLocaleDateString() : "",
+      p.exitReason || "",
+    ]);
+    exportToCsv("Staff_Directory_Export", headers, rows);
+    toast.success("Staff directory exported", `${rows.length} records downloaded.`);
+  };
+
+  const handleDownloadSampleCsv = () => {
+    const headers = [
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "personType",
+      "departmentName",
+      "designationName",
+      "joiningDate",
+    ];
+    const sampleRows = [
+      ["Pooja", "Sharma", "pooja.sharma@example.org", "+91 9876543210", "EMPLOYEE", "Programmes", "Project Coordinator", "2026-02-01"],
+      ["Amit", "Verma", "amit.verma@example.org", "+91 9812345678", "VOLUNTEER", "Field Operations", "Field Volunteer", "2026-03-15"],
+    ];
+    exportToCsv("sample_staff_import", headers, sampleRows);
+    toast.success("Template downloaded", "Fill in your staff details and upload.");
+  };
+
+  const handleParseCsv = (rawText: string) => {
+    setBulkCsvText(rawText);
+    const lines = rawText.trim().split("\n").filter((l) => l.trim().length > 0);
+    if (lines.length <= 1) {
+      setBulkParsedRows([]);
+      return;
+    }
+    const headers = lines[0].split(",").map((h) => h.replace(/["\r]/g, "").trim().toLowerCase());
+    const rows = lines.slice(1).map((line) => {
+      const values = line.split(",").map((v) => v.replace(/["\r]/g, "").trim());
+      const rowObj: any = {};
+      headers.forEach((h, i) => {
+        rowObj[h] = values[i] || "";
+      });
+      return {
+        firstName: rowObj.firstname || rowObj["first name"] || "",
+        lastName: rowObj.lastname || rowObj["last name"] || "",
+        email: rowObj.email || "",
+        phone: rowObj.phone || "",
+        personType: (rowObj.persontype || rowObj["person type"] || "EMPLOYEE").toUpperCase() === "VOLUNTEER" ? "VOLUNTEER" : "EMPLOYEE",
+        departmentName: rowObj.departmentname || rowObj.department || "",
+        designationName: rowObj.designationname || rowObj.designation || "",
+        joiningDate: rowObj.joiningdate || rowObj["joining date"] || new Date().toISOString().split("T")[0],
+      };
+    }).filter((r) => r.email && r.firstName);
+
+    setBulkParsedRows(rows);
+  };
 
   // Mutations
   const createPerson = useMutation({
@@ -461,10 +608,36 @@ export function PeoplePage() {
           title="Person Master"
           description="Manage employee and volunteer profiles, reporting hierarchies, and records."
         />
-        <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0">
-          <UserPlus className="h-4 w-4" />
-          <span>New Person</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportStaffDirectory}
+            className="gap-1.5 font-semibold"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export Directory</span>
+          </Button>
+          {canManage && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setBulkCsvText("");
+                setBulkParsedRows([]);
+                setBulkImportModalOpen(true);
+              }}
+              className="gap-1.5 font-semibold"
+            >
+              <Upload className="h-4 w-4" />
+              <span>Bulk Import</span>
+            </Button>
+          )}
+          <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0 font-bold">
+            <UserPlus className="h-4 w-4" />
+            <span>New Person</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filters and Search Bar */}
@@ -1245,24 +1418,147 @@ export function PeoplePage() {
               </div>
             </div>
 
-            {/* Resignation / Exit Action */}
-            {selectedPerson.status !== "EXITED" && (
-              <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
+            {/* Resignation / Exit Clearance Section */}
+            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+              <div className="flex justify-between items-center">
                 <div>
-                  <h6 className="text-xs font-semibold text-foreground">Offboarding / Exit</h6>
-                  <p className="text-[11px] text-muted-foreground">Record resignation or completion of contract.</p>
+                  <h6 className="text-xs font-semibold text-foreground">Offboarding & Exit Clearance</h6>
+                  <p className="text-[11px] text-muted-foreground">Handover tracking, asset return, and record closure.</p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExitModalOpen(true)}
-                  className="gap-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Process Exit
-                </Button>
+                {selectedPerson.status !== "EXITED" && selectedPerson.status !== "NOTICE_PERIOD" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExitModalOpen(true)}
+                    className="gap-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Process Resignation
+                  </Button>
+                )}
               </div>
-            )}
+
+              {(selectedPerson.status === "NOTICE_PERIOD" || selectedPerson.status === "EXITED" || selectedPerson.exitChecklist) && (
+                <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground">Exit Clearance Checklist</span>
+                    {selectedPerson.exitChecklist?.completedAt && (
+                      <Badge variant="success" size="sm" dot>
+                        Clearance Completed
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={assetReturn}
+                        onChange={(e) => setAssetReturn(e.target.checked)}
+                        className="rounded text-primary focus:ring-primary h-4 w-4"
+                      />
+                      <span>Physical Assets (Laptop, Keys, etc.)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={idCardReturn}
+                        onChange={(e) => setIdCardReturn(e.target.checked)}
+                        className="rounded text-primary focus:ring-primary h-4 w-4"
+                      />
+                      <span>Staff ID Card & Access Badge</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={knowledgeHandover}
+                        onChange={(e) => setKnowledgeHandover(e.target.checked)}
+                        className="rounded text-primary focus:ring-primary h-4 w-4"
+                      />
+                      <span>Knowledge & Project Handover</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={financeClearance}
+                        onChange={(e) => setFinanceClearance(e.target.checked)}
+                        className="rounded text-primary focus:ring-primary h-4 w-4"
+                      />
+                      <span>Finance & Expense Claims Clearance</span>
+                    </label>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground">Handover & Clearance Notes</label>
+                    <Input
+                      placeholder="e.g. Handover file transferred to Anita, all keys handed over to admin."
+                      value={exitClearanceNotes}
+                      onChange={(e) => setExitClearanceNotes(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  {canManage && (
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          updateExitChecklist.mutate({
+                            personId: selectedPerson.id,
+                            checklist: {
+                              assetReturn,
+                              idCardReturn,
+                              knowledgeHandover,
+                              financeClearance,
+                              notes: exitClearanceNotes,
+                            },
+                          })
+                        }
+                        disabled={updateExitChecklist.isPending}
+                        className="text-xs h-8"
+                      >
+                        Save Checklist
+                      </Button>
+
+                      {selectedPerson.status !== "EXITED" && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: `Finalize exit for ${selectedPerson.firstName}?`,
+                              description: "This will mark the record as EXITED and complete offboarding.",
+                              confirmLabel: "Finalize & Close",
+                            });
+                            if (ok) {
+                              updateExitChecklist.mutate({
+                                personId: selectedPerson.id,
+                                checklist: {
+                                  assetReturn,
+                                  idCardReturn,
+                                  knowledgeHandover,
+                                  financeClearance,
+                                  notes: exitClearanceNotes,
+                                },
+                                isFinalized: true,
+                              });
+                            }
+                          }}
+                          disabled={updateExitChecklist.isPending}
+                          className="text-xs h-8 font-bold"
+                        >
+                          Finalize Exit Closure
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Drawer>
@@ -1779,6 +2075,129 @@ export function PeoplePage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Bulk Staff & Volunteer Import Modal */}
+      <Modal
+        isOpen={bulkImportModalOpen}
+        onClose={() => {
+          setBulkImportModalOpen(false);
+          setBulkCsvText("");
+          setBulkParsedRows([]);
+        }}
+        title="Bulk Staff & Volunteer Onboarding"
+        description="Upload a CSV file or paste formatted CSV records to batch-create profiles."
+      >
+        <div className="space-y-4 pt-2">
+          {/* Step 1: Download Template */}
+          <div className="flex items-center justify-between p-3 rounded-xl border border-primary/20 bg-primary/5 text-xs">
+            <div>
+              <p className="font-semibold text-foreground">Need the standard spreadsheet format?</p>
+              <p className="text-[11px] text-muted-foreground">Includes pre-configured headers and sample rows.</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadSampleCsv}
+              className="gap-1.5 shrink-0 bg-white dark:bg-zinc-900 border-primary/30 text-primary font-semibold"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Download CSV Template</span>
+            </Button>
+          </div>
+
+          {/* Step 2: Upload or Paste CSV */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-foreground">CSV File or Data</label>
+              <label className="text-xs text-primary font-semibold cursor-pointer hover:underline">
+                Upload .csv file
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const content = event.target?.result as string;
+                        handleParseCsv(content);
+                      };
+                      reader.readAsText(file);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+            <textarea
+              rows={6}
+              value={bulkCsvText}
+              onChange={(e) => handleParseCsv(e.target.value)}
+              placeholder={`firstName,lastName,email,phone,personType,departmentName,designationName,joiningDate\nPooja,Sharma,pooja@example.org,+91 9876543210,EMPLOYEE,Programmes,Project Coordinator,2026-02-01`}
+              className="w-full p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-mono focus:ring-2 focus:ring-primary focus:outline-none"
+            />
+          </div>
+
+          {/* Preview of Parsed Rows */}
+          {bulkParsedRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-foreground">
+                  Ready to Import: <strong className="text-primary">{bulkParsedRows.length}</strong> staff members
+                </span>
+              </div>
+              <div className="max-h-36 overflow-y-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <table className="w-full text-[11px] text-left">
+                  <thead className="bg-zinc-50 dark:bg-zinc-800/60 sticky top-0 border-b border-zinc-200 dark:border-zinc-800">
+                    <tr>
+                      <th className="p-1.5">Name</th>
+                      <th className="p-1.5">Email</th>
+                      <th className="p-1.5">Type</th>
+                      <th className="p-1.5">Dept</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {bulkParsedRows.slice(0, 10).map((r, i) => (
+                      <tr key={i}>
+                        <td className="p-1.5 font-medium">{r.firstName} {r.lastName}</td>
+                        <td className="p-1.5 font-mono text-muted-foreground">{r.email}</td>
+                        <td className="p-1.5"><Badge size="sm" variant="outline">{r.personType}</Badge></td>
+                        <td className="p-1.5">{r.departmentName || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setBulkImportModalOpen(false);
+                setBulkCsvText("");
+                setBulkParsedRows([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => bulkImport.mutate(bulkParsedRows)}
+              disabled={bulkParsedRows.length === 0 || bulkImport.isPending}
+              className="gap-2 font-bold"
+            >
+              <Upload className="h-4 w-4" />
+              <span>{bulkImport.isPending ? "Importing…" : `Import ${bulkParsedRows.length} Staff`}</span>
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

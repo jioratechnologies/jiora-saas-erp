@@ -19,3 +19,19 @@ Whenever writing frontend or backend code:
 4. **Frontend (`apps/web`)**:
    - Always sanitize errors using `formatErrorMessage` from `apps/web/src/lib/error-formatter.ts`.
    - The API client (`apps/web/src/api/client.ts`) and `toast.error()` automatically wrap and sanitize any thrown error or status code.
+
+## Mandatory Standard: Local AI Activity Tracker
+- Always read `AI_TRACKER.local.md` at the start of any conversation or task to understand recent architecture changes, active branch, and status.
+- Whenever completing a task, append a new entry to the Chronological Activity & Change Log in `AI_TRACKER.local.md` detailing what was done, what files were created/modified, and the outcome.
+- Never commit `AI_TRACKER.local.md` to GitHub (it is excluded via `.gitignore` and `.git/info/exclude`).
+
+## Mandatory Standard: Backend Modular Code Structure (`apps/api`)
+- In NestJS feature modules, **never** mix controllers and services together in the root of the module folder.
+- Always use dedicated subdirectories for separation of concerns:
+  - Controllers in `controllers/` (e.g. `controllers/payroll.controller.ts`)
+  - Services in `services/` (e.g. `services/payroll.service.ts`)
+  - DTOs in `dto/` (e.g. `dto/payroll.dto.ts`)
+
+## Mobile Application Framework
+- The mobile application will be built using **Flutter** (Dart) for cross-platform Android & iOS support, rather than native Kotlin.
+

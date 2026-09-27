@@ -37,6 +37,15 @@ model Tenant {
   leaveRequests   LeaveRequest[]
   holidays        Holiday[]
 
+  salaryComponents          SalaryComponent[]
+  salaryStructures          SalaryStructure[]
+  employeeSalaryAssignments EmployeeSalaryAssignment[]
+  payrollRuns               PayrollRun[]
+  payslips                  Payslip[]
+  expenseClaims             ExpenseClaim[]
+  salaryAdvances            SalaryAdvance[]
+  salaryRevisions           SalaryRevision[]
+
   @@map("tenants")
 }
 
@@ -230,6 +239,11 @@ model Person {
   confirmationDate DateTime?    @map("confirmation_date")
   exitDate         DateTime?    @map("exit_date")
   exitReason       String?      @map("exit_reason")
+  exitChecklist    Json?        @default("{}") @map("exit_checklist")
+  panNumber        String?      @map("pan_number")
+  aadhaarNumber    String?      @map("aadhaar_number")
+  bankAccount      String?      @map("bank_account")
+  bankIfsc         String?      @map("bank_ifsc")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
@@ -243,6 +257,14 @@ model Person {
   attendances    Attendance[]
   leaveRequests  LeaveRequest[]
   approvedLeaves LeaveRequest[]   @relation("LeaveApprover")
+
+  salaryAssignment  EmployeeSalaryAssignment?
+  payslips          Payslip[]
+  submittedClaims   ExpenseClaim[]            @relation("ClaimSubmitter")
+  approvedClaims    ExpenseClaim[]            @relation("ClaimApprover")
+  salaryAdvances    SalaryAdvance[]           @relation("AdvanceRequester")
+  approvedAdvances  SalaryAdvance[]           @relation("AdvanceApprover")
+  salaryRevisions   SalaryRevision[]
 
   @@unique([tenantId, email])
   @@index([tenantId, personType, status])
@@ -288,13 +310,24 @@ model Attendance {
   longitude    Float?
   locationName String?          @map("location_name")
   notes        String?
-  status       AttendanceStatus @default(PRESENT)
-  createdAt    DateTime         @default(now()) @map("created_at")
+  status               AttendanceStatus @default(PRESENT)
+  offlineAttendanceId  String?          @map("offline_attendance_id")
+  verificationMode     String           @default("ONLINE") @map("verification_mode")
+  verificationStatus   String           @default("VERIFIED") @map("verification_status")
+  syncStatus           String           @default("DIRECT") @map("sync_status")
+  selfieUrl            String?          @map("selfie_url")
+  deviceSignals        Json?            @map("device_signals")
+  accuracyMeters       Float?           @map("accuracy_meters")
+  regularizedBy        String?          @map("regularized_by")
+  regularizationReason String?          @map("regularization_reason")
+  regularizedAt        DateTime?        @map("regularized_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, personId, date])
+  @@unique([tenantId, offlineAttendanceId])
   @@index([tenantId, date, status])
   @@index([tenantId, personId, checkInTime])
   @@map("attendances")
@@ -358,4 +391,235 @@ model Holiday {
   @@unique([tenantId, date, name])
   @@index([tenantId, date])
   @@map("holidays")
+}
+
+// ==========================================
+// Phase 3: Payroll, Claims & Compensation
+// ==========================================
+
+enum SalaryComponentType {
+  EARNING
+  DEDUCTION
+}
+
+model SalaryComponent {
+  id          String              @id @default(uuid())
+  tenantId    String              @map("tenant_id")
+  name        String
+  code        String
+  type        SalaryComponentType @default(EARNING)
+  isTaxable   Boolean             @default(true) @map("is_taxable")
+  isStatutory Boolean             @default(false) @map("is_statutory")
+  description String?
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, type])
+  @@map("salary_components")
+}
+
+model SalaryStructure {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  items       Json     @default("[]") // Array of { componentCode, calculationType: PERCENTAGE_OF_BASIC | FIXED, value: number }
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignments EmployeeSalaryAssignment[]
+
+  @@unique([tenantId, name])
+  @@map("salary_structures")
+}
+
+model EmployeeSalaryAssignment {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  personId          String   @unique @map("person_id")
+  salaryStructureId String?  @map("salary_structure_id")
+  baseGross         Float    @default(0) @map("base_gross")
+  ctc               Float    @default(0)
+  customItems       Json?    @default("[]") @map("custom_items")
+  effectiveFrom     DateTime @default(now()) @map("effective_from") @db.Date
+  paymentMode       String   @default("BANK_TRANSFER") @map("payment_mode")
+  bankAccount       String?  @map("bank_account")
+  bankIfsc          String?  @map("bank_ifsc")
+  panNumber         String?  @map("pan_number")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person          Person           @relation(fields: [personId], references: [id], onDelete: Cascade)
+  salaryStructure SalaryStructure? @relation(fields: [salaryStructureId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, salaryStructureId])
+  @@map("employee_salary_assignments")
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  DISBURSED
+}
+
+model PayrollRun {
+  id                  String           @id @default(uuid())
+  tenantId            String           @map("tenant_id")
+  year                Int
+  month               Int
+  title               String
+  status              PayrollRunStatus @default(DRAFT)
+  totalGross          Float            @default(0) @map("total_gross")
+  totalDeductions     Float            @default(0) @map("total_deductions")
+  totalNet            Float            @default(0) @map("total_net")
+  processedStaffCount Int              @default(0) @map("processed_staff_count")
+  approvedBy          String?          @map("approved_by")
+  approvedAt          DateTime?        @map("approved_at")
+  disbursedAt         DateTime?        @map("disbursed_at")
+  notes               String?
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payslips Payslip[]
+
+  @@unique([tenantId, year, month])
+  @@index([tenantId, status])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  payrollRunId     String   @map("payroll_run_id")
+  personId         String   @map("person_id")
+  year             Int
+  month            Int
+  totalWorkingDays Int      @default(30) @map("total_working_days")
+  presentDays      Float    @default(30) @map("present_days")
+  lopDays          Float    @default(0) @map("lop_days")
+  earnings         Json     @default("[]") // Array of { code, name, amount }
+  deductions       Json     @default("[]") // Array of { code, name, amount }
+  grossPay         Float    @default(0) @map("gross_pay")
+  totalDeductions  Float    @default(0) @map("total_deductions")
+  netPay           Float    @default(0) @map("net_pay")
+  paymentStatus    String   @default("PENDING") @map("payment_status")
+  paymentReference String?  @map("payment_reference")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  person     Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, payrollRunId, personId])
+  @@index([tenantId, personId, year, month])
+  @@map("payslips")
+}
+
+enum ExpenseClaimCategory {
+  TRAVEL
+  LODGING
+  FOOD
+  SUPPLIES
+  COMMUNICATION
+  OFFICIAL_MEETING
+  OTHER
+}
+
+enum ExpenseClaimStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  SETTLED
+}
+
+model ExpenseClaim {
+  id                  String               @id @default(uuid())
+  tenantId            String               @map("tenant_id")
+  personId            String               @map("person_id")
+  title               String
+  category            ExpenseClaimCategory @default(TRAVEL)
+  amount              Float
+  expenseDate         DateTime             @map("expense_date") @db.Date
+  description         String?
+  receiptUrls         Json?                @default("[]") @map("receipt_urls")
+  status              ExpenseClaimStatus   @default(SUBMITTED)
+  approverId          String?              @map("approver_id")
+  decisionNotes       String?              @map("decision_notes")
+  decidedAt           DateTime?            @map("decided_at")
+  settledAt           DateTime?            @map("settled_at")
+  settlementReference String?              @map("settlement_reference")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person   Person  @relation("ClaimSubmitter", fields: [personId], references: [id], onDelete: Cascade)
+  approver Person? @relation("ClaimApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, personId, status])
+  @@index([tenantId, approverId, status])
+  @@index([tenantId, status])
+  @@map("expense_claims")
+}
+
+enum SalaryAdvanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RECOVERING
+  RECOVERED
+}
+
+model SalaryAdvance {
+  id               String              @id @default(uuid())
+  tenantId         String              @map("tenant_id")
+  personId         String              @map("person_id")
+  amountRequested  Float               @map("amount_requested")
+  amountApproved   Float?              @map("amount_approved")
+  reason           String
+  tenureMonths     Int                 @default(1) @map("tenure_months")
+  monthlyDeduction Float               @default(0) @map("monthly_deduction")
+  amountRecovered  Float               @default(0) @map("amount_recovered")
+  status           SalaryAdvanceStatus @default(PENDING)
+  approverId       String?             @map("approver_id")
+  decisionNotes    String?             @map("decision_notes")
+  decidedAt        DateTime?           @map("decided_at")
+  disbursedAt      DateTime?           @map("disbursed_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person   Person  @relation("AdvanceRequester", fields: [personId], references: [id], onDelete: Cascade)
+  approver Person? @relation("AdvanceApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, personId, status])
+  @@index([tenantId, status])
+  @@map("salary_advances")
+}
+
+model SalaryRevision {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  personId          String   @map("person_id")
+  oldGross          Float?   @map("old_gross")
+  newGross          Float    @map("new_gross")
+  oldDesignationId  String?  @map("old_designation_id")
+  newDesignationId  String?  @map("new_designation_id")
+  effectiveDate     DateTime @map("effective_date") @db.Date
+  remarks           String?
+  promotedBy        String?  @map("promoted_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, personId, effectiveDate])
+  @@map("salary_revisions")
 }

@@ -17,3 +17,5 @@ infra/zitadel-data/
 infra/grafana-data/
 *.tsbuildinfo
 docs/CREDENTIALS.local.md
+*.local.md
+AI_TRACKER.local.md

@@ -22,6 +22,10 @@ import {
   CalendarDays,
   UserCheck,
   UserCog,
+  Banknote,
+  FileSpreadsheet,
+  CreditCard,
+  Receipt,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../auth/auth-store";
@@ -36,7 +40,7 @@ interface NavItem {
   label: string;
   icon: any;
   permission?: string;
-  section: "hr" | "admin";
+  section: "hr" | "admin" | "payroll";
 }
 
 const navItems: NavItem[] = [
@@ -45,6 +49,12 @@ const navItems: NavItem[] = [
   { to: "/hr/attendance", label: "Attendance", icon: Clock, permission: "hr.attendance.read", section: "hr" },
   { to: "/hr/leave", label: "Leave", icon: PlaneTakeoff, permission: "hr.leave.read", section: "hr" },
   { to: "/hr/holidays", label: "Holidays", icon: CalendarDays, permission: "hr.holiday.read", section: "hr" },
+
+  // Payroll & Claims Module (Phase 3)
+  { to: "/payroll/salary", label: "Salary & CTC", icon: Banknote, permission: "payroll.salary.read", section: "payroll" },
+  { to: "/payroll/runs", label: "Payroll Runs", icon: FileSpreadsheet, permission: "payroll.run.read", section: "payroll" },
+  { to: "/payroll/claims", label: "Claims & Advances", icon: CreditCard, section: "payroll" },
+  { to: "/payroll/my-payslips", label: "My Payslips", icon: Receipt, section: "payroll" },
 
   // Admin Module
   { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.read", section: "admin" },
@@ -118,10 +128,13 @@ export function AppShell() {
   const hrNavItems = navItems.filter(
     (item) => item.section === "hr" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
   );
+  const payrollNavItems = navItems.filter(
+    (item) => item.section === "payroll" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
+  );
   const adminNavItems = navItems.filter(
     (item) => item.section === "admin" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
   );
-  const hasNavItems = hrNavItems.length > 0 || adminNavItems.length > 0;
+  const hasNavItems = hrNavItems.length > 0 || payrollNavItems.length > 0 || adminNavItems.length > 0;
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
@@ -291,7 +304,44 @@ export function AppShell() {
               )}
 
               {/* Section Divider */}
-              {hrNavItems.length > 0 && adminNavItems.length > 0 && (
+              {hrNavItems.length > 0 && (payrollNavItems.length > 0 || adminNavItems.length > 0) && (
+                <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-2")} />
+              )}
+
+              {/* Payroll & Claims Section */}
+              {payrollNavItems.length > 0 && (
+                <div className="space-y-1">
+                  {!collapsed && (
+                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                      Payroll & Claims
+                    </p>
+                  )}
+                  {payrollNavItems.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      title={collapsed ? label : undefined}
+                      className={({ isActive }) =>
+                        cn(
+                          "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
+                          collapsed
+                            ? "h-11 w-11 mx-auto justify-center"
+                            : "gap-3 px-3.5 py-2.5",
+                          isActive
+                            ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                        )
+                      }
+                    >
+                      <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
+                      {!collapsed && <span className="truncate">{label}</span>}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+
+              {/* Section Divider */}
+              {payrollNavItems.length > 0 && adminNavItems.length > 0 && (
                 <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-2")} />
               )}
 

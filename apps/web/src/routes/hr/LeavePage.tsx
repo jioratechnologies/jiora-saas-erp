@@ -14,6 +14,7 @@ import {
   Paperclip,
   Upload,
   FileText,
+  Download,
 } from "lucide-react";
 import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
@@ -32,12 +33,23 @@ import { toast } from "../../components/ui/toast";
 import { useMe } from "../../auth/use-me";
 import { useAuthStore } from "../../auth/auth-store";
 import { cn } from "../../lib/utils";
+import { exportToCsv } from "../../lib/csv-export";
 
 export interface LeaveSupportingDoc {
   name: string;
   fileKey: string;
   mimeType: string;
   sizeBytes: number;
+}
+
+export interface LeaveBalance {
+  id: string;
+  name: string;
+  code: string;
+  annualQuota: number;
+  approvedDays: number;
+  pendingDays: number;
+  remainingBalance: number;
 }
 
 interface LeaveType {
@@ -140,6 +152,11 @@ export function LeavePage() {
     queryFn: () => api.get<LeaveType[]>("/hr/leave/types"),
   });
 
+  const { data: leaveBalances } = useQuery({
+    queryKey: ["hr", "leave", "balances"],
+    queryFn: () => api.get<LeaveBalance[]>("/hr/leave/balances"),
+  });
+
   const {
     data: myRequests,
     isLoading: myRequestsLoading,
@@ -161,6 +178,17 @@ export function LeavePage() {
   });
 
   // Mutations
+  const cancelRequest = useMutation({
+    mutationFn: (requestId: string) => api.post(`/hr/leave/requests/${requestId}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hr", "leave"] });
+      toast.success("Leave request cancelled", "Your application has been withdrawn.");
+    },
+    onError: (err) => {
+      toast.error("Failed to cancel leave", (err as Error).message);
+    },
+  });
+
   const submitRequest = useMutation({
     mutationFn: () =>
       api.post<LeaveRequest>("/hr/leave/requests", {
@@ -177,7 +205,7 @@ export function LeavePage() {
       setEndDate("");
       setReason("");
       setUploadedDocs([]);
-      queryClient.invalidateQueries({ queryKey: ["hr", "leave", "requests"] });
+      queryClient.invalidateQueries({ queryKey: ["hr", "leave"] });
       toast.success("Leave request submitted", "Your manager has been notified for approval.");
     },
     onError: (err) => {
@@ -197,7 +225,7 @@ export function LeavePage() {
       setTypeName("");
       setTypeCode("");
       setAnnualQuota(12);
-      queryClient.invalidateQueries({ queryKey: ["hr", "leave", "types"] });
+      queryClient.invalidateQueries({ queryKey: ["hr", "leave"] });
       toast.success("Leave policy created", `Policy "${t.name}" added with ${t.annualQuota} days annual quota.`);
     },
     onError: (err) => {
@@ -212,7 +240,7 @@ export function LeavePage() {
       setDecisionModalOpen(false);
       setDecisionTarget(null);
       setDecisionNotes("");
-      queryClient.invalidateQueries({ queryKey: ["hr", "leave", "requests"] });
+      queryClient.invalidateQueries({ queryKey: ["hr", "leave"] });
       toast.success(
         vars.action === "approve" ? "Leave approved" : "Leave rejected",
         "The request status has been updated.",
@@ -222,6 +250,35 @@ export function LeavePage() {
       toast.error("Failed to process decision", (err as Error).message);
     },
   });
+
+  const handleExportCsv = () => {
+    if (activeTab === "my-requests" && myRequests) {
+      const headers = ["Leave Type", "Start Date", "End Date", "Days", "Reason", "Status", "Decision Notes"];
+      const rows = myRequests.map((r) => [
+        r.leaveType.name,
+        new Date(r.startDate).toLocaleDateString(),
+        new Date(r.endDate).toLocaleDateString(),
+        r.daysCount,
+        r.reason,
+        r.status,
+        r.decisionNotes || "",
+      ]);
+      exportToCsv("My_Leave_Requests", headers, rows);
+      toast.success("Leave requests exported", `${rows.length} records downloaded.`);
+    } else if (leaveBalances) {
+      const headers = ["Leave Type", "Code", "Annual Quota", "Approved Used", "Pending Approval", "Remaining Balance"];
+      const rows = leaveBalances.map((b) => [
+        b.name,
+        b.code,
+        b.annualQuota,
+        b.approvedDays,
+        b.pendingDays,
+        b.remainingBalance,
+      ]);
+      exportToCsv("Leave_Balance_Ledger", headers, rows);
+      toast.success("Leave ledger exported", `${rows.length} policy balances downloaded.`);
+    }
+  };
 
   const canApprove = me?.permissionKeys?.includes("hr.leave.approve");
   const canManageTypes = me?.permissionKeys?.includes("hr.holiday.write");
@@ -233,7 +290,16 @@ export function LeavePage() {
           title="Leave Management"
           description="Apply for leave, track quota balances, and review team approval requests."
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            className="gap-1.5"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export (CSV)</span>
+          </Button>
           {canManageTypes && (
             <Button
               variant="outline"
@@ -252,22 +318,36 @@ export function LeavePage() {
         </div>
       </div>
 
-      {/* Quota Balance Cards (Valkey Cached) */}
+      {/* Quota Balance Cards (Dynamic Real-Time Ledger) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {leaveTypes?.map((type) => (
-          <Card key={type.id} className="p-4 border-zinc-200/80 dark:border-zinc-800">
-            <div className="flex items-center justify-between">
-              <Badge variant="default" size="sm">
-                {type.code}
-              </Badge>
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="mt-2">
-              <div className="text-2xl font-bold tracking-tight text-foreground">{type.annualQuota}</div>
-              <p className="text-xs text-muted-foreground mt-0.5 truncate">{type.name}</p>
-            </div>
-          </Card>
-        ))}
+        {(leaveBalances || leaveTypes)?.map((item: any) => {
+          const remaining = item.remainingBalance ?? item.annualQuota;
+          const quota = item.annualQuota;
+          const approved = item.approvedDays ?? 0;
+          const pending = item.pendingDays ?? 0;
+
+          return (
+            <Card key={item.id} className="p-4 border-zinc-200/80 dark:border-zinc-800 bg-linear-to-b from-white to-zinc-50/50 dark:from-zinc-900 dark:to-zinc-900/50">
+              <div className="flex items-center justify-between">
+                <Badge variant="default" size="sm">
+                  {item.code}
+                </Badge>
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="mt-2 space-y-1">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold tracking-tight text-foreground font-mono">{remaining}</span>
+                  <span className="text-xs text-muted-foreground font-medium">/ {quota} days left</span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate">{item.name}</p>
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground">
+                  <span>Used: <strong className="text-foreground">{approved}d</strong></span>
+                  {pending > 0 && <span className="text-amber-600 dark:text-amber-400">· Pending: <strong>{pending}d</strong></span>}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Tabs */}
@@ -317,12 +397,13 @@ export function LeavePage() {
                     <TableHead>Reason</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Approver Remarks</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {myRequests?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
                         You have not submitted any leave requests yet.
                       </TableCell>
                     </TableRow>
@@ -376,6 +457,19 @@ export function LeavePage() {
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground italic">
                           {req.decisionNotes || "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {req.status === "PENDING" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => cancelRequest.mutate(req.id)}
+                              disabled={cancelRequest.isPending}
+                              className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-medium"
+                            >
+                              Cancel
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))

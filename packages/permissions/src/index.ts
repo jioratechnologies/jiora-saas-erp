@@ -48,6 +48,18 @@ export const PERMISSION_CATALOG: Permission[] = [
   { key: "hr.leave.approve", description: "Approve or reject subordinate leave requests", module: "hr" },
   { key: "hr.holiday.read", description: "View annual holiday calendar", module: "hr" },
   { key: "hr.holiday.write", description: "Manage holiday calendar and leave types", module: "hr" },
+
+  // Payroll & Claims Module (Phase 3) — tenant-scoped, assignable via Role Builder.
+  { key: "payroll.salary.read", description: "View salary components, structures, and compensation records", module: "payroll" },
+  { key: "payroll.salary.manage", description: "Create/edit salary components, templates, and employee assignments", module: "payroll" },
+  { key: "payroll.run.read", description: "View monthly payroll runs and registers", module: "payroll" },
+  { key: "payroll.run.manage", description: "Execute monthly payroll calculations, approve runs, and disburse", module: "payroll" },
+  { key: "payroll.payslip.read", description: "View and download employee payslips", module: "payroll" },
+  { key: "payroll.claim.apply", description: "Submit expense and travel reimbursement claims", module: "payroll" },
+  { key: "payroll.claim.read", description: "View expense and reimbursement claims", module: "payroll" },
+  { key: "payroll.claim.manage", description: "Approve, reject, and disburse expense claims", module: "payroll" },
+  { key: "payroll.advance.apply", description: "Submit emergency salary advance requests", module: "payroll" },
+  { key: "payroll.advance.manage", description: "Review and approve/reject salary advances", module: "payroll" },
 ];
 
 export const PLATFORM_ONLY_MODULES = ["platform"] as const;

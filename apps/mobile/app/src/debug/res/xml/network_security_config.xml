@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG BUILD ONLY — overrides src/main/res/xml/network_security_config.xml
+  for the debug variant only (AGP resource merging picks this file over
+  main's for debug builds; release builds never see this source set at
+  all). Allows plain http:// so a physical test device can reach
+  `npm run dev` at whatever LAN IP the dev machine currently has, without
+  hardcoding/updating an IP here every time it changes.
+
+  This must never apply to a release build — see the strict, HTTPS-only
+  config in src/main for that.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

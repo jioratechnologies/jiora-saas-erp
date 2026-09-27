@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (http://) is allowed ONLY for the Android emulator's loopback
+  alias, so local development can hit `npm run dev` on the host machine.
+  Everything else — including any physical-device / production API host —
+  must use HTTPS. Do not widen this without a specific reason.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

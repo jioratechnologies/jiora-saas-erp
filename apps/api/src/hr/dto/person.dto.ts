@@ -206,3 +206,75 @@ export class ReviewDocumentDto {
   @IsString()
   rejectionReason?: string;
 }
+
+export class BulkImportItemDto {
+  @ApiProperty({ example: "Ramesh" })
+  @IsString()
+  @IsNotEmpty()
+  firstName!: string;
+
+  @ApiProperty({ example: "Kumar" })
+  @IsString()
+  @IsNotEmpty()
+  lastName!: string;
+
+  @ApiProperty({ example: "ramesh@sachhisaheli.org" })
+  @IsEmail()
+  email!: string;
+
+  @ApiPropertyOptional({ example: "+91 9876543210" })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ enum: PersonType, default: PersonType.EMPLOYEE })
+  @IsOptional()
+  personType?: PersonType;
+
+  @ApiPropertyOptional({ example: "Programmes" })
+  @IsOptional()
+  @IsString()
+  departmentName?: string;
+
+  @ApiPropertyOptional({ example: "Project Coordinator" })
+  @IsOptional()
+  @IsString()
+  designationName?: string;
+
+  @ApiPropertyOptional({ example: "2026-01-15" })
+  @IsOptional()
+  @IsDateString()
+  joiningDate?: string;
+}
+
+export class BulkImportPersonsDto {
+  @ApiProperty({ type: [BulkImportItemDto] })
+  records!: BulkImportItemDto[];
+}
+
+export class UpdateExitChecklistDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  assetReturn?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  idCardReturn?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  knowledgeHandover?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  financeClearance?: boolean;
+
+  @ApiPropertyOptional({ example: "All office keys, laptop and project folders handed over to Programme Director." })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  isFinalized?: boolean;
+}

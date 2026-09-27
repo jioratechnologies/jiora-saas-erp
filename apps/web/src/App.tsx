@@ -18,6 +18,10 @@ import { PeoplePage } from "./routes/hr/PeoplePage";
 import { AttendancePage } from "./routes/hr/AttendancePage";
 import { LeavePage } from "./routes/hr/LeavePage";
 import { HolidaysPage } from "./routes/hr/HolidaysPage";
+import { SalaryStructurePage } from "./routes/payroll/SalaryStructurePage";
+import { PayrollRunsPage } from "./routes/payroll/PayrollRunsPage";
+import { ClaimsPage } from "./routes/payroll/ClaimsPage";
+import { MyPayslipsPage } from "./routes/payroll/MyPayslipsPage";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +63,10 @@ export function App() {
                 <Route path="/hr/attendance" element={<AttendancePage />} />
                 <Route path="/hr/leave" element={<LeavePage />} />
                 <Route path="/hr/holidays" element={<HolidaysPage />} />
+                <Route path="/payroll/salary" element={<SalaryStructurePage />} />
+                <Route path="/payroll/runs" element={<PayrollRunsPage />} />
+                <Route path="/payroll/claims" element={<ClaimsPage />} />
+                <Route path="/payroll/my-payslips" element={<MyPayslipsPage />} />
                 <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
               </Route>
             </Routes>

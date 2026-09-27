@@ -15,7 +15,10 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  console.log("Starting data seeding...");
+  console.log("==========================================================");
+  console.log("Starting Phase 1–3: 18-Month Comprehensive Historical Backfill");
+  console.log("Time Span: April 2025 to September 2026 (18 full months)");
+  console.log("==========================================================");
 
   // Find target tenant
   const tenant = await prisma.tenant.findFirst({
@@ -29,9 +32,58 @@ async function main() {
   }
 
   const tenantId = tenant.id;
-  console.log(`Seeding data for tenant: ${tenant.name} (${tenantId})`);
+  console.log(`Target Tenant: ${tenant.name} (${tenantId})`);
 
-  // 1. Departments
+  // ==========================================
+  // 1. Synchronize RBAC Permissions for Roles
+  // ==========================================
+  const allPermissions = [
+    // HR Core
+    "hr.person.read", "hr.person.write", "hr.person.exit",
+    "hr.attendance.checkin", "hr.attendance.read", "hr.attendance.manage",
+    "hr.leave.apply", "hr.leave.read", "hr.leave.approve",
+    "hr.holiday.read", "hr.holiday.write",
+    // Phase 3 Payroll & Claims
+    "payroll.salary.read", "payroll.salary.manage",
+    "payroll.run.read", "payroll.run.manage",
+    "payroll.payslip.read",
+    "payroll.claim.apply", "payroll.claim.read", "payroll.claim.manage",
+    "payroll.advance.apply", "payroll.advance.manage",
+  ];
+
+  const tenantRoles = await prisma.role.findMany({
+    where: { tenantId },
+  });
+
+  for (const role of tenantRoles) {
+    let permsToAssign = [];
+    if (role.name === "admin" || role.name === "HR") {
+      permsToAssign = allPermissions;
+    } else if (role.name === "Developer") {
+      permsToAssign = [
+        "hr.attendance.checkin", "hr.attendance.read",
+        "hr.leave.apply", "hr.leave.read",
+        "payroll.payslip.read",
+        "payroll.claim.apply", "payroll.claim.read",
+        "payroll.advance.apply",
+      ];
+    }
+
+    for (const key of permsToAssign) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO role_permissions (role_id, permission_key)
+         VALUES ($1, $2)
+         ON CONFLICT (role_id, permission_key) DO NOTHING;`,
+        role.id,
+        key
+      );
+    }
+  }
+  console.log("✓ Roles and permissions aligned across admin and HR roles");
+
+  // ==========================================
+  // 2. Departments Master
+  // ==========================================
   const depts = [
     "Executive Leadership",
     "Technology & Engineering",
@@ -52,7 +104,9 @@ async function main() {
   }
   console.log("✓ Departments seeded:", Object.keys(deptMap).length);
 
-  // 2. Designations
+  // ==========================================
+  // 3. Designations Master
+  // ==========================================
   const desigs = [
     "Executive Director",
     "Lead Developer",
@@ -75,7 +129,9 @@ async function main() {
   }
   console.log("✓ Designations seeded:", Object.keys(desigMap).length);
 
-  // 3. Update existing users with avatar & phone
+  // ==========================================
+  // 4. Update Existing User Profiles (HR & Gaurav)
+  // ==========================================
   const hrUser = tenant.users.find((u) => u.email === "hr@saas-erp.local");
   const gauravUser = tenant.users.find((u) => u.email === "gaurav@saas-erp.local");
 
@@ -103,8 +159,10 @@ async function main() {
     });
   }
 
-  // 4. Seed Persons
-  // Director / Top Executive (Reporting Manager: None)
+  // ==========================================
+  // 5. Person Master & Organizational Hierarchy
+  // ==========================================
+  // Director
   let directorPerson = await prisma.person.findFirst({
     where: { tenantId, email: "director@saas-erp.local" },
   });
@@ -178,7 +236,7 @@ async function main() {
     });
   }
 
-  // Gaurav Person (Lead Developer, reports to Director)
+  // Gaurav Person (reports to Director)
   let gauravPerson = await prisma.person.findFirst({
     where: { tenantId, email: "gaurav@saas-erp.local" },
   });
@@ -215,7 +273,7 @@ async function main() {
     });
   }
 
-  // Employees & Volunteers
+  // Additional Employees & Volunteers
   const additionalPeople = [
     {
       firstName: "Ananya",
@@ -260,7 +318,7 @@ async function main() {
       emergencyContact: "+91 9833445511 (Sister)",
       departmentId: deptMap["Operations"],
       designationId: desigMap["Operations Coordinator"],
-      managerId: hrPerson.id,
+      managerId: hrPerson.id, // Reports to HR!
       status: "PROBATION",
       personType: "EMPLOYEE",
       avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
@@ -292,7 +350,7 @@ async function main() {
       emergencyContact: "+91 9855667733 (Father)",
       departmentId: deptMap["Community & Volunteers"],
       designationId: desigMap["Volunteer Lead"],
-      managerId: hrPerson.id,
+      managerId: hrPerson.id, // Reports to HR!
       status: "ACTIVE",
       personType: "VOLUNTEER",
       avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&auto=format&fit=crop&q=80",
@@ -339,7 +397,7 @@ async function main() {
     }
   }
 
-  // Update Arjun Patel's manager to Neha Kapoor (Volunteer Lead)
+  // Update Arjun's manager to Neha Kapoor
   if (peopleMap["neha.k@saas-erp.local"] && peopleMap["arjun.p@saas-erp.local"]) {
     await prisma.person.update({
       where: { id: peopleMap["arjun.p@saas-erp.local"].id },
@@ -348,7 +406,9 @@ async function main() {
   }
   console.log("✓ Person Master seeded:", Object.keys(peopleMap).length);
 
-  // 5. Seed KYC & Other Documents
+  // ==========================================
+  // 6. MinIO S3 Verification & KYC Documents
+  // ==========================================
   const s3 = new S3Client({
     endpoint: `http://${process.env.MINIO_ENDPOINT || "localhost"}:${process.env.MINIO_PORT || "9010"}`,
     region: "us-east-1",
@@ -373,7 +433,6 @@ async function main() {
   );
 
   const documents = [
-    // HR person
     {
       personId: hrPerson.id,
       name: "Government Aadhaar ID Card",
@@ -391,12 +450,13 @@ async function main() {
       name: "Permanent Account Number (PAN)",
       category: "KYC",
       documentNumber: "ABCDE1234F",
-      status: "PENDING",
+      status: "APPROVED",
       fileKey: `tenants/${tenantId}/persons/${hrPerson.id}/KYC/seed-pan.pdf`,
       mimeType: "application/pdf",
       sizeBytes: 980400,
+      verifiedBy: hrUser?.id,
+      verifiedAt: new Date(),
     },
-    // Gaurav person
     {
       personId: gauravPerson.id,
       name: "National Passport",
@@ -409,7 +469,6 @@ async function main() {
       verifiedBy: hrUser?.id,
       verifiedAt: new Date(),
     },
-    // Ananya Verma
     {
       personId: peopleMap["ananya.verma@saas-erp.local"]?.id,
       name: "Aadhaar Card",
@@ -431,7 +490,6 @@ async function main() {
       mimeType: "application/pdf",
       sizeBytes: 650000,
     },
-    // Priya Singh (Rejected KYC demo)
     {
       personId: peopleMap["priya.s@saas-erp.local"]?.id,
       name: "State Driving License",
@@ -445,7 +503,6 @@ async function main() {
       verifiedBy: hrUser?.id,
       verifiedAt: new Date(),
     },
-    // Neha Kapoor (Volunteer)
     {
       personId: peopleMap["neha.k@saas-erp.local"]?.id,
       name: "College Identity & Voter ID",
@@ -469,9 +526,7 @@ async function main() {
           ContentType: doc.mimeType || "application/pdf",
         })
       );
-    } catch (err) {
-      console.warn("Could not upload seed doc to MinIO:", err.message);
-    }
+    } catch {}
 
     const exists = await prisma.personDocument.findFirst({
       where: { tenantId, personId: doc.personId, name: doc.name },
@@ -484,7 +539,9 @@ async function main() {
   }
   console.log("✓ KYC & Verification Documents seeded to MinIO");
 
-  // 6. Seed Leave Types
+  // ==========================================
+  // 7. Leave Types & Holidays Master
+  // ==========================================
   const leaveTypes = [
     { name: "Casual Leave", code: "CL", annualQuota: 12, applicableTo: "ALL" },
     { name: "Sick Leave", code: "SL", annualQuota: 10, applicableTo: "ALL" },
@@ -502,14 +559,18 @@ async function main() {
   }
   console.log("✓ Leave Types seeded:", Object.keys(leaveTypeMap).length);
 
-  // 7. Seed Holidays
   const holidays = [
+    { name: "Independence Day", date: new Date("2025-08-15"), isOptional: false },
+    { name: "Gandhi Jayanti", date: new Date("2025-10-02"), isOptional: false },
+    { name: "Diwali (Deepavali)", date: new Date("2025-10-21"), isOptional: false },
+    { name: "Christmas Day", date: new Date("2025-12-25"), isOptional: false },
+    { name: "Republic Day", date: new Date("2026-01-26"), isOptional: false },
+    { name: "Holi", date: new Date("2026-03-04"), isOptional: false },
+    { name: "Independence Day", date: new Date("2026-08-15"), isOptional: false },
     { name: "Gandhi Jayanti", date: new Date("2026-10-02"), isOptional: false },
     { name: "Dussehra", date: new Date("2026-10-20"), isOptional: false },
     { name: "Diwali (Deepavali)", date: new Date("2026-11-08"), isOptional: false },
-    { name: "Govardhan Puja", date: new Date("2026-11-09"), isOptional: true },
     { name: "Christmas Day", date: new Date("2026-12-25"), isOptional: false },
-    { name: "New Year's Day", date: new Date("2027-01-01"), isOptional: true },
   ];
 
   for (const h of holidays) {
@@ -519,56 +580,925 @@ async function main() {
       create: { tenantId, ...h },
     });
   }
-  console.log("✓ Holidays seeded:", holidays.length);
+  console.log("✓ Annual Holidays seeded");
 
-  // 8. Seed Attendance for today and yesterday
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // ==========================================
+  // 8. Leave Requests Across 18 Months
+  // ==========================================
+  const historicalLeaves = [
+    // Subordinates of HR: Priya Singh (PENDING - Shows up in HR's Manager Approval Queue!)
+    {
+      personId: peopleMap["priya.s@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["CL"],
+      startDate: new Date("2026-09-28"),
+      endDate: new Date("2026-09-29"),
+      daysCount: 2,
+      reason: "Sister's wedding anniversary family gathering in Agra",
+      status: "PENDING",
+      approverId: hrPerson.id,
+    },
+    // Subordinates of HR: Neha Kapoor (PENDING - Shows up in HR's Manager Approval Queue!)
+    {
+      personId: peopleMap["neha.k@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["CL"],
+      startDate: new Date("2026-10-01"),
+      endDate: new Date("2026-10-01"),
+      daysCount: 1,
+      reason: "University final semester marksheet collection",
+      status: "PENDING",
+      approverId: hrPerson.id,
+    },
+    // Subordinates of HR: Priya Singh (Historical Approved)
+    {
+      personId: peopleMap["priya.s@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["SL"],
+      startDate: new Date("2026-05-12"),
+      endDate: new Date("2026-05-13"),
+      daysCount: 2,
+      reason: "Severe viral flu and medical rest",
+      status: "APPROVED",
+      approverId: hrPerson.id,
+      decisionNotes: "Approved. Take care and submit prescription upon return.",
+      decidedAt: new Date("2026-05-12T09:30:00Z"),
+    },
+    // HR Administrator's own requests (Shows up in "My Requests")
+    {
+      personId: hrPerson.id,
+      leaveTypeId: leaveTypeMap["CL"],
+      startDate: new Date("2026-09-26"),
+      endDate: new Date("2026-09-28"),
+      daysCount: 3,
+      reason: "Personal family commitment and out-of-station travel",
+      status: "PENDING",
+      approverId: directorPerson.id,
+    },
+    {
+      personId: hrPerson.id,
+      leaveTypeId: leaveTypeMap["PL"],
+      startDate: new Date("2025-12-22"),
+      endDate: new Date("2025-12-26"),
+      daysCount: 5,
+      reason: "Annual family holiday & year-end winter break",
+      status: "APPROVED",
+      approverId: directorPerson.id,
+      decisionNotes: "Approved. Enjoy your holidays!",
+      decidedAt: new Date("2025-12-15T11:00:00Z"),
+    },
+    {
+      personId: hrPerson.id,
+      leaveTypeId: leaveTypeMap["SL"],
+      startDate: new Date("2026-01-19"),
+      endDate: new Date("2026-01-20"),
+      daysCount: 2,
+      reason: "Migraine and viral fever",
+      status: "APPROVED",
+      approverId: directorPerson.id,
+      decisionNotes: "Approved. Get well soon.",
+      decidedAt: new Date("2026-01-19T08:30:00Z"),
+    },
+    // Vikram Malhotra (Finance)
+    {
+      personId: peopleMap["vikram.m@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["CL"],
+      startDate: new Date("2026-09-14"),
+      endDate: new Date("2026-09-15"),
+      daysCount: 2,
+      reason: "Family function in hometown (Jaipur)",
+      status: "APPROVED",
+      approverId: directorPerson.id,
+      decisionNotes: "Approved. Enjoy your time with family.",
+      decidedAt: new Date("2026-09-10T11:00:00Z"),
+    },
+    {
+      personId: peopleMap["vikram.m@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["SL"],
+      startDate: new Date("2025-11-10"),
+      endDate: new Date("2025-11-12"),
+      daysCount: 3,
+      reason: "Hospitalization of father and family support",
+      status: "APPROVED",
+      approverId: directorPerson.id,
+      decisionNotes: "Approved under emergency medical welfare.",
+      decidedAt: new Date("2025-11-10T09:00:00Z"),
+    },
+    // Gaurav Sharma (Lead Dev)
+    {
+      personId: gauravPerson.id,
+      leaveTypeId: leaveTypeMap["PL"],
+      startDate: new Date("2025-10-13"),
+      endDate: new Date("2025-10-16"),
+      daysCount: 4,
+      reason: "Post-release vacation and downtime",
+      status: "APPROVED",
+      approverId: directorPerson.id,
+      decisionNotes: "Well-deserved rest after Q3 release.",
+      decidedAt: new Date("2025-10-05T10:00:00Z"),
+    },
+    // Ananya Verma
+    {
+      personId: peopleMap["ananya.verma@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["CL"],
+      startDate: new Date("2026-10-05"),
+      endDate: new Date("2026-10-05"),
+      daysCount: 1,
+      reason: "Personal urgent work at municipal authority office",
+      status: "PENDING",
+      approverId: gauravPerson.id,
+    },
+    // Rohit Joshi (Rejected)
+    {
+      personId: peopleMap["rohit.j@saas-erp.local"].id,
+      leaveTypeId: leaveTypeMap["PL"],
+      startDate: new Date("2026-09-21"),
+      endDate: new Date("2026-09-25"),
+      daysCount: 5,
+      reason: "Personal travel and trekking vacation",
+      status: "REJECTED",
+      approverId: gauravPerson.id,
+      decisionNotes: "Cannot approve 5 days during critical sprint delivery and notice period handover.",
+      decidedAt: new Date("2026-09-18T16:30:00Z"),
+    },
+  ];
 
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  for (const p of Object.values(peopleMap)) {
-    // Yesterday's attendance
-    await prisma.attendance.upsert({
-      where: { tenantId_personId_date: { tenantId, personId: p.id, date: yesterday } },
-      update: {},
-      create: {
+  for (const lv of historicalLeaves) {
+    const existing = await prisma.leaveRequest.findFirst({
+      where: {
         tenantId,
-        personId: p.id,
-        date: yesterday,
-        checkInTime: new Date(yesterday.getTime() + 9.5 * 3600 * 1000), // 09:30 AM
-        checkOutTime: new Date(yesterday.getTime() + 18.5 * 3600 * 1000), // 06:30 PM
-        status: "PRESENT",
-        mode: "OFFICE",
-        locationName: "Head Office, Delhi",
+        personId: lv.personId,
+        startDate: lv.startDate,
+        endDate: lv.endDate,
       },
     });
+    if (!existing) {
+      await prisma.leaveRequest.create({
+        data: { tenantId, ...lv },
+      });
+    }
+  }
+  console.log("✓ Historical Leave Requests seeded (including HR manager approval queue)");
 
-    // Today's attendance
-    await prisma.attendance.upsert({
-      where: { tenantId_personId_date: { tenantId, personId: p.id, date: today } },
-      update: {},
+  // ==========================================
+  // 9. Salary Components & Structure Templates
+  // ==========================================
+  const components = [
+    {
+      code: "BASIC",
+      name: "Basic Salary",
+      type: "EARNING",
+      isTaxable: true,
+      isStatutory: true,
+      description: "Primary compensation component (typically 50% of gross)",
+    },
+    {
+      code: "HRA",
+      name: "House Rent Allowance",
+      type: "EARNING",
+      isTaxable: true,
+      isStatutory: false,
+      description: "Housing rent support allowance (typically 25% of gross)",
+    },
+    {
+      code: "CONVEYANCE",
+      name: "Conveyance Allowance",
+      type: "EARNING",
+      isTaxable: false,
+      isStatutory: false,
+      description: "Local commute reimbursement allowance (10% of gross)",
+    },
+    {
+      code: "SPECIAL",
+      name: "Special Allowance",
+      type: "EARNING",
+      isTaxable: true,
+      isStatutory: false,
+      description: "Balancing flexible benefit allowance",
+    },
+    {
+      code: "PF",
+      name: "Provident Fund (Employee)",
+      type: "DEDUCTION",
+      isTaxable: false,
+      isStatutory: true,
+      description: "Statutory employee provident fund deduction (12% of basic)",
+    },
+    {
+      code: "PT",
+      name: "Professional Tax",
+      type: "DEDUCTION",
+      isTaxable: false,
+      isStatutory: true,
+      description: "State professional tax deduction",
+    },
+    {
+      code: "TDS",
+      name: "Tax Deducted at Source (TDS)",
+      type: "DEDUCTION",
+      isTaxable: false,
+      isStatutory: true,
+      description: "Monthly income tax withholding per Indian tax slabs",
+    },
+  ];
+
+  for (const c of components) {
+    await prisma.salaryComponent.upsert({
+      where: { tenantId_code: { tenantId, code: c.code } },
+      update: c,
+      create: { tenantId, ...c },
+    });
+  }
+  console.log("✓ Salary Components seeded:", components.length);
+
+  const staffStructure = await prisma.salaryStructure.upsert({
+    where: { tenantId_name: { tenantId, name: "Standard Staff Structure" } },
+    update: {},
+    create: {
+      tenantId,
+      name: "Standard Staff Structure",
+      description: "Standard structure for full-time regular employees (50% Basic, 25% HRA, 10% Conveyance, 15% Special)",
+      items: [
+        { componentCode: "BASIC", calculationType: "PERCENTAGE_OF_BASIC", value: 50 },
+        { componentCode: "HRA", calculationType: "PERCENTAGE_OF_BASIC", value: 25 },
+        { componentCode: "CONVEYANCE", calculationType: "PERCENTAGE_OF_BASIC", value: 10 },
+        { componentCode: "SPECIAL", calculationType: "PERCENTAGE_OF_BASIC", value: 15 },
+        { componentCode: "PF", calculationType: "PERCENTAGE_OF_BASIC", value: 12 },
+        { componentCode: "PT", calculationType: "FIXED", value: 200 },
+      ],
+    },
+  });
+
+  const execStructure = await prisma.salaryStructure.upsert({
+    where: { tenantId_name: { tenantId, name: "Executive Leadership Structure" } },
+    update: {},
+    create: {
+      tenantId,
+      name: "Executive Leadership Structure",
+      description: "Executive compensation template with higher allowances (50% Basic, 30% HRA, 5% Conveyance, 15% Special)",
+      items: [
+        { componentCode: "BASIC", calculationType: "PERCENTAGE_OF_BASIC", value: 50 },
+        { componentCode: "HRA", calculationType: "PERCENTAGE_OF_BASIC", value: 30 },
+        { componentCode: "CONVEYANCE", calculationType: "PERCENTAGE_OF_BASIC", value: 5 },
+        { componentCode: "SPECIAL", calculationType: "PERCENTAGE_OF_BASIC", value: 15 },
+        { componentCode: "PF", calculationType: "PERCENTAGE_OF_BASIC", value: 12 },
+        { componentCode: "PT", calculationType: "FIXED", value: 200 },
+      ],
+    },
+  });
+  console.log("✓ Salary Structures seeded: Standard & Executive");
+
+  // ==========================================
+  // 10. Employee Salary Assignments (All 7 Staff)
+  // ==========================================
+  const salaryAssignments = [
+    {
+      personId: directorPerson.id,
+      structureId: execStructure.id,
+      baseGross: 120000,
+      ctc: 1440000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "50100234567891",
+      bankIfsc: "HDFC0001234",
+      panNumber: "DRSBH1980E",
+    },
+    {
+      personId: gauravPerson.id,
+      structureId: staffStructure.id,
+      baseGross: 85000,
+      ctc: 1020000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "045601512345",
+      bankIfsc: "ICIC0000456",
+      panNumber: "GVRSH1994M",
+    },
+    {
+      personId: hrPerson.id,
+      structureId: staffStructure.id,
+      baseGross: 45000,
+      ctc: 540000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "20394857102",
+      bankIfsc: "SBIN0007890",
+      panNumber: "HRADM1992F",
+    },
+    {
+      personId: peopleMap["vikram.m@saas-erp.local"].id,
+      structureId: staffStructure.id,
+      baseGross: 55000,
+      ctc: 660000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "1234567890",
+      bankIfsc: "KKBK0000123",
+      panNumber: "VKRML1989K",
+    },
+    {
+      personId: peopleMap["ananya.verma@saas-erp.local"].id,
+      structureId: staffStructure.id,
+      baseGross: 50000,
+      ctc: 600000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "918020034567",
+      bankIfsc: "UTIB0000345",
+      panNumber: "ANYVR1996A",
+    },
+    {
+      personId: peopleMap["rohit.j@saas-erp.local"].id,
+      structureId: staffStructure.id,
+      baseGross: 52000,
+      ctc: 624000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "501009876543",
+      bankIfsc: "HDFC0004321",
+      panNumber: "RHTJS1993R",
+    },
+    {
+      personId: peopleMap["priya.s@saas-erp.local"].id,
+      structureId: staffStructure.id,
+      baseGross: 35000,
+      ctc: 420000,
+      paymentMode: "BANK_TRANSFER",
+      bankAccount: "012300150009876",
+      bankIfsc: "PUNB0123400",
+      panNumber: "PRYSN1998P",
+    },
+  ];
+
+  for (const sa of salaryAssignments) {
+    await prisma.employeeSalaryAssignment.upsert({
+      where: { personId: sa.personId },
+      update: {
+        baseGross: sa.baseGross,
+        ctc: sa.ctc,
+        salaryStructureId: sa.structureId,
+        paymentMode: sa.paymentMode,
+        bankAccount: sa.bankAccount,
+        bankIfsc: sa.bankIfsc,
+        panNumber: sa.panNumber,
+      },
       create: {
         tenantId,
-        personId: p.id,
-        date: today,
-        checkInTime: new Date(today.getTime() + 9.25 * 3600 * 1000), // 09:15 AM
-        checkOutTime: null,
-        status: "PRESENT",
-        mode: p.personType === "VOLUNTEER" ? "FIELD" : "OFFICE",
-        locationName: p.personType === "VOLUNTEER" ? "Community Centre, Delhi" : "Head Office, Delhi",
+        personId: sa.personId,
+        salaryStructureId: sa.structureId,
+        baseGross: sa.baseGross,
+        ctc: sa.ctc,
+        paymentMode: sa.paymentMode,
+        bankAccount: sa.bankAccount,
+        bankIfsc: sa.bankIfsc,
+        panNumber: sa.panNumber,
+        effectiveFrom: new Date("2025-04-01"),
       },
     });
   }
-  console.log("✓ Attendance records seeded");
+  console.log("✓ Employee Compensation Assignments seeded:", salaryAssignments.length);
 
-  console.log("All seed data successfully injected into the system!");
+  // ==========================================
+  // 11. Salary Revisions & Promotion History
+  // ==========================================
+  const revisions = [
+    {
+      personId: gauravPerson.id,
+      oldGross: 75000,
+      newGross: 85000,
+      effectiveDate: new Date("2026-07-01"),
+      remarks: "Annual Performance Appraisal: Promoted to Lead Developer with superior engineering delivery rating.",
+      promotedBy: directorPerson.id,
+    },
+    {
+      personId: peopleMap["ananya.verma@saas-erp.local"].id,
+      oldGross: 42000,
+      newGross: 50000,
+      effectiveDate: new Date("2026-08-01"),
+      remarks: "Mid-Year Merit Appraisal: Commendable ownership of core backend modules.",
+      promotedBy: gauravPerson.id,
+    },
+  ];
+
+  for (const rev of revisions) {
+    const existing = await prisma.salaryRevision.findFirst({
+      where: {
+        tenantId,
+        personId: rev.personId,
+        effectiveDate: rev.effectiveDate,
+      },
+    });
+    if (!existing) {
+      await prisma.salaryRevision.create({
+        data: { tenantId, ...rev },
+      });
+    }
+  }
+  console.log("✓ Salary Revisions & Promotions seeded:", revisions.length);
+
+  // ==========================================
+  // 12. Emergency Salary Advances (Historical & Active)
+  // ==========================================
+  const advances = [
+    // HR Administrator (Recovered in past)
+    {
+      personId: hrPerson.id,
+      amountRequested: 25000,
+      amountApproved: 25000,
+      tenureMonths: 5,
+      monthlyDeduction: 5000,
+      amountRecovered: 25000,
+      status: "RECOVERED",
+      reason: "Home appliance and renovation repair advance",
+      approverId: directorPerson.id,
+      decisionNotes: "Approved under staff welfare policy.",
+      decidedAt: new Date("2025-09-20T10:00:00Z"),
+      disbursedAt: new Date("2025-09-25T11:00:00Z"),
+      createdAt: new Date("2025-09-18T09:00:00Z"),
+    },
+    // Vikram Malhotra (Active / Recovering in Aug-Nov 2026)
+    {
+      personId: peopleMap["vikram.m@saas-erp.local"].id,
+      amountRequested: 20000,
+      amountApproved: 20000,
+      tenureMonths: 4,
+      monthlyDeduction: 5000,
+      amountRecovered: 5000, // 1st EMI recovered in September
+      status: "RECOVERING",
+      reason: "Medical emergency hospital expense for father's cardiac check-up",
+      approverId: directorPerson.id,
+      decisionNotes: "Approved under emergency medical welfare quota.",
+      decidedAt: new Date("2026-08-12T10:00:00Z"),
+      disbursedAt: new Date("2026-08-15T12:00:00Z"),
+      createdAt: new Date("2026-08-10T09:00:00Z"),
+    },
+    // Priya Singh (PENDING - Shows up in HR / Director Review Queue!)
+    {
+      personId: peopleMap["priya.s@saas-erp.local"].id,
+      amountRequested: 15000,
+      tenureMonths: 3,
+      monthlyDeduction: 5000,
+      amountRecovered: 0,
+      status: "PENDING",
+      reason: "Rental security deposit advance for apartment relocation closer to office",
+      createdAt: new Date("2026-09-22T14:00:00Z"),
+    },
+  ];
+
+  for (const adv of advances) {
+    const existing = await prisma.salaryAdvance.findFirst({
+      where: { tenantId, personId: adv.personId, reason: adv.reason },
+    });
+    if (!existing) {
+      await prisma.salaryAdvance.create({
+        data: { tenantId, ...adv },
+      });
+    }
+  }
+  console.log("✓ Emergency Salary Advances seeded (Recovered, Recovering, Pending)");
+
+  // ==========================================
+  // 13. Expense Claims Across 18 Months
+  // ==========================================
+  const claims = [
+    // HR Administrator's own claims (Shows up in HR's "My Requests")
+    {
+      personId: hrPerson.id,
+      title: "Annual Campus Recruitment Drive Travel & Booth Setup",
+      category: "TRAVEL",
+      amount: 6400,
+      expenseDate: new Date("2025-06-15"),
+      description: "Inter-city train tickets and local logistics for DU campus hiring fair.",
+      receiptUrls: [`tenants/${tenantId}/claims/hr-campus-travel.pdf`],
+      status: "SETTLED",
+      approverId: directorPerson.id,
+      decisionNotes: "Campus hiring logistics approved.",
+      decidedAt: new Date("2025-06-18T10:00:00Z"),
+      settledAt: new Date("2025-06-20T12:00:00Z"),
+      settlementReference: "TXN-HR-202506-01",
+    },
+    {
+      personId: hrPerson.id,
+      title: "Annual Employee Engagement Gifts & Mementos",
+      category: "SUPPLIES",
+      amount: 12500,
+      expenseDate: new Date("2025-12-18"),
+      description: "Procurement of branded diaries, thermos flasks, and sweet boxes for year-end celebration.",
+      receiptUrls: [`tenants/${tenantId}/claims/hr-gifts-receipt.pdf`],
+      status: "SETTLED",
+      approverId: directorPerson.id,
+      decisionNotes: "Employee engagement budget approved.",
+      decidedAt: new Date("2025-12-20T11:00:00Z"),
+      settledAt: new Date("2025-12-22T15:00:00Z"),
+      settlementReference: "TXN-HR-202512-09",
+    },
+    {
+      personId: hrPerson.id,
+      title: "POSH & Workplace Safety Workshop Refreshments",
+      category: "FOOD",
+      amount: 4200,
+      expenseDate: new Date("2026-08-14"),
+      description: "High tea and catering for 25 attendees during external POSH compliance trainer session.",
+      receiptUrls: [`tenants/${tenantId}/claims/hr-posh-catering.pdf`],
+      status: "SETTLED",
+      approverId: directorPerson.id,
+      decisionNotes: "Statutory workshop expense approved.",
+      decidedAt: new Date("2026-08-16T10:00:00Z"),
+      settledAt: new Date("2026-08-18T14:00:00Z"),
+      settlementReference: "TXN-HR-202608-22",
+    },
+    {
+      personId: hrPerson.id,
+      title: "Emergency First Aid & Health Restocking",
+      category: "SUPPLIES",
+      amount: 2100,
+      expenseDate: new Date("2026-09-24"),
+      description: "Refilled office medical first aid kit, blood pressure monitor batteries, and sanitizers.",
+      receiptUrls: [`tenants/${tenantId}/claims/hr-firstaid-pharmacy.pdf`],
+      status: "SUBMITTED",
+    },
+    // Vikram Malhotra (Finance)
+    {
+      personId: peopleMap["vikram.m@saas-erp.local"].id,
+      title: "Client Audit & Statutory Tax Filing Travel",
+      category: "TRAVEL",
+      amount: 4850,
+      expenseDate: new Date("2026-09-08"),
+      description: "Cab & express train travel to Appellate Tribunal and Registrar of Societies for statutory filing.",
+      receiptUrls: [`tenants/${tenantId}/claims/seed-travel-ticket.pdf`],
+      status: "APPROVED",
+      approverId: directorPerson.id,
+      decisionNotes: "Auditing travel receipts verified and approved.",
+      decidedAt: new Date("2026-09-10T14:30:00Z"),
+    },
+    // Gaurav Sharma (Lead Dev)
+    {
+      personId: gauravPerson.id,
+      title: "Dev Cloud Hardware & Biometric Readers",
+      category: "SUPPLIES",
+      amount: 7200,
+      expenseDate: new Date("2026-09-12"),
+      description: "Procured multi-port USB test fixtures and optical biometric scanner modules for mobile offline sync tests.",
+      receiptUrls: [`tenants/${tenantId}/claims/seed-hardware-invoice.pdf`],
+      status: "SETTLED",
+      approverId: directorPerson.id,
+      decisionNotes: "Essential R&D engineering equipment. Approved for immediate settlement.",
+      decidedAt: new Date("2026-09-13T10:00:00Z"),
+      settledAt: new Date("2026-09-15T15:00:00Z"),
+      settlementReference: "TXN-SETTLE-889912",
+    },
+    // Priya Singh (Operations) - Reports to HR (Shows in HR's Review Queue!)
+    {
+      personId: peopleMap["priya.s@saas-erp.local"].id,
+      title: "Field Volunteer Logistics Mobile SIM Recharges",
+      category: "COMMUNICATION",
+      amount: 1500,
+      expenseDate: new Date("2026-09-20"),
+      description: "Monthly 5G data packages for 3 community outreach coordinators.",
+      receiptUrls: [`tenants/${tenantId}/claims/seed-sim-recharges.pdf`],
+      status: "SUBMITTED",
+    },
+    // Ananya Verma (Tech)
+    {
+      personId: peopleMap["ananya.verma@saas-erp.local"].id,
+      title: "Cloud Architecture Examination Fee",
+      category: "OTHER",
+      amount: 3200,
+      expenseDate: new Date("2026-09-15"),
+      description: "Upskilling reimbursement for AWS Certified Developer Associate examination voucher.",
+      receiptUrls: [`tenants/${tenantId}/claims/seed-aws-exam.pdf`],
+      status: "APPROVED",
+      approverId: gauravPerson.id,
+      decisionNotes: "Upskilling voucher approved per tech department policy.",
+      decidedAt: new Date("2026-09-16T17:00:00Z"),
+    },
+  ];
+
+  for (const claim of claims) {
+    const existing = await prisma.expenseClaim.findFirst({
+      where: { tenantId, personId: claim.personId, title: claim.title },
+    });
+    if (!existing) {
+      if (claim.receiptUrls && claim.receiptUrls[0]) {
+        try {
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: bucket,
+              Key: claim.receiptUrls[0],
+              Body: samplePdfBytes,
+              ContentType: "application/pdf",
+            })
+          );
+        } catch {}
+      }
+      await prisma.expenseClaim.create({
+        data: { tenantId, ...claim },
+      });
+    }
+  }
+  console.log("✓ Expense Claims seeded across 18 months (Settled, Approved, Submitted)");
+
+  // ==============================================================
+  // 14. 18 Months of Payroll Runs & Detailed Itemized Payslips
+  // Months: April 2025 (2025-04) to September 2026 (2026-09)
+  // ==============================================================
+  const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const monthsToSeed = [];
+  // 2025: Months 4 to 12
+  for (let m = 4; m <= 12; m++) monthsToSeed.push({ year: 2025, month: m });
+  // 2026: Months 1 to 9
+  for (let m = 1; m <= 9; m++) monthsToSeed.push({ year: 2026, month: m });
+
+  console.log(`Generating 18 payroll cycles and payslips across ${monthsToSeed.length} months...`);
+
+  // Staff members eligible for payroll
+  const staffMembers = [
+    { person: directorPerson, base: 120000 },
+    { person: gauravPerson, base: 85000 }, // Was 75k before July 2026
+    { person: hrPerson, base: 45000 },
+    { person: peopleMap["vikram.m@saas-erp.local"], base: 55000 },
+    { person: peopleMap["ananya.verma@saas-erp.local"], base: 50000 }, // Was 42k before Aug 2026
+    { person: peopleMap["rohit.j@saas-erp.local"], base: 52000 },
+    { person: peopleMap["priya.s@saas-erp.local"], base: 35000 },
+  ];
+
+  let totalPayslipsSeeded = 0;
+
+  for (const { year, month } of monthsToSeed) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    // Count weekdays
+    let workingDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = new Date(Date.UTC(year, month - 1, d));
+      const dow = dt.getUTCDay();
+      if (dow !== 0 && dow !== 6) workingDays++;
+    }
+
+    const isCurrentCycle = (year === 2026 && month === 9);
+    const runStatus = isCurrentCycle ? "APPROVED" : "DISBURSED";
+    const runTitle = `${MONTH_NAMES[month - 1]} ${year} Payroll Cycle`;
+
+    let run = await prisma.payrollRun.findUnique({
+      where: { tenantId_year_month: { tenantId, year, month } },
+    });
+
+    const approvedAt = new Date(Date.UTC(year, month - 1, daysInMonth, 17, 0, 0));
+    const disbursedAt = isCurrentCycle ? null : new Date(Date.UTC(year, month - 1, daysInMonth, 18, 0, 0));
+
+    if (!run) {
+      run = await prisma.payrollRun.create({
+        data: {
+          tenantId,
+          year,
+          month,
+          title: runTitle,
+          status: runStatus,
+          approvedBy: directorPerson.id,
+          approvedAt,
+          disbursedAt,
+          notes: `Official monthly payroll cycle for ${MONTH_NAMES[month - 1]} ${year} with statutory deductions and attendance reconciliation.`,
+        },
+      });
+    } else {
+      run = await prisma.payrollRun.update({
+        where: { id: run.id },
+        data: {
+          status: runStatus,
+          approvedBy: directorPerson.id,
+          approvedAt,
+          disbursedAt,
+        },
+      });
+    }
+
+    let cycleGross = 0;
+    let cycleDeductions = 0;
+    let cycleNet = 0;
+
+    for (const staff of staffMembers) {
+      let baseGross = staff.base;
+      // Account for past salary revisions:
+      if (staff.person.id === gauravPerson.id && (year < 2026 || (year === 2026 && month < 7))) {
+        baseGross = 75000;
+      }
+      if (staff.person.id === peopleMap["ananya.verma@saas-erp.local"].id && (year < 2026 || (year === 2026 && month < 8))) {
+        baseGross = 42000;
+      }
+
+      // Attendance / LOP logic:
+      let presentDays = workingDays;
+      let lopDays = 0;
+
+      // Special demonstration cases in Sept 2026:
+      if (year === 2026 && month === 9) {
+        if (staff.person.id === peopleMap["ananya.verma@saas-erp.local"].id) {
+          lopDays = 1;
+          presentDays = workingDays - 1;
+        } else if (staff.person.id === peopleMap["rohit.j@saas-erp.local"].id) {
+          lopDays = 2;
+          presentDays = workingDays - 2;
+        }
+      }
+
+      const payableDays = workingDays - lopDays;
+      const attFactor = workingDays > 0 ? payableDays / workingDays : 1;
+
+      // Earnings breakdown
+      const basic = Math.round(baseGross * 0.5 * attFactor);
+      const hra = Math.round(baseGross * 0.25 * attFactor);
+      const conveyance = Math.round(baseGross * 0.1 * attFactor);
+      const special = Math.max(0, Math.round(baseGross * attFactor) - (basic + hra + conveyance));
+      const grossPay = basic + hra + conveyance + special;
+
+      // Statutory deductions
+      const pf = Math.round(basic * 0.12);
+      const pt = baseGross > 20000 ? 200 : 0;
+      const tds = baseGross > 50000 ? Math.round(baseGross * 0.05) : 0;
+
+      const earnings = [
+        { code: "BASIC", name: "Basic Salary", amount: basic },
+        { code: "HRA", name: "House Rent Allowance", amount: hra },
+        { code: "CONVEYANCE", name: "Conveyance Allowance", amount: conveyance },
+        { code: "SPECIAL", name: "Special Allowance", amount: special },
+      ];
+
+      const deductions = [
+        { code: "PF", name: "Provident Fund (Employee)", amount: pf },
+        { code: "PT", name: "Professional Tax", amount: pt },
+      ];
+      if (tds > 0) {
+        deductions.push({ code: "TDS", name: "TDS / Income Tax", amount: tds });
+      }
+
+      // Check for salary advance EMI recovery:
+      // Vikram Malhotra: ₹5,000 EMI in Aug & Sep 2026
+      if (staff.person.id === peopleMap["vikram.m@saas-erp.local"].id && year === 2026 && (month === 8 || month === 9)) {
+        deductions.push({
+          code: "ADVANCE_EMI",
+          name: "Salary Advance Recovery (Medical Emergency)",
+          amount: 5000,
+        });
+      }
+
+      // HR Administrator: ₹5,000 EMI between Oct 2025 and Feb 2026
+      if (staff.person.id === hrPerson.id && ((year === 2025 && month >= 10) || (year === 2026 && month <= 2))) {
+        deductions.push({
+          code: "ADVANCE_EMI",
+          name: "Salary Advance Recovery (Staff Welfare)",
+          amount: 5000,
+        });
+      }
+
+      const totalDeductions = deductions.reduce((sum, d) => sum + d.amount, 0);
+      const netPay = grossPay - totalDeductions;
+
+      cycleGross += grossPay;
+      cycleDeductions += totalDeductions;
+      cycleNet += netPay;
+
+      const paymentStatus = isCurrentCycle ? "APPROVED" : "PAID";
+      const paymentRef = isCurrentCycle ? null : `NEFT-${year}${String(month).padStart(2, "0")}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      await prisma.payslip.upsert({
+        where: {
+          tenantId_payrollRunId_personId: {
+            tenantId,
+            payrollRunId: run.id,
+            personId: staff.person.id,
+          },
+        },
+        update: {
+          totalWorkingDays: workingDays,
+          presentDays,
+          lopDays,
+          earnings,
+          deductions,
+          grossPay,
+          totalDeductions,
+          netPay,
+          paymentStatus,
+          paymentReference: paymentRef,
+        },
+        create: {
+          tenantId,
+          payrollRunId: run.id,
+          personId: staff.person.id,
+          year,
+          month,
+          totalWorkingDays: workingDays,
+          presentDays,
+          lopDays,
+          earnings,
+          deductions,
+          grossPay,
+          totalDeductions,
+          netPay,
+          paymentStatus,
+          paymentReference: paymentRef,
+        },
+      });
+
+      totalPayslipsSeeded++;
+    }
+
+    await prisma.payrollRun.update({
+      where: { id: run.id },
+      data: {
+        totalGross: cycleGross,
+        totalDeductions: cycleDeductions,
+        totalNet: cycleNet,
+        processedStaffCount: staffMembers.length,
+      },
+    });
+  }
+  console.log(`✓ 18 Payroll Cycles & ${totalPayslipsSeeded} detailed payslips backfilled successfully!`);
+
+  // ==============================================================
+  // 15. 18 Months of Attendance Records Backfill
+  // ==============================================================
+  console.log("Generating weekday attendance punches for all staff across past 18 months...");
+  const allPeople = Object.values(peopleMap);
+
+  let attendanceCount = 0;
+  for (const { year, month } of monthsToSeed) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(Date.UTC(year, month - 1, day));
+      const dow = date.getUTCDay();
+      if (dow === 0 || dow === 6) continue; // Skip weekends
+
+      for (const p of allPeople) {
+        let status = "PRESENT";
+        let mode = p.personType === "VOLUNTEER" ? "FIELD" : "OFFICE";
+
+        // Random realistic punch times:
+        // Check-in between 09:10 and 09:35 AM
+        const checkInMin = Math.floor(Math.random() * 25) + 10;
+        const checkInTime = new Date(date.getTime() + (9 * 60 + checkInMin) * 60 * 1000);
+
+        // Check-out between 18:05 and 18:40 PM
+        const checkOutMin = Math.floor(Math.random() * 35) + 5;
+        const checkOutTime = new Date(date.getTime() + (18 * 60 + checkOutMin) * 60 * 1000);
+
+        // LOP cases in Sep 2026
+        if (year === 2026 && month === 9) {
+          if (p.email === "ananya.verma@saas-erp.local" && day === 18) {
+            status = "ABSENT";
+          } else if (p.email === "rohit.j@saas-erp.local" && (day === 24 || day === 25)) {
+            status = "ABSENT";
+          } else if (p.email === "vikram.m@saas-erp.local" && (day === 14 || day === 15)) {
+            status = "ON_LEAVE";
+          }
+        }
+
+        await prisma.attendance.upsert({
+          where: { tenantId_personId_date: { tenantId, personId: p.id, date } },
+          update: { status, mode, checkInTime, checkOutTime },
+          create: {
+            tenantId,
+            personId: p.id,
+            date,
+            checkInTime,
+            checkOutTime: status === "PRESENT" ? checkOutTime : null,
+            status,
+            mode,
+            locationName: mode === "FIELD" ? "Community Outreach Centre, Delhi" : "Head Office, Delhi",
+            verificationStatus: "VERIFIED",
+            verificationMode: "ONLINE",
+          },
+        });
+        attendanceCount++;
+      }
+    }
+  }
+
+  // Also seed today's live attendance
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const person of allPeople) {
+    await prisma.attendance.upsert({
+      where: { tenantId_personId_date: { tenantId, personId: person.id, date: today } },
+      update: {},
+      create: {
+        tenantId,
+        personId: person.id,
+        date: today,
+        checkInTime: new Date(today.getTime() + 9.3 * 3600 * 1000),
+        checkOutTime: null,
+        status: "PRESENT",
+        mode: person.personType === "VOLUNTEER" ? "FIELD" : "OFFICE",
+        locationName: person.personType === "VOLUNTEER" ? "Community Outreach Centre, Delhi" : "Head Office, Delhi",
+        verificationStatus: "VERIFIED",
+        verificationMode: "ONLINE",
+      },
+    });
+  }
+  console.log(`✓ Seeded ${attendanceCount} historical attendance punches + today's live status`);
+
+  console.log("==========================================================");
+  console.log("🎉 Complete 18-Month Dataset Successfully Backfilled!");
+  console.log("==========================================================");
 }
 
 main()
   .catch((e) => {
-    console.error("Seed failed:", e);
+    console.error("Backfill failed:", e);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());
