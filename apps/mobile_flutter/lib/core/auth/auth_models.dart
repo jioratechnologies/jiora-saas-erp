@@ -24,36 +24,55 @@ class UserProfile {
   });
 
   factory UserProfile.fromApiData({
-    required Map<String, dynamic> meData,
-    Map<String, dynamic>? profileData,
+    required dynamic meRaw,
+    dynamic profileRaw,
   }) {
-    final userMap = profileData?['user'] as Map<String, dynamic>?;
-    final personMap = profileData?['person'] as Map<String, dynamic>?;
-    final deptMap = personMap?['department'] as Map<String, dynamic>?;
-    final desigMap = personMap?['designation'] as Map<String, dynamic>?;
+    final meData = meRaw is Map ? Map<String, dynamic>.from(meRaw) : <String, dynamic>{};
+    final profileData = profileRaw is Map ? Map<String, dynamic>.from(profileRaw) : null;
 
-    final rolesRaw = meData['roles'] as List<dynamic>? ?? [];
-    final permissionsRaw = meData['permissionKeys'] as List<dynamic>? ?? [];
+    final userMap = profileData?['user'] is Map ? Map<String, dynamic>.from(profileData!['user']) : null;
+    final personMap = profileData?['person'] is Map ? Map<String, dynamic>.from(profileData!['person']) : null;
 
-    String name = userMap?['displayName'] ?? '';
+    // Department can be a String in userMap or a Map in personMap
+    String? deptName;
+    if (personMap?['department'] is Map) {
+      deptName = personMap!['department']['name']?.toString();
+    } else if (userMap?['department'] != null) {
+      deptName = userMap!['department'].toString();
+    }
+
+    // Designation can be a String in userMap or a Map in personMap
+    String? desigName;
+    if (personMap?['designation'] is Map) {
+      desigName = personMap!['designation']['name']?.toString();
+    } else if (userMap?['designation'] != null) {
+      desigName = userMap!['designation'].toString();
+    }
+
+    final rolesRaw = meData['roles'] is List ? (meData['roles'] as List) : [];
+    final permissionsRaw = meData['permissionKeys'] is List ? (meData['permissionKeys'] as List) : [];
+
+    String name = userMap?['displayName']?.toString() ?? '';
     if (name.isEmpty && personMap != null) {
-      name = '${personMap['firstName'] ?? ''} ${personMap['lastName'] ?? ''}'.trim();
+      final fName = personMap['firstName']?.toString() ?? '';
+      final lName = personMap['lastName']?.toString() ?? '';
+      name = '$fName $lName'.trim();
     }
     if (name.isEmpty) {
-      name = meData['userId'] ?? 'User';
+      name = userMap?['email']?.toString() ?? meData['userId']?.toString() ?? 'User';
     }
 
     return UserProfile(
-      userId: meData['userId'] ?? '',
-      tenantId: meData['tenantId'],
-      isPlatformContext: meData['isPlatformContext'] ?? false,
+      userId: meData['userId']?.toString() ?? '',
+      tenantId: meData['tenantId']?.toString(),
+      isPlatformContext: meData['isPlatformContext'] == true,
       roles: rolesRaw.map((e) => e.toString()).toList(),
       permissions: permissionsRaw.map((e) => e.toString()).toList(),
-      email: userMap?['email'] ?? 'user@saas-erp.local',
+      email: userMap?['email']?.toString() ?? 'user@saas-erp.local',
       displayName: name,
-      employeeId: personMap?['employeeId'],
-      departmentName: deptMap?['name'],
-      designationName: desigMap?['name'],
+      employeeId: personMap?['employeeId']?.toString(),
+      departmentName: deptName,
+      designationName: desigName,
     );
   }
 

@@ -20,6 +20,18 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  @override
+  void initState() {
+    super.initState();
+    _errorMessage = widget.authService.lastAuthError;
+    if (widget.authService.apiClient.token != null &&
+        widget.authService.apiClient.token!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onLoginSuccess();
+      });
+    }
+  }
+
   Future<void> _handleZitadelSignIn() async {
     setState(() {
       _isLoading = true;
