@@ -69,10 +69,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() => _isCheckingIn = true);
     final timeStr = DateFormat('hh:mm a').format(_now);
     final isoStr = _now.toIso8601String();
+    final dateStr = DateFormat('yyyy-MM-dd').format(_now);
 
     final punchRecord = {
       'offlineAttendanceId': const Uuid().v4(),
+      'date': dateStr,
       'timestamp': isoStr,
+      'checkInTime': punchType == 'CHECK_IN' ? isoStr : null,
+      'checkOutTime': punchType == 'CHECK_OUT' ? isoStr : null,
       'type': punchType,
       'mode': _mode,
       'latitude': 28.5355,
@@ -115,6 +119,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     try {
       await widget.apiClient.post('/hr/attendance/sync', {
+        'records': _offlineQueue,
         'items': _offlineQueue,
       });
 

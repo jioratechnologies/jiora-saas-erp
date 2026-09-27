@@ -23,6 +23,7 @@ import { Modal } from "../../components/ui/modal";
 import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
+import { PageHeader } from "../../components/page-header";
 
 interface SalaryComponent {
   id: string;
@@ -227,35 +228,56 @@ export function SalaryStructurePage() {
     toast.success("Compensation register exported.");
   };
 
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-            <Banknote className="h-6 w-6 text-primary" />
-            Compensation & Salary Structures
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage employee CTC packages, salary templates, statutory deductions, and appraisal histories.
-          </p>
-        </div>
+  const totalMonthlyPayroll = (assignments || []).reduce((sum, a) => sum + Number(a.baseGross || 0), 0);
 
-        <div className="flex items-center gap-2">
-          {activeTab === "assignments" && (
-            <Button variant="outline" size="sm" onClick={handleExportCompensationCsv} className="gap-2 text-xs">
-              <Download className="h-3.5 w-3.5" />
-              Export Register
-            </Button>
-          )}
-          {activeTab === "components" && canManageSalary && (
-            <Button size="sm" onClick={() => setComponentModalOpen(true)} className="gap-2 text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              Add Component
-            </Button>
-          )}
-        </div>
-      </div>
+  return (
+    <div className="space-y-6 w-full">
+      <PageHeader
+        icon={Banknote}
+        title="Compensation & Salary Structures"
+        description="Manage employee CTC packages, salary templates, statutory deductions, and appraisal histories."
+        badge={
+          <Badge variant="outline" className="text-xs font-mono">
+            {assignments?.length || 0} Staff Assigned
+          </Badge>
+        }
+        action={
+          <div className="flex items-center gap-2">
+            {activeTab === "assignments" && (
+              <Button variant="outline" size="sm" onClick={handleExportCompensationCsv} className="gap-2 text-xs rounded-xl">
+                <Download className="h-3.5 w-3.5" />
+                Export Register
+              </Button>
+            )}
+            {activeTab === "components" && canManageSalary && (
+              <Button size="sm" onClick={() => setComponentModalOpen(true)} className="gap-2 text-xs rounded-xl shadow-sm">
+                <Plus className="h-3.5 w-3.5" />
+                Add Component
+              </Button>
+            )}
+          </div>
+        }
+        stats={
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Assigned Employees</span>
+              <span className="text-base font-bold text-foreground">{assignments?.length || 0}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Total Monthly Gross</span>
+              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{totalMonthlyPayroll.toLocaleString("en-IN")}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Salary Templates</span>
+              <span className="text-base font-bold text-primary">{structures?.length || 0}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Salary Components</span>
+              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{components?.length || 0}</span>
+            </div>
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">

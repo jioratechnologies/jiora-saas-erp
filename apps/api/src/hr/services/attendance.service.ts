@@ -137,16 +137,31 @@ export class AttendanceService {
     });
   }
 
-  async syncBatch(tenantId: string, personId: string, dto: SyncAttendanceBatchDto) {
+  async syncBatch(tenantId: string, personId: string, dto: SyncAttendanceBatchDto | any) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      const records = Array.isArray(dto)
+        ? dto
+        : Array.isArray(dto?.records)
+        ? dto.records
+        : Array.isArray(dto?.items)
+        ? dto.items
+        : [];
+
+      if (!records || records.length === 0) {
+        return [];
+      }
+
       const results: any[] = [];
-      for (const item of dto.records) {
+      for (const item of records) {
+        if (!item) continue;
+        const offlineId = item.offlineAttendanceId || item.id || `offline-${Date.now()}-${Math.random()}`;
+
         // Idempotency check: offlineAttendanceId
         const existingOffline = await tx.attendance.findUnique({
           where: {
             tenantId_offlineAttendanceId: {
               tenantId,
-              offlineAttendanceId: item.offlineAttendanceId,
+              offlineAttendanceId: offlineId,
             },
           },
         });
@@ -155,7 +170,8 @@ export class AttendanceService {
           continue;
         }
 
-        const dateObj = new Date(item.date);
+        const rawDateStr = item.date || (item.timestamp ? String(item.timestamp).split("T")[0] : new Date().toISOString().split("T")[0]);
+        const dateObj = new Date(rawDateStr);
         const utcDate = new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate()));
 
         // Check if record exists for this date
@@ -172,14 +188,26 @@ export class AttendanceService {
         const isFlagged = item.deviceSignals?.mockLocation === true || item.deviceSignals?.rootRisk === true;
         const verificationStatus = isFlagged ? "FLAGGED" : "VERIFIED";
 
+        const checkInTimeVal = item.checkInTime
+          ? new Date(item.checkInTime)
+          : item.type === "CHECK_IN" && item.timestamp
+          ? new Date(item.timestamp)
+          : new Date();
+
+        const checkOutTimeVal = item.checkOutTime
+          ? new Date(item.checkOutTime)
+          : item.type === "CHECK_OUT" && item.timestamp
+          ? new Date(item.timestamp)
+          : null;
+
         if (existingDate) {
           const updated = await tx.attendance.update({
             where: { id: existingDate.id },
             data: {
-              checkOutTime: item.checkOutTime ? new Date(item.checkOutTime) : existingDate.checkOutTime,
+              checkOutTime: checkOutTimeVal || existingDate.checkOutTime,
               notes: item.notes ? `${existingDate.notes || ""} | ${item.notes}` : existingDate.notes,
               syncStatus: "SYNCED",
-              offlineAttendanceId: item.offlineAttendanceId,
+              offlineAttendanceId: offlineId,
             },
           });
           results.push(updated);
@@ -189,20 +217,20 @@ export class AttendanceService {
               tenantId,
               personId,
               date: utcDate,
-              checkInTime: new Date(item.checkInTime),
-              checkOutTime: item.checkOutTime ? new Date(item.checkOutTime) : null,
-              mode: item.mode,
-              latitude: item.latitude,
-              longitude: item.longitude,
+              checkInTime: checkInTimeVal,
+              checkOutTime: checkOutTimeVal,
+              mode: item.mode || "OFFICE",
+              latitude: item.latitude ? Number(item.latitude) : null,
+              longitude: item.longitude ? Number(item.longitude) : null,
               locationName: item.locationName,
               notes: item.notes,
-              offlineAttendanceId: item.offlineAttendanceId,
+              offlineAttendanceId: offlineId,
               verificationMode: "OFFLINE",
               verificationStatus,
               syncStatus: "SYNCED",
               selfieUrl: item.selfieUrl,
               deviceSignals: item.deviceSignals || undefined,
-              accuracyMeters: item.accuracyMeters,
+              accuracyMeters: item.accuracyMeters ? Number(item.accuracyMeters) : null,
             },
           });
           results.push(created);

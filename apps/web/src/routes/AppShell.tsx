@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Tenant } from "@saas-erp/shared-types";
 import {
@@ -33,6 +33,7 @@ import { useMe } from "../auth/use-me";
 import { Avatar } from "../components/ui/avatar";
 import { useTheme } from "../theme/ThemeProvider";
 import { EditProfileModal } from "../components/profile/EditProfileModal";
+import { GlobalSearch } from "../components/global-search";
 import { cn } from "../lib/utils";
 
 interface NavItem {
@@ -46,6 +47,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   // HR Core Module
   { to: "/hr/people", label: "People", icon: Users, permission: "hr.person.read", section: "hr" },
+  { to: "/hr/departments", label: "Department Teams", icon: Network, permission: "hr.person.read", section: "hr" },
   { to: "/hr/attendance", label: "Attendance", icon: Clock, permission: "hr.attendance.read", section: "hr" },
   { to: "/hr/leave", label: "Leave", icon: PlaneTakeoff, permission: "hr.leave.read", section: "hr" },
   { to: "/hr/holidays", label: "Holidays", icon: CalendarDays, permission: "hr.holiday.read", section: "hr" },
@@ -73,6 +75,7 @@ export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const { data: me } = useMe();
   const { theme, resolvedTheme, setTheme, toggleTheme } = useTheme();
+  const location = useLocation();
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -536,8 +539,74 @@ export function AppShell() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-4xl">
+      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-zinc-50/70 dark:bg-zinc-950">
+        {/* Sticky Desktop Top Header Bar */}
+        <header className="hidden md:flex sticky top-0 z-30 h-14 shrink-0 items-center justify-between px-6 lg:px-8 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 transition-all">
+          <div className="flex items-center gap-3 min-w-0">
+            {collapsed && (
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-foreground transition-colors cursor-pointer"
+                title="Expand sidebar"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+            )}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+              <span className="font-semibold text-foreground flex items-center gap-1.5 truncate">
+                {orgLogo ? (
+                  <img src={orgLogo} alt={orgName} className="h-4 w-4 rounded-md object-contain" />
+                ) : (
+                  <span className="h-4 w-4 rounded-md bg-primary text-white flex items-center justify-center text-[10px] font-bold">
+                    {orgName.slice(0, 1)}
+                  </span>
+                )}
+                {orgName}
+              </span>
+              <span className="text-zinc-300 dark:text-zinc-700">/</span>
+              <span className="truncate capitalize font-medium text-foreground">
+                {location.pathname.replace(/^\//, "").replace(/\//g, " › ") || "Dashboard"}
+              </span>
+            </div>
+          </div>
+
+          {/* Global Search Box */}
+          <GlobalSearch />
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Dynamic Page Action Portal (Primary Page Actions) */}
+            <div id="appshell-header-actions" className="hidden lg:flex items-center gap-2" />
+
+            {/* Theme Toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              title={`Toggle theme (Current: ${resolvedTheme})`}
+            >
+              {resolvedTheme === "dark" ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-indigo-500" />}
+            </button>
+
+            {/* User Profile Pill */}
+            <button
+              type="button"
+              onClick={() => setEditProfileOpen(true)}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-primary/40 hover:bg-zinc-50 dark:hover:bg-zinc-850 transition-all cursor-pointer group"
+              title="View & edit my profile"
+            >
+              <Avatar name={displayName} src={avatarUrl || undefined} size="sm" className="h-6 w-6 text-xs" />
+              <div className="hidden sm:block text-left">
+                <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors leading-tight truncate max-w-[120px]">
+                  {displayName}
+                </p>
+              </div>
+            </button>
+          </div>
+        </header>
+
+        {/* Fluid Responsive Content Container (Wide Screen Optimized) */}
+        <div className="flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <Outlet />
         </div>
       </main>

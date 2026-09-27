@@ -307,21 +307,55 @@ export function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Attendance Portal"
-          description="Real-time punch desk, mobile & remote logging, and team presence tracking."
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportCsv}
-          className="gap-2 self-start sm:self-center font-semibold"
-        >
-          <Download className="h-4 w-4" />
-          <span>Export {activeTab === "team" ? "Register" : "Logs"} (CSV)</span>
-        </Button>
-      </div>
+      <PageHeader
+        icon={Clock}
+        title="Attendance Portal"
+        description="Real-time punch desk, mobile & remote logging, and team presence tracking."
+        badge={
+          <Badge variant="outline" className="text-xs font-mono">
+            {currentTime.toLocaleDateString(undefined, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })}
+          </Badge>
+        }
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            className="gap-2 font-semibold rounded-xl text-xs"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Export {activeTab === "team" ? "Register" : "Logs"} (CSV)</span>
+          </Button>
+        }
+        stats={
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Total Roster</span>
+              <span className="text-base font-bold text-foreground">{totalStaff}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Present / Active</span>
+              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{presentCount}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Remote & Field</span>
+              <span className="text-base font-bold text-primary">{remoteFieldCount}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">On Leave</span>
+              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{onLeaveCount}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Unchecked / Absent</span>
+              <span className="text-base font-bold text-rose-600 dark:text-rose-400">{absentCount}</span>
+            </div>
+          </div>
+        }
+      />
 
       {/* Realtime Hero Attendance Widget */}
       <Card className="overflow-hidden border-primary/20 bg-linear-to-br from-white to-primary/5 dark:from-zinc-900 dark:to-primary/10 shadow-sm">

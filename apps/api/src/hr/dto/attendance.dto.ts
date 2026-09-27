@@ -93,8 +93,13 @@ export class SyncAttendanceItemDto {
 }
 
 export class SyncAttendanceBatchDto {
-  @ApiProperty({ type: [SyncAttendanceItemDto] })
-  records!: SyncAttendanceItemDto[];
+  @ApiPropertyOptional({ type: [SyncAttendanceItemDto] })
+  @IsOptional()
+  records?: SyncAttendanceItemDto[];
+
+  @ApiPropertyOptional({ type: [SyncAttendanceItemDto] })
+  @IsOptional()
+  items?: any[];
 }
 
 export class RegularizeAttendanceDto {

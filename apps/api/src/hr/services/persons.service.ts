@@ -39,7 +39,14 @@ export class PersonsService {
           department: true,
           designation: true,
           manager: {
-            select: { id: true, firstName: true, lastName: true, email: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
+              designation: true,
+            },
           },
         },
         orderBy: [{ status: "asc" }, { firstName: "asc" }],
@@ -55,10 +62,25 @@ export class PersonsService {
           department: true,
           designation: true,
           manager: {
-            select: { id: true, firstName: true, lastName: true, email: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
+              designation: true,
+            },
           },
           directReports: {
-            select: { id: true, firstName: true, lastName: true, email: true, designation: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              designation: true,
+              department: true,
+              status: true,
+            },
           },
           documents: {
             orderBy: { uploadedAt: "desc" },
@@ -155,7 +177,9 @@ export class PersonsService {
         include: {
           department: true,
           designation: true,
-          manager: true,
+          manager: {
+            include: { department: true, designation: true },
+          },
         },
       });
 

@@ -48,7 +48,7 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in"
@@ -60,7 +60,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full overflow-hidden rounded-2xl border border-zinc-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl transition-all animate-in zoom-in-95 duration-150",
+          "relative z-[101] w-full overflow-hidden rounded-2xl border border-zinc-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl transition-all animate-in zoom-in-95 duration-150",
           maxWidthMap[maxWidth],
         )}
       >
@@ -129,7 +129,7 @@ export function Drawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-[100] overflow-hidden">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in"
@@ -141,7 +141,7 @@ export function Drawer({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "fixed top-0 bottom-0 right-0 z-10 flex h-full w-full flex-col border-l border-zinc-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl transition-all animate-in slide-in-from-right duration-200",
+          "fixed top-0 bottom-0 right-0 z-[101] flex h-full w-full flex-col border-l border-zinc-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl transition-all animate-in slide-in-from-right duration-200",
           drawerWidthMap[width],
         )}
       >

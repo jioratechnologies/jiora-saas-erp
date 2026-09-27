@@ -80,39 +80,64 @@ export function HolidaysPage() {
 
   const canWrite = me?.permissionKeys?.includes("hr.holiday.write");
 
+  const mandatoryCount = (holidays || []).filter((h) => !h.isOptional).length;
+  const optionalCount = (holidays || []).filter((h) => h.isOptional).length;
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Holiday Calendar"
-          description="Annual paid holidays, national observances, and optional festival leaves."
-        />
-        <div className="flex items-center gap-2">
-          {/* Year Selector */}
-          <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1 border border-zinc-200/80 dark:border-zinc-800">
-            {[2025, 2026, 2027].map((yr) => (
-              <button
-                key={yr}
-                onClick={() => setSelectedYear(yr)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  selectedYear === yr
-                    ? "bg-white dark:bg-zinc-900 text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {yr}
-              </button>
-            ))}
-          </div>
+      <PageHeader
+        icon={CalendarDays}
+        title="Holiday Calendar"
+        description="Annual paid holidays, national observances, and optional festival leaves."
+        badge={
+          <Badge variant="outline" className="text-xs font-mono">
+            {holidays?.length || 0} Holidays in {selectedYear}
+          </Badge>
+        }
+        action={
+          <div className="flex items-center gap-2.5">
+            {/* Year Selector */}
+            <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1 border border-zinc-200/80 dark:border-zinc-800">
+              {[2025, 2026, 2027].map((yr) => (
+                <button
+                  key={yr}
+                  onClick={() => setSelectedYear(yr)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    selectedYear === yr
+                      ? "bg-white dark:bg-zinc-900 text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
 
-          {canWrite && (
-            <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0">
-              <Plus className="h-4 w-4" />
-              <span>Add Holiday</span>
-            </Button>
-          )}
-        </div>
-      </div>
+            {canWrite && (
+              <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0 rounded-xl text-xs font-bold shadow-sm">
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Holiday</span>
+              </Button>
+            )}
+          </div>
+        }
+        stats={
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Total Holidays ({selectedYear})</span>
+              <span className="text-base font-bold text-foreground">{holidays?.length || 0} Days</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Mandatory / Public Observances</span>
+              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{mandatoryCount} Days</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Optional / Restricted Holidays</span>
+              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{optionalCount} Days</span>
+            </div>
+          </div>
+        }
+      />
 
       {/* Holidays Table */}
       <Card>

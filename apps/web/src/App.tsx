@@ -22,6 +22,7 @@ import { SalaryStructurePage } from "./routes/payroll/SalaryStructurePage";
 import { PayrollRunsPage } from "./routes/payroll/PayrollRunsPage";
 import { ClaimsPage } from "./routes/payroll/ClaimsPage";
 import { MyPayslipsPage } from "./routes/payroll/MyPayslipsPage";
+import { DepartmentTeamsPage } from "./routes/hr/DepartmentTeamsPage";
 
 const queryClient = new QueryClient();
 
@@ -49,10 +50,8 @@ export function App() {
               >
                 <Route path="/" element={<LandingRedirect />} />
                 <Route path="/admin/org" element={<AdminOrgPage />} />
-                <Route
-                  path="/admin/departments"
-                  element={<SimpleNamedListPage title="Departments" apiPath="/admin/departments" />}
-                />
+                <Route path="/admin/departments" element={<DepartmentTeamsPage />} />
+                <Route path="/hr/departments" element={<DepartmentTeamsPage />} />
                 <Route
                   path="/admin/designations"
                   element={<SimpleNamedListPage title="Designations" apiPath="/admin/designations" />}

@@ -26,6 +26,7 @@ import { Modal } from "../../components/ui/modal";
 import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
+import { PageHeader } from "../../components/page-header";
 
 interface ExpenseClaim {
   id: string;
@@ -213,60 +214,86 @@ export function ClaimsPage() {
     toast.success("Expense claims exported.");
   };
 
+  const totalApprovedAmount = (claims || [])
+    .filter((c) => c.status === "APPROVED" || c.status === "SETTLED")
+    .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  const pendingCount = (claims || []).filter((c) => c.status === "SUBMITTED").length;
+  const activeAdvancesCount = (advances || []).filter((a) => a.status === "APPROVED" || a.status === "RECOVERING").length;
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-            <CreditCard className="h-6 w-6 text-primary" />
-            Claims & Advances
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Reimbursement claims with receipt uploads and emergency salary advance requests with EMI repayment.
-          </p>
-        </div>
+    <div className="space-y-6 w-full">
+      {/* Sticky Header with Stats */}
+      <PageHeader
+        icon={CreditCard}
+        title="Claims & Advances"
+        description="Reimbursement claims with receipt uploads and emergency salary advance requests with EMI repayment."
+        badge={
+          <Badge variant="outline" className="text-xs font-mono">
+            {activeSection === "expenses" ? `${claims?.length || 0} Claims` : `${advances?.length || 0} Advances`}
+          </Badge>
+        }
+        action={
+          <div className="flex items-center gap-2">
+            {activeSection === "expenses" && (
+              <Button variant="outline" size="sm" onClick={handleExportClaimsCsv} className="gap-2 text-xs rounded-xl">
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+            )}
+            {activeSection === "expenses" ? (
+              <Button size="sm" onClick={() => setClaimModalOpen(true)} className="gap-2 text-xs rounded-xl shadow-sm">
+                <Plus className="h-3.5 w-3.5" />
+                Submit Claim
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => setAdvanceModalOpen(true)} className="gap-2 text-xs rounded-xl shadow-sm">
+                <Plus className="h-3.5 w-3.5" />
+                Request Advance
+              </Button>
+            )}
+          </div>
+        }
+        stats={
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Total Claims</span>
+              <span className="text-base font-bold text-foreground">{claims?.length || 0}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Approved & Settled</span>
+              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{totalApprovedAmount.toLocaleString("en-IN")}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Pending Review</span>
+              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{pendingCount}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Active Advances</span>
+              <span className="text-base font-bold text-primary">{activeAdvancesCount}</span>
+            </div>
+          </div>
+        }
+      />
 
-        <div className="flex items-center gap-2">
-          {activeSection === "expenses" && (
-            <Button variant="outline" size="sm" onClick={handleExportClaimsCsv} className="gap-2 text-xs">
-              <Download className="h-3.5 w-3.5" />
-              Export CSV
-            </Button>
-          )}
-          {activeSection === "expenses" ? (
-            <Button size="sm" onClick={() => setClaimModalOpen(true)} className="gap-2 text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              Submit Claim
-            </Button>
-          ) : (
-            <Button size="sm" onClick={() => setAdvanceModalOpen(true)} className="gap-2 text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              Request Advance
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-        <div className="flex items-center gap-2">
+      {/* Tabs & Queue Filter Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 rounded-2xl bg-zinc-100/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setActiveSection("expenses")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeSection === "expenses"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                ? "bg-white dark:bg-zinc-800 text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Expense Reimbursements ({claims?.length ?? 0})
           </button>
           <button
             onClick={() => setActiveSection("advances")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeSection === "advances"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                ? "bg-white dark:bg-zinc-800 text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Emergency Salary Advances ({advances?.length ?? 0})
@@ -275,12 +302,12 @@ export function ClaimsPage() {
 
         {/* Filter scope: My vs Team */}
         {(canReadClaims || canReadAdvances) && (
-          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl text-xs">
+          <div className="flex items-center bg-white/70 dark:bg-zinc-950/70 p-1 rounded-xl text-xs border border-zinc-200/60 dark:border-zinc-800/60">
             <button
               onClick={() => setFilterMode("my")}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 filterMode === "my"
-                  ? "bg-white dark:bg-zinc-950 text-foreground shadow-sm"
+                  ? "bg-primary text-primary-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -288,9 +315,9 @@ export function ClaimsPage() {
             </button>
             <button
               onClick={() => setFilterMode("team")}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 filterMode === "team"
-                  ? "bg-white dark:bg-zinc-950 text-foreground shadow-sm"
+                  ? "bg-primary text-primary-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

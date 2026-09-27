@@ -285,41 +285,47 @@ export function LeavePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Leave Management"
-          description="Apply for leave, track quota balances, and review team approval requests."
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCsv}
-            className="gap-1.5"
-          >
-            <Download className="h-4 w-4" />
-            <span>Export (CSV)</span>
-          </Button>
-          {canManageTypes && (
+      <PageHeader
+        icon={PlaneTakeoff}
+        title="Leave Management"
+        description="Apply for leave, track quota balances, and review team approval requests."
+        badge={
+          <Badge variant="outline" className="text-xs font-mono">
+            {myRequests?.length || 0} Requests
+          </Badge>
+        }
+        action={
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCreateTypeModalOpen(true)}
-              className="gap-1.5"
+              onClick={handleExportCsv}
+              className="gap-1.5 rounded-xl text-xs font-semibold"
             >
-              <Plus className="h-4 w-4" />
-              <span>Leave Policy</span>
+              <Download className="h-3.5 w-3.5" />
+              <span>Export CSV</span>
             </Button>
-          )}
-          <Button onClick={() => setApplyModalOpen(true)} className="gap-2 shrink-0">
-            <PlaneTakeoff className="h-4 w-4" />
-            <span>Apply for Leave</span>
-          </Button>
-        </div>
-      </div>
+            {canManageTypes && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateTypeModalOpen(true)}
+                className="gap-1.5 rounded-xl text-xs font-semibold"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Leave Policy</span>
+              </Button>
+            )}
+            <Button onClick={() => setApplyModalOpen(true)} className="gap-2 shrink-0 rounded-xl text-xs font-bold shadow-sm">
+              <PlaneTakeoff className="h-3.5 w-3.5" />
+              <span>Apply for Leave</span>
+            </Button>
+          </div>
+        }
+      />
 
       {/* Quota Balance Cards (Dynamic Real-Time Ledger) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
         {(leaveBalances || leaveTypes)?.map((item: any) => {
           const remaining = item.remainingBalance ?? item.annualQuota;
           const quota = item.annualQuota;

@@ -37,7 +37,8 @@ async function main() {
   // ==========================================
   // 1. Synchronize RBAC Permissions for Roles
   // ==========================================
-  const allPermissions = [
+    // Admin & Org Structure Metadata
+    "admin.department.read", "admin.designation.read",
     // HR Core
     "hr.person.read", "hr.person.write", "hr.person.exit",
     "hr.attendance.checkin", "hr.attendance.read", "hr.attendance.manage",

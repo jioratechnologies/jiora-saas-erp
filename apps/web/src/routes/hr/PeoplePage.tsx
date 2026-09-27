@@ -28,6 +28,9 @@ import {
   ShieldCheck,
   Building2,
   Filter,
+  ArrowRight,
+  Network,
+  Users,
 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import { Button } from "../../components/ui/button";
@@ -122,8 +125,25 @@ interface Person {
   designationId?: string | null;
   designation?: DesignationOption | null;
   managerId?: string | null;
-  manager?: { id: string; firstName: string; lastName: string; email: string } | null;
-  directReports?: { id: string; firstName: string; lastName: string; email: string; personType: string }[];
+  manager?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    department?: DepartmentOption | null;
+    designation?: DesignationOption | null;
+    manager?: { id: string; firstName: string; lastName: string } | null;
+  } | null;
+  directReports?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    personType?: string;
+    department?: DepartmentOption | null;
+    designation?: DesignationOption | null;
+    status?: string;
+  }[];
   documents?: PersonDocument[];
 }
 
@@ -393,6 +413,7 @@ export function PeoplePage() {
       setCreateModalOpen(false);
       resetCreateForm();
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "departments"] });
       toast.success(
         `${newPersonType === "EMPLOYEE" ? "Employee" : "Volunteer"} onboarded`,
         `${p.firstName} ${p.lastName} added successfully.`,
@@ -490,6 +511,27 @@ export function PeoplePage() {
     setEditModalOpen(true);
   };
 
+  const handleEditManagerChange = (mId: string) => {
+    setEditManagerId(mId);
+    if (mId) {
+      const mgr = people?.find((p) => p.id === mId);
+      if (mgr?.departmentId && !editDepartmentId) {
+        setEditDepartmentId(mgr.departmentId);
+        toast.info("Department Synced", `Connected department to ${mgr.department?.name || "manager's department"}.`);
+      }
+    }
+  };
+
+  const handleCreateManagerChange = (mId: string) => {
+    setManagerId(mId);
+    if (mId) {
+      const mgr = people?.find((p) => p.id === mId);
+      if (mgr?.departmentId && !departmentId) {
+        setDepartmentId(mgr.departmentId);
+      }
+    }
+  };
+
   const updatePersonMutation = useMutation({
     mutationFn: () => {
       const emergencyContact = formatEmergencyContact(editEmergencyPhone, editEmergencyRelation, editEmergencyName);
@@ -514,6 +556,7 @@ export function PeoplePage() {
     onSuccess: () => {
       setEditModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "departments"] });
       refetchSelectedPerson();
       toast.success("Profile updated", "Reporting manager, department, and profile details saved.");
     },
@@ -603,42 +646,74 @@ export function PeoplePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Person Master"
-          description="Manage employee and volunteer profiles, reporting hierarchies, and records."
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportStaffDirectory}
-            className="gap-1.5 font-semibold"
-          >
-            <Download className="h-4 w-4" />
-            <span>Export Directory</span>
-          </Button>
-          {canManage && (
+      <PageHeader
+        icon={Users}
+        title="Person Master"
+        description="Manage employee and volunteer profiles, reporting hierarchies, and records."
+        badge={
+          <Badge variant="outline" className="text-xs font-mono">
+            {people?.length || 0} Total Staff
+          </Badge>
+        }
+        action={
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                setBulkCsvText("");
-                setBulkParsedRows([]);
-                setBulkImportModalOpen(true);
-              }}
-              className="gap-1.5 font-semibold"
+              onClick={handleExportStaffDirectory}
+              className="gap-1.5 font-semibold rounded-xl text-xs"
             >
-              <Upload className="h-4 w-4" />
-              <span>Bulk Import</span>
+              <Download className="h-3.5 w-3.5" />
+              <span>Export Directory</span>
             </Button>
-          )}
-          <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0 font-bold">
-            <UserPlus className="h-4 w-4" />
-            <span>New Person</span>
-          </Button>
-        </div>
-      </div>
+            {canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setBulkCsvText("");
+                  setBulkParsedRows([]);
+                  setBulkImportModalOpen(true);
+                }}
+                className="gap-1.5 font-semibold rounded-xl text-xs"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                <span>Bulk Import</span>
+              </Button>
+            )}
+            <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0 font-bold rounded-xl text-xs shadow-sm">
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>New Person</span>
+            </Button>
+          </div>
+        }
+        stats={
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">All Personnel</span>
+              <span className="text-base font-bold text-foreground">{people?.length || 0}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Full-Time Employees</span>
+              <span className="text-base font-bold text-primary">
+                {people?.filter((p) => p.personType === "EMPLOYEE").length || 0}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Community Volunteers</span>
+              <span className="text-base font-bold text-amber-600 dark:text-amber-400">
+                {people?.filter((p) => p.personType === "VOLUNTEER").length || 0}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
+              <span className="text-[10px] text-muted-foreground block font-medium">Active Status</span>
+              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                {people?.filter((p) => p.status === "ACTIVE").length || 0}
+              </span>
+            </div>
+          </div>
+        }
+      />
 
       {/* Filters and Search Bar */}
       <Card>
@@ -965,7 +1040,7 @@ export function PeoplePage() {
               ))}
             </Select>
             <Select
-              label="Designation"
+              label="Designation / Role"
               value={designationId}
               onChange={(e) => setDesignationId(e.target.value)}
             >
@@ -978,18 +1053,31 @@ export function PeoplePage() {
 
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label="Reporting Manager"
+              label="Reporting Manager (Hierarchy)"
               value={managerId}
-              onChange={(e) => setManagerId(e.target.value)}
+              onChange={(e) => handleCreateManagerChange(e.target.value)}
             >
               <option value="">None (Top-Level Executive)</option>
-              {people
-                ?.filter((p) => p.status === "ACTIVE")
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName} ({p.designation?.name || p.email})
-                  </option>
-                ))}
+              {departmentId && people?.some((p) => p.status === "ACTIVE" && p.departmentId === departmentId) && (
+                <optgroup label={`Team Leads in ${departments?.find((d) => d.id === departmentId)?.name || "Selected Dept"}`}>
+                  {people
+                    ?.filter((p) => p.status === "ACTIVE" && p.departmentId === departmentId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.firstName} {p.lastName} — {p.designation?.name || p.email}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
+              <optgroup label={departmentId ? "Executive Leadership & Other Departments" : "All Available Managers"}>
+                {people
+                  ?.filter((p) => p.status === "ACTIVE" && (!departmentId || p.departmentId !== departmentId))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.firstName} {p.lastName} — {p.designation?.name || p.email} ({p.department?.name || "No Dept"})
+                    </option>
+                  ))}
+              </optgroup>
             </Select>
             <DatePicker
               label="Joining Date"
@@ -997,6 +1085,43 @@ export function PeoplePage() {
               onChange={(val) => setJoiningDate(val)}
             />
           </div>
+
+          {/* Connected Placement Preview */}
+          {(departmentId || designationId || managerId) && (
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                  <Network className="h-3.5 w-3.5 text-primary" />
+                  Organizational Placement & Hierarchy
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 font-medium">
+                  {managerId ? "Manager Linked" : "Top Executive"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[11px] pt-1">
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Department</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {departments?.find((d) => d.id === departmentId)?.name || "(Unassigned)"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Role</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {designations?.find((d) => d.id === designationId)?.name || "(Unassigned)"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Supervisor</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {people?.find((p) => p.id === managerId)
+                      ? `${people.find((p) => p.id === managerId)!.firstName} ${people.find((p) => p.id === managerId)!.lastName}`
+                      : "None (Direct to Board)"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
             <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
@@ -1091,11 +1216,27 @@ export function PeoplePage() {
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
                     <UserCheck className="h-3 w-3 text-emerald-500 shrink-0" /> Manager
                   </span>
-                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
-                    {selectedPerson.manager
-                      ? `${selectedPerson.manager.firstName} ${selectedPerson.manager.lastName}`
-                      : "None (Top Level)"}
-                  </p>
+                  {selectedPerson.manager ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPersonId(selectedPerson.manager!.id)}
+                      className="font-semibold text-primary hover:underline truncate mt-0.5 text-xs block text-left w-full group cursor-pointer"
+                      title="Click to view supervisor profile"
+                    >
+                      <span className="truncate block">
+                        {selectedPerson.manager.firstName} {selectedPerson.manager.lastName}
+                      </span>
+                      {selectedPerson.manager.designation?.name && (
+                        <span className="text-[10px] text-muted-foreground font-normal truncate block">
+                          {selectedPerson.manager.designation.name}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                      None (Top Level)
+                    </p>
+                  )}
                 </div>
 
                 <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
@@ -1161,22 +1302,36 @@ export function PeoplePage() {
             {/* Direct Reports Section (if any) */}
             {selectedPerson.directReports && selectedPerson.directReports.length > 0 && (
               <div className="space-y-2">
-                <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Direct Reports ({selectedPerson.directReports.length})
-                </h5>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Network className="h-3.5 w-3.5 text-primary" />
+                    Direct Reports ({selectedPerson.directReports.length})
+                  </h5>
+                  <span className="text-[11px] text-muted-foreground">Click member to view profile</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {selectedPerson.directReports.map((dr) => (
-                    <div
+                    <button
+                      type="button"
                       key={dr.id}
-                      className="p-2.5 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 text-xs flex items-center justify-between"
+                      onClick={() => setSelectedPersonId(dr.id)}
+                      className="p-2.5 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs flex items-center justify-between text-left transition-colors cursor-pointer group"
+                      title="Click to view profile"
                     >
-                      <span className="font-medium text-foreground">
-                        {dr.firstName} {dr.lastName}
-                      </span>
-                      <Badge size="sm" variant="secondary">
-                        {dr.personType}
+                      <div className="min-w-0">
+                        <span className="font-semibold text-foreground group-hover:text-primary transition-colors block truncate">
+                          {dr.firstName} {dr.lastName}
+                        </span>
+                        {dr.designation?.name && (
+                          <span className="text-[10px] text-muted-foreground truncate block">
+                            {dr.designation.name}
+                          </span>
+                        )}
+                      </div>
+                      <Badge size="sm" variant="secondary" className="shrink-0 ml-2">
+                        {dr.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
                       </Badge>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1694,29 +1849,148 @@ export function PeoplePage() {
             </Select>
           </div>
 
-          {/* Reporting Manager */}
-          <div>
+          {/* Reporting Manager (Hierarchy) */}
+          <div className="space-y-1.5">
             <Select
               label="Reporting Manager (Hierarchy)"
               value={editManagerId}
-              onChange={(e) => setEditManagerId(e.target.value)}
+              onChange={(e) => handleEditManagerChange(e.target.value)}
             >
               <option value="">None (Top-Level Executive / Board Director)</option>
-              {people
-                ?.filter(
-                  (p) =>
-                    p.status === "ACTIVE" &&
-                    p.id !== selectedPersonId &&
-                    !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
-                )
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName} — {p.designation?.name || p.email} ({p.department?.name || "No Dept"})
-                  </option>
-                ))}
+              {editDepartmentId && people?.some((p) =>
+                p.status === "ACTIVE" &&
+                p.id !== selectedPersonId &&
+                p.departmentId === editDepartmentId &&
+                !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
+              ) && (
+                <optgroup label={`Team Leads & Managers in ${departments?.find((d) => d.id === editDepartmentId)?.name || "Selected Dept"}`}>
+                  {people
+                    ?.filter(
+                      (p) =>
+                        p.status === "ACTIVE" &&
+                        p.id !== selectedPersonId &&
+                        p.departmentId === editDepartmentId &&
+                        !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
+                    )
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.firstName} {p.lastName} — {p.designation?.name || p.email}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
+              <optgroup label={editDepartmentId ? "Executive Leadership & Other Departments" : "All Available Managers"}>
+                {people
+                  ?.filter(
+                    (p) =>
+                      p.status === "ACTIVE" &&
+                      p.id !== selectedPersonId &&
+                      (!editDepartmentId || p.departmentId !== editDepartmentId) &&
+                      !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
+                  )
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.firstName} {p.lastName} — {p.designation?.name || p.email} ({p.department?.name || "No Dept"})
+                    </option>
+                  ))}
+              </optgroup>
             </Select>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Top executives (like Executive Director) have no manager. Self and direct reports are filtered out to prevent circular reporting cycles.
+
+            {/* Sync Department Prompt if mismatch */}
+            {selectedPersonId && (() => {
+              const selectedMgr = people?.find((p) => p.id === editManagerId);
+              if (selectedMgr?.departmentId && selectedMgr.departmentId !== editDepartmentId) {
+                return (
+                  <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 text-[11px] text-muted-foreground border border-zinc-200/60 dark:border-zinc-700/60">
+                    <span>
+                      Manager is in <strong className="text-foreground">{selectedMgr.department?.name || "another dept"}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDepartmentId(selectedMgr.departmentId!);
+                        toast.info("Department Synced", `Set department to ${selectedMgr.department?.name}.`);
+                      }}
+                      className="text-primary hover:underline font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <Building className="h-3 w-3" /> Sync to {selectedMgr.department?.name}
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Organizational Placement & Hierarchy Card */}
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                  <Network className="h-3.5 w-3.5 text-primary" />
+                  Organizational Hierarchy & Placement
+                </span>
+                {editManagerId ? (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 font-medium">
+                    Supervisor Linked
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 font-medium">
+                    Top-Level Executive
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                <div className="p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200/50 dark:border-zinc-700/60">
+                  <span className="text-muted-foreground block text-[10px]">Department</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {departments?.find((d) => d.id === editDepartmentId)?.name || "(Unassigned)"}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200/50 dark:border-zinc-700/60">
+                  <span className="text-muted-foreground block text-[10px]">Role / Designation</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {designations?.find((d) => d.id === editDesignationId)?.name || "(Unassigned)"}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200/50 dark:border-zinc-700/60">
+                  <span className="text-muted-foreground block text-[10px]">Reports To</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {people?.find((p) => p.id === editManagerId)
+                      ? `${people.find((p) => p.id === editManagerId)!.firstName} ${people.find((p) => p.id === editManagerId)!.lastName}`
+                      : "None (Direct to Board)"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Reporting Chain */}
+              <div className="text-[11px] text-muted-foreground pt-1 border-t border-zinc-200/50 dark:border-zinc-800 flex items-center gap-1.5 flex-wrap">
+                <span className="font-medium text-foreground">Chain:</span>
+                <span className="text-foreground font-medium">{editFirstName || "Person"} {editLastName || ""}</span>
+                <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                {people?.find((p) => p.id === editManagerId) ? (
+                  <>
+                    <span className="text-foreground font-medium">
+                      {people.find((p) => p.id === editManagerId)!.firstName} {people.find((p) => p.id === editManagerId)!.lastName}
+                      {people.find((p) => p.id === editManagerId)!.designation?.name
+                        ? ` (${people.find((p) => p.id === editManagerId)!.designation?.name})`
+                        : ""}
+                    </span>
+                    {people.find((p) => p.id === editManagerId)!.manager && (
+                      <>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="text-foreground font-medium">
+                          {people.find((p) => p.id === editManagerId)!.manager!.firstName} {people.find((p) => p.id === editManagerId)!.manager!.lastName}
+                        </span>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-amber-500 font-medium">Direct to Board / Executive Director</span>
+                )}
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Top executives have no manager. Self and direct reports are filtered out to prevent circular reporting cycles.
             </p>
           </div>
 

@@ -7,7 +7,45 @@ export class DepartmentsService {
 
   list(tenantId: string) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
-      tx.department.findMany({ orderBy: { name: "asc" } }),
+      tx.department.findMany({
+        orderBy: { name: "asc" },
+        include: {
+          persons: {
+            where: { status: { not: "EXITED" } },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              avatarUrl: true,
+              status: true,
+              personType: true,
+              managerId: true,
+              manager: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              designation: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              directReports: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+            orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+          },
+        },
+      }),
     );
   }
 
@@ -22,6 +60,32 @@ export class DepartmentsService {
       }
       throw err;
     }
+  }
+
+  async assignMember(tenantId: string, departmentId: string, personId: string, managerId?: string | null) {
+    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      const dept = await tx.department.findFirst({ where: { id: departmentId, tenantId } });
+      if (!dept) throw new NotFoundException("Department not found");
+
+      const person = await tx.person.findFirst({ where: { id: personId, tenantId } });
+      if (!person) throw new NotFoundException("Person not found");
+
+      return tx.person.update({
+        where: { id: personId },
+        data: {
+          departmentId,
+          ...(managerId !== undefined ? { managerId } : {}),
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          departmentId: true,
+          managerId: true,
+        },
+      });
+    });
   }
 
   async delete(tenantId: string, id: string) {

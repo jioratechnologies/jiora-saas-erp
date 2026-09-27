@@ -20,6 +20,7 @@ interface DropdownContextType {
   setIsOpen: (open: boolean) => void;
   close: () => void;
   triggerRef: React.RefObject<HTMLDivElement>;
+  menuRef: React.RefObject<HTMLDivElement>;
 }
 
 const DropdownContext = createContext<DropdownContextType | null>(null);
@@ -87,7 +88,7 @@ export function Dropdown({ children, isOpen: controlledOpen, onOpenChange, class
   }, [open]);
 
   return (
-    <DropdownContext.Provider value={{ isOpen: open, setIsOpen, close, triggerRef }}>
+    <DropdownContext.Provider value={{ isOpen: open, setIsOpen, close, triggerRef, menuRef }}>
       <div ref={triggerRef} className={cn("relative inline-block text-left", className)}>
         {children}
       </div>
@@ -137,7 +138,7 @@ export function DropdownMenu({
   className,
   ...props
 }: DropdownMenuProps) {
-  const { isOpen, triggerRef } = useDropdown();
+  const { isOpen, triggerRef, menuRef } = useDropdown();
   const coords = useFloatingPosition(triggerRef, isOpen, 240);
 
   if (!isOpen || !coords) return null;
@@ -153,6 +154,7 @@ export function DropdownMenu({
   return (
     <PopoverPortal isOpen={isOpen}>
       <div
+        ref={menuRef}
         role="menu"
         aria-label={ariaLabel}
         style={{
@@ -161,7 +163,7 @@ export function DropdownMenu({
           bottom: coords.bottom !== undefined ? `${coords.bottom}px` : undefined,
           left: `${finalLeft}px`,
           minWidth: `${minWidth}px`,
-          zIndex: 99999,
+          zIndex: 50,
         }}
         className={cn(
           "overflow-hidden rounded-2xl border border-zinc-200/90 bg-white p-1.5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 animate-in fade-in-0 zoom-in-95 duration-150",
@@ -222,10 +224,11 @@ export function DropdownItem({
 }: DropdownItemProps) {
   const { close } = useDropdown();
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (disabled) return;
-    onClick?.();
     close();
+    onClick?.();
   };
 
   return (

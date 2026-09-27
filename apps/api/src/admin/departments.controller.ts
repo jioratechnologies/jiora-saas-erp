@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { ZitadelAuthGuard } from "../auth/zitadel-auth.guard";
 import { PermissionsGuard } from "../auth/permissions.guard";
@@ -16,7 +16,6 @@ export class DepartmentsController {
   constructor(private readonly departments: DepartmentsService) {}
 
   @Get()
-  @RequirePermission("admin.department.read")
   list(@CurrentUser() user: AuthContext) {
     return this.departments.list(user.tenantId!);
   }
@@ -25,6 +24,16 @@ export class DepartmentsController {
   @RequirePermission("admin.department.write")
   create(@CurrentUser() user: AuthContext, @Body() dto: CreateDepartmentDto) {
     return this.departments.create(user.tenantId!, dto.name);
+  }
+
+  @Patch(":id/members")
+  @RequirePermission("admin.department.write")
+  assignMember(
+    @CurrentUser() user: AuthContext,
+    @Param("id") departmentId: string,
+    @Body() dto: { personId: string; managerId?: string | null },
+  ) {
+    return this.departments.assignMember(user.tenantId!, departmentId, dto.personId, dto.managerId);
   }
 
   @Delete(":id")

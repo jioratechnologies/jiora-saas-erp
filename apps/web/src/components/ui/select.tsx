@@ -18,6 +18,7 @@ import { PopoverPortal, useFloatingPosition } from "./popover-portal";
 export interface SelectOption {
   value: string;
   label: string;
+  group?: string;
   description?: string;
   icon?: ReactNode;
   disabled?: boolean;
@@ -45,7 +46,7 @@ export interface SelectProps {
 
 /**
  * Custom Dropdown Select with floating popover listbox, portal rendering,
- * search filtering, keyboard accessibility, and backward compatibility with <option> children.
+ * search filtering, keyboard accessibility, optgroup support, and backward compatibility with <option> children.
  */
 export const Select = forwardRef<HTMLDivElement, SelectProps>(
   (
@@ -79,33 +80,53 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
     const popoverRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Parse options from either `options` prop or `<option>` children
+    // Parse options from either `options` prop or `<option>` / `<optgroup>` children
     const resolvedOptions = useMemo<SelectOption[]>(() => {
       if (options && options.length > 0) return options;
 
       const extracted: SelectOption[] = [];
-      Children.forEach(children, (child) => {
-        if (isValidElement(child)) {
-          const props = child.props as any;
-          const val = props.value !== undefined ? String(props.value) : "";
-          let lbl = "";
-          if (typeof props.children === "string") {
-            lbl = props.children;
-          } else if (Array.isArray(props.children)) {
-            lbl = props.children.map((c: any) => (typeof c === "string" ? c : "")).join("");
-          } else if (props.children) {
-            lbl = String(props.children);
-          } else {
-            lbl = val;
-          }
 
-          extracted.push({
-            value: val,
-            label: lbl,
-            disabled: Boolean(props.disabled),
-          });
+      const processNode = (node: any, currentGroup?: string) => {
+        if (!node) return;
+        if (Array.isArray(node)) {
+          node.forEach((item) => processNode(item, currentGroup));
+          return;
         }
-      });
+        if (!isValidElement(node)) return;
+
+        const props = (node as ReactElement<any>).props || {};
+        const nodeType = (node as ReactElement<any>).type;
+        const isOptGroup =
+          nodeType === "optgroup" ||
+          (Boolean(props.label) && Boolean(props.children) && typeof props.children !== "string");
+
+        if (isOptGroup) {
+          const groupLabel = typeof props.label === "string" ? props.label : String(props.label || "");
+          Children.forEach(props.children, (child) => processNode(child, groupLabel));
+          return;
+        }
+
+        const val = props.value !== undefined ? String(props.value) : "";
+        let lbl = "";
+        if (typeof props.children === "string") {
+          lbl = props.children;
+        } else if (Array.isArray(props.children)) {
+          lbl = props.children.map((c: any) => (typeof c === "string" ? c : "")).join("");
+        } else if (props.children) {
+          lbl = String(props.children);
+        } else {
+          lbl = val;
+        }
+
+        extracted.push({
+          value: val,
+          label: lbl,
+          group: currentGroup,
+          disabled: Boolean(props.disabled),
+        });
+      };
+
+      Children.forEach(children, (child) => processNode(child));
       return extracted;
     }, [options, children]);
 
@@ -298,41 +319,50 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
                     No options found
                   </div>
                 ) : (
-                  filteredOptions.map((opt) => {
+                  filteredOptions.map((opt, idx) => {
                     const isSelected = opt.value === currentValue;
+                    const showGroupHeader = Boolean(
+                      opt.group && (idx === 0 || filteredOptions[idx - 1]?.group !== opt.group),
+                    );
                     return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        disabled={opt.disabled}
-                        onClick={() => handleSelect(opt.value)}
-                        className={cn(
-                          "group flex w-full items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-left text-sm transition-all duration-150 select-none",
-                          "hover:bg-accent hover:text-accent-foreground",
-                          isSelected && "bg-primary/10 text-primary font-semibold hover:bg-primary/15",
-                          opt.disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
+                      <div key={`${opt.value}-${idx}`} className="space-y-0.5">
+                        {showGroupHeader && (
+                          <div className="px-2.5 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 border-t border-zinc-100 dark:border-zinc-800/80 first:border-0 first:pt-1">
+                            {opt.group}
+                          </div>
                         )}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {opt.icon && (
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground">
-                              {opt.icon}
-                            </span>
+                        <button
+                          type="button"
+                          disabled={opt.disabled}
+                          onClick={() => handleSelect(opt.value)}
+                          className={cn(
+                            "group flex w-full items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-left text-sm transition-all duration-150 select-none",
+                            "hover:bg-accent hover:text-accent-foreground",
+                            isSelected && "bg-primary/10 text-primary font-semibold hover:bg-primary/15",
+                            opt.disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
                           )}
-                          <div className="flex flex-col min-w-0">
-                            <span className="truncate">{opt.label}</span>
-                            {opt.description && (
-                              <span className="truncate text-xs text-muted-foreground">
-                                {opt.description}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {opt.icon && (
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground">
+                                {opt.icon}
                               </span>
                             )}
+                            <div className="flex flex-col min-w-0">
+                              <span className="truncate">{opt.label}</span>
+                              {opt.description && (
+                                <span className="truncate text-xs text-muted-foreground">
+                                  {opt.description}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        {isSelected && (
-                          <Check className="h-4 w-4 shrink-0 text-primary" />
-                        )}
-                      </button>
+                          {isSelected && (
+                            <Check className="h-4 w-4 shrink-0 text-primary" />
+                          )}
+                        </button>
+                      </div>
                     );
                   })
                 )}

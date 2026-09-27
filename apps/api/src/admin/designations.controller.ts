@@ -16,7 +16,6 @@ export class DesignationsController {
   constructor(private readonly designations: DesignationsService) {}
 
   @Get()
-  @RequirePermission("admin.designation.read")
   list(@CurrentUser() user: AuthContext) {
     return this.designations.list(user.tenantId!);
   }

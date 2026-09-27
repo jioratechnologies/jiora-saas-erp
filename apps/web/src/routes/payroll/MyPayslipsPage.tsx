@@ -21,6 +21,7 @@ import { Badge } from "../../components/ui/badge";
 import { Modal } from "../../components/ui/modal";
 import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
+import { PageHeader } from "../../components/page-header";
 
 interface Payslip {
   id: string;
@@ -90,19 +91,33 @@ export function MyPayslipsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-            <Receipt className="h-6 w-6 text-primary" />
-            My Payslips & Compensation
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            View and download your monthly salary slips, itemized earnings, and statutory deductions.
-          </p>
-        </div>
-      </div>
+    <div className="space-y-6 w-full">
+      {/* Sticky Enterprise Header */}
+      <PageHeader
+        title="My Payslips & Compensation"
+        description="View and download your monthly salary slips, itemized earnings, and statutory deductions."
+        icon={Receipt}
+        badge={{ label: `${payslips?.length ?? 0} Statements`, variant: "secondary" }}
+        stats={[
+          { label: "Available Slips", value: payslips?.length ?? 0 },
+          {
+            label: "Latest Disbursed Net",
+            value:
+              payslips && payslips.length > 0
+                ? `₹${Number(payslips[0].netPay).toLocaleString("en-IN")}`
+                : "—",
+            color: "text-emerald-600 dark:text-emerald-400",
+          },
+          {
+            label: "Payment Status",
+            value: payslips && payslips.length > 0 ? payslips[0].paymentStatus : "N/A",
+            color:
+              payslips?.[0]?.paymentStatus === "PAID"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-amber-600 dark:text-amber-400",
+          },
+        ]}
+      />
 
       {/* Payslips Table */}
       <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">

@@ -24,6 +24,7 @@ import { Modal } from "../../components/ui/modal";
 import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
+import { PageHeader } from "../../components/page-header";
 
 interface PayrollRun {
   id: string;
@@ -154,63 +155,51 @@ export function PayrollRunsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-            <FileSpreadsheet className="h-6 w-6 text-primary" />
-            Monthly Payroll Runs
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Attendance-linked monthly payroll calculation, loss-of-pay deductions, manager approvals, and disbursement.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Select
-            value={String(selectedYear)}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-            options={[
-              { label: "2026", value: "2026" },
-              { label: "2025", value: "2025" },
-            ]}
-            className="w-28"
-          />
-          {canManagePayroll && (
-            <Button size="sm" onClick={() => setCalcModalOpen(true)} className="gap-2 text-xs">
-              <Play className="h-3.5 w-3.5" />
-              Run Payroll
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
-          <div className="text-xs font-semibold text-muted-foreground">Total Runs ({selectedYear})</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{runs?.length ?? 0}</div>
-        </Card>
-        <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
-          <div className="text-xs font-semibold text-muted-foreground">Disbursed Cycles</div>
-          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            {runs?.filter((r) => r.status === "DISBURSED").length ?? 0}
+    <div className="space-y-6 w-full">
+      {/* Sticky Enterprise Header */}
+      <PageHeader
+        title="Monthly Payroll Runs"
+        description="Attendance-linked monthly payroll calculation, loss-of-pay deductions, manager approvals, and disbursement."
+        icon={FileSpreadsheet}
+        badge={{ label: `${selectedYear} Cycles`, variant: "outline" }}
+        stats={[
+          { label: `Total Runs (${selectedYear})`, value: runs?.length ?? 0 },
+          {
+            label: "Disbursed Cycles",
+            value: runs?.filter((r) => r.status === "DISBURSED").length ?? 0,
+            color: "text-emerald-600 dark:text-emerald-400",
+          },
+          {
+            label: "Pending Approval",
+            value: runs?.filter((r) => r.status === "CALCULATED").length ?? 0,
+            color: "text-amber-600 dark:text-amber-400",
+          },
+          {
+            label: "Active Staff Processed",
+            value: runs?.[0]?.processedStaffCount ?? "—",
+            color: "text-primary",
+          },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Select
+              value={String(selectedYear)}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+              options={[
+                { label: "2026", value: "2026" },
+                { label: "2025", value: "2025" },
+              ]}
+              className="w-28"
+            />
+            {canManagePayroll && (
+              <Button size="sm" onClick={() => setCalcModalOpen(true)} className="gap-2 text-xs">
+                <Play className="h-3.5 w-3.5" />
+                Run Payroll
+              </Button>
+            )}
           </div>
-        </Card>
-        <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
-          <div className="text-xs font-semibold text-muted-foreground">Pending Approval</div>
-          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-            {runs?.filter((r) => r.status === "CALCULATED").length ?? 0}
-          </div>
-        </Card>
-        <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
-          <div className="text-xs font-semibold text-muted-foreground">Active Employees</div>
-          <div className="text-2xl font-bold text-primary mt-1">
-            {runs?.[0]?.processedStaffCount ?? "—"}
-          </div>
-        </Card>
-      </div>
+        }
+      />
 
       {/* Runs Table */}
       <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
