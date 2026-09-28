@@ -1,8 +1,8 @@
 # Main app stack for Coolify. Postgres and object storage are separate
 # Coolify resources (see docs/deployment/COOLIFY_DEPLOY.md) — this file only
-# has what talks to them. Object storage is deployed as Coolify's one-click
-# Garage template (or any other S3-compatible service) — not from a compose
-# file in this repo, since apps/api talks to it as a generic S3 endpoint.
+# has what talks to them. Object storage is deployed from
+# docker-compose.minio.yaml (or any other S3-compatible service) — its own
+# resource, since apps/api talks to it as a generic S3 endpoint.
 #
 # No `ports:` anywhere. Every service sits on `saas-erp-internal` (shared
 # with the Postgres and MinIO resources). Only `web` and `zitadel` also join

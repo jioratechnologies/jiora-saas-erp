@@ -3,9 +3,9 @@
 This deployment splits into three independent Coolify resources:
 
 1. **Postgres** — Coolify's native PostgreSQL resource (not a compose file).
-2. **Object storage** — Coolify's one-click **Garage** template (S3-compatible;
-   any other S3-compatible service works too — `apps/api` talks to it through
-   the generic AWS S3 SDK, nothing Garage- or MinIO-specific in the code).
+2. **Object storage** — `infra/docker-compose.minio.yaml` (MinIO; any other
+   S3-compatible service works too — `apps/api` talks to it through the
+   generic AWS S3 SDK, nothing MinIO-specific in the code).
 3. **App stack** — `infra/docker-compose.coolify.yaml` (pgbouncer, mongo,
    valkey, Zitadel, api, web).
 
@@ -24,14 +24,15 @@ so the browser never talks to `api` directly.
 
 ## 0. Create the shared internal network
 
-Postgres and the app stack need to land on the same Docker network so they
-can reach each other by service name. Coolify calls this a **Destination**.
-Object storage does *not* need to join it — see the note in the intro above,
-it's reached over its public HTTPS endpoint instead.
+Postgres, object storage, and the app stack all need to land on the same
+Docker network so they can reach each other by service name (object storage
+also needs the `coolify` network — see step 2 — but still joins this one
+too, for the `create-bucket` one-shot job's internal call). Coolify calls
+this a **Destination**.
 
 In Coolify: **Servers → your server → Destinations → + Add Docker Network**,
-name it `saas-erp-internal`. When you create the Postgres and app stack
-resources below, pick this Destination for them.
+name it `saas-erp-internal`. When you create each resource below, pick this
+Destination for it.
 
 If you'd rather do it by hand once on the host instead:
 
@@ -74,39 +75,47 @@ compose file — you get backups and a UI for free.
    resource when creating it — make sure it matches `POSTGRES_DB` in the
    app stack's `.env`.
 
-## 2. Object storage (separate resource)
+## 2. Object storage — MinIO (separate resource)
 
-Use Coolify's one-click **Garage** service template rather than a compose
-file from this repo — **Resources → + Add → Garage** (or search "Garage" in
-the service catalog). Leave its **Network attachment** as "Use the stack
-network only" — it doesn't need `saas-erp-internal`, since `api` reaches it
-over its public S3 API URL (required for presigned URLs, see the intro
-above), not an internal service name.
+Deploy `infra/docker-compose.minio.yaml` as a Coolify **Docker Compose**
+resource, Destination `saas-erp-internal`. It also joins the `coolify`
+network on its own (declared in the compose file) so its S3 API can get a
+Traefik route — that's required, not optional: `apps/api` issues presigned
+GET/PUT URLs that the browser fetches directly (see
+`apps/api/src/storage/storage.service.ts`), bypassing `api` entirely, so the
+storage endpoint has to be a public HTTPS host. Same shape as real AWS S3: a
+public endpoint protected by request signing, not an open door. The
+console (port 9001) is deliberately left off the `coolify` network — no
+public route for it.
 
-Garage has no web dashboard — it's CLI/API only. Once the service is
-running, open its **Terminal** (or **Actions → Execute Command**) on the
-`Garage` container and run, once:
+Before first deploy, create the fixed host path the compose file bind-mounts
+(a named volume would get re-namespaced if this resource is ever deleted and
+recreated in Coolify, silently starting empty):
 
 ```bash
-garage bucket create saas-erp-documents
-garage key create saas-erp-app-key
-garage bucket allow --read --write --owner saas-erp-documents --key saas-erp-app-key
+mkdir -p /data/saas-erp/minio
 ```
 
-`garage key create` prints a **Key ID** and **Secret Access Key** — shown
-only once, copy both. These, plus the service's **S3 API URL** (shown on its
-General page, e.g. `s3-<host>.sslip.io`), are what the app stack needs:
+Fill in `.env` for this resource (copy `infra/.env.deploy.example`, take the
+object storage section, plus add the domain):
 
 ```
-OBJECT_STORAGE_ENDPOINT=s3-<host>.sslip.io   # host only, no https:// or port
-OBJECT_STORAGE_ACCESS_KEY=<Key ID>
-OBJECT_STORAGE_SECRET_KEY=<Secret Access Key>
+OBJECT_STORAGE_ACCESS_KEY=...
+OBJECT_STORAGE_SECRET_KEY=...
 OBJECT_STORAGE_BUCKET=saas-erp-documents
+MINIO_DOMAIN=storage.your-domain.example
 ```
 
-Any other self-hosted S3-compatible service (MinIO, SeaweedFS, etc.) works
+The compose file includes a one-shot `create-bucket` service that runs
+`mc mb --ignore-existing` against the bucket name on every deploy — it exits
+immediately, no attention needed. For a one-off look at the console, use
+Coolify's "Execute Command" against the `minio` container and `mc` as
+above, or a temporary SSH tunnel to port 9001 — don't add a permanent public
+route for it.
+
+Any other self-hosted S3-compatible service (Garage, SeaweedFS, etc.) works
 the same way — `apps/api`'s `StorageService` talks to it through the generic
-`@aws-sdk/client-s3` SDK with `forcePathStyle: true`, nothing provider-specific
+`@aws-sdk/client-s3` SDK with `forcePathStyle: true`, nothing MinIO-specific
 in the code.
 
 ## 3. App stack
@@ -125,7 +134,7 @@ storage resources, and your real domains):
 | --- | --- |
 | `POSTGRES_HOST` | Internal hostname from the Postgres resource's Connection tab |
 | `POSTGRES_PORT` | Usually `5432` |
-| `OBJECT_STORAGE_ENDPOINT` | Garage's S3 API URL host, no scheme/port — see step 2 |
+| `OBJECT_STORAGE_ENDPOINT` | Same as `MINIO_DOMAIN` from step 2, no scheme/port |
 | `WEB_DOMAIN` | e.g. `app.your-domain.example` |
 | `ZITADEL_DOMAIN` | e.g. `auth.your-domain.example` |
 | `ZITADEL_CLIENT_ID` | From the one-time Zitadel console step, see `docs/onboarding/GETTING_STARTED.md` step 4 |

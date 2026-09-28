@@ -1,0 +1,73 @@
+# Standalone MinIO deploy for Coolify — its own resource, separate from the
+# app stack and from Postgres. No `ports:` mapping (Traefik routes it), no
+# console exposure (console/admin control plane is internal-only). The S3
+# API IS publicly routed on purpose: apps/api issues presigned GET/PUT URLs
+# that the browser fetches directly (see apps/api/src/storage/storage.service.ts),
+# bypassing `api` entirely — same shape as real AWS S3, a public endpoint
+# protected by request signing, not an open door. See
+# docs/deployment/COOLIFY_DEPLOY.md for full setup steps.
+#
+# Usage (on the Coolify host, or any host that will run this resource):
+#   docker network create saas-erp-internal   # once, if it doesn't exist yet
+#   mkdir -p /data/saas-erp/minio             # once — fixed host path, survives
+#                                              # Coolify deleting/recreating this
+#                                              # resource (a named volume would
+#                                              # get a new per-resource UUID prefix
+#                                              # and start empty)
+#   cp .env.deploy.example .env                # fill in OBJECT_STORAGE_* and MINIO_DOMAIN
+#   docker compose -f docker-compose.minio.yaml up -d
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY}
+    volumes:
+      - /data/saas-erp/minio:/data
+    networks:
+      - saas-erp-internal
+      - coolify
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      # S3 API only — console (9001) is deliberately not routed here.
+      - traefik.http.routers.minio.rule=Host(`${MINIO_DOMAIN}`)
+      - traefik.http.routers.minio.entryPoints=https
+      - traefik.http.routers.minio.tls=true
+      - traefik.http.routers.minio.tls.certresolver=letsencrypt
+      - traefik.http.services.minio.loadbalancer.server.port=9000
+
+  # One-shot: creates the app bucket, then exits. Safe to re-run — mc mb
+  # no-ops if the bucket already exists. Re-run with
+  # `docker compose -f docker-compose.minio.yaml up create-bucket` after
+  # changing OBJECT_STORAGE_BUCKET.
+  create-bucket:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 $$OBJECT_STORAGE_ACCESS_KEY $$OBJECT_STORAGE_SECRET_KEY &&
+      mc mb --ignore-existing local/$$OBJECT_STORAGE_BUCKET
+      "
+    networks:
+      - saas-erp-internal
+    restart: "no"
+
+networks:
+  saas-erp-internal:
+    external: true
+  coolify:
+    external: true
