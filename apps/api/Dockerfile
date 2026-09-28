@@ -4,6 +4,12 @@
 # pnpm-lock.yaml and the packages/ workspace deps, not just apps/api alone.
 
 FROM node:20-slim AS base
+# node:20-slim has no `openssl` binary — Prisma's engine-selection code shells
+# out to it to detect the OpenSSL version and picks the wrong engine binary
+# without it (silent "Schema engine error:" crash at `prisma generate` time
+# and again at `prisma migrate deploy` time, since detection reruns each call).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /repo
 
@@ -32,6 +38,10 @@ RUN pnpm --filter @saas-erp/shared-types build \
 # alongside the shared root one, and copying selectively is easy to get
 # subtly wrong. Simpler and correct costs a bit of image size here.
 FROM node:20-slim AS runtime
+# Same openssl fix as the base stage above — this stage starts fresh from
+# node:20-slim, doesn't inherit it.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /repo
 ENV NODE_ENV=production

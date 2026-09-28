@@ -13,6 +13,13 @@
 #
 # Usage:
 #   docker network create saas-erp-internal   # once, if it doesn't exist yet
+#   mkdir -p /data/saas-erp/mongo /data/saas-erp/valkey   # once — fixed host
+#                                              # paths, survive Coolify deleting/
+#                                              # recreating this resource (named
+#                                              # volumes get a new per-resource
+#                                              # UUID prefix and start empty —
+#                                              # same issue docker-compose.minio.yaml
+#                                              # hit)
 #   cp .env.deploy.example .env                 # fill in every value, see below
 #   docker compose -f docker-compose.coolify.yaml up -d --build
 #
@@ -56,7 +63,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
       MONGO_INITDB_DATABASE: saaserp_audit
     volumes:
-      - mongodata:/data/db
+      - /data/saas-erp/mongo:/data/db
     networks:
       - saas-erp-internal
 
@@ -65,7 +72,7 @@ services:
     restart: unless-stopped
     command: ["valkey-server", "--save", "60", "1"]
     volumes:
-      - valkeydata:/data
+      - /data/saas-erp/valkey:/data
     networks:
       - saas-erp-internal
 
@@ -159,7 +166,3 @@ networks:
     external: true
   coolify:
     external: true
-
-volumes:
-  mongodata:
-  valkeydata:
