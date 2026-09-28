@@ -1,0 +1,158 @@
+# Main app stack for Coolify. Postgres and MinIO are separate Coolify
+# resources (see docker-compose.minio.yml and docs/deployment/COOLIFY_DEPLOY.md
+# for the Postgres instructions) — this file only has what talks to them.
+#
+# No `ports:` anywhere. Every service sits on `saas-erp-internal` (shared
+# with the Postgres and MinIO resources). Only `web` and `zitadel` also join
+# `coolify`, the network Coolify's own Traefik listens on — that's what
+# makes them the only two things reachable from outside. `api` has no
+# public route at all: the browser only ever calls `web`, which proxies
+# `/api/*` to `api` over `saas-erp-internal` (see apps/web/nginx.conf).
+#
+# Usage:
+#   docker network create saas-erp-internal   # once, if it doesn't exist yet
+#   cp .env.deploy.example .env                 # fill in every value, see below
+#   docker compose -f docker-compose.coolify.yml up -d --build
+#
+# Required env additions beyond .env.deploy.example (external Postgres, since
+# that resource is deployed separately, not by this file):
+#   POSTGRES_HOST        internal hostname/service-name Coolify gives the
+#                         Postgres resource (Coolify shows this on the
+#                         resource's "Connection" tab)
+#   POSTGRES_PORT         usually 5432
+#   WEB_DOMAIN            e.g. app.your-domain.example
+#   ZITADEL_DOMAIN        e.g. auth.your-domain.example — must match
+#                         ZITADEL_ISSUER's host
+
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      # app_runtime, not the table owner — see infra/postgres/init for why,
+      # and docs/deployment/COOLIFY_DEPLOY.md for how to create this role on
+      # the standalone Postgres resource.
+      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: scram-sha-256
+      IGNORE_STARTUP_PARAMETERS: "search_path,extra_float_digits"
+    networks:
+      - saas-erp-internal
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${POSTGRES_USER:-saaserp}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: saaserp_audit
+    volumes:
+      - mongodata:/data/db
+    networks:
+      - saas-erp-internal
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "60", "1"]
+    volumes:
+      - valkeydata:/data
+    networks:
+      - saas-erp-internal
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    restart: unless-stopped
+    # ExternalSecure true + no ExternalPort: Traefik terminates TLS in front
+    # of this, Zitadel itself stays on plain HTTP internally (tlsMode disabled).
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode disabled
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: ${POSTGRES_HOST}
+      ZITADEL_DATABASE_POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: ${POSTGRES_USER:-saaserp}
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${POSTGRES_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: ${POSTGRES_USER:-saaserp}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN}
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
+    networks:
+      - saas-erp-internal
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.zitadel.rule=Host(`${ZITADEL_DOMAIN}`)
+      - traefik.http.routers.zitadel.entryPoints=https
+      - traefik.http.routers.zitadel.tls=true
+      - traefik.http.routers.zitadel.tls.certresolver=letsencrypt
+      - traefik.http.services.zitadel.loadbalancer.server.port=8080
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - pgbouncer
+      - mongo
+      - valkey
+      - zitadel
+    environment:
+      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-saaserp}
+      DIRECT_URL: postgres://${POSTGRES_USER:-saaserp}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public
+      MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
+      VALKEY_URL: redis://valkey:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-saas-erp-documents}
+      ZITADEL_ISSUER: https://${ZITADEL_DOMAIN}
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID}
+      PORT: "3000"
+    networks:
+      - saas-erp-internal
+    # No `coolify` network, no Traefik labels: not reachable from outside
+    # the internal network under any circumstance. web proxies to it.
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Relative path: the browser calls this frontend's own origin, nginx
+        # proxies /api/* to the api container internally (apps/web/nginx.conf).
+        VITE_API_BASE_URL: /api
+        VITE_ZITADEL_ISSUER: https://${ZITADEL_DOMAIN}
+        VITE_ZITADEL_CLIENT_ID: ${ZITADEL_CLIENT_ID}
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - saas-erp-internal
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`${WEB_DOMAIN}`)
+      - traefik.http.routers.web.entryPoints=https
+      - traefik.http.routers.web.tls=true
+      - traefik.http.routers.web.tls.certresolver=letsencrypt
+      - traefik.http.services.web.loadbalancer.server.port=80
+
+networks:
+  saas-erp-internal:
+    external: true
+  coolify:
+    external: true
+
+volumes:
+  mongodata:
+  valkeydata:

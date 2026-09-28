@@ -1,0 +1,58 @@
+# Standalone MinIO deploy for Coolify — its own resource, separate from the
+# app stack and from Postgres. No ports are published: MinIO is reached only
+# by other containers on `saas-erp-internal` (api, via MINIO_ENDPOINT=minio).
+# There is no Traefik router here — the console is intentionally not public.
+# See docs/deployment/COOLIFY_DEPLOY.md for setup steps and for how to reach
+# the console/mc client one-off when you need to.
+#
+# Usage (on the Coolify host, or any host that will run this resource):
+#   docker network create saas-erp-internal   # once, if it doesn't exist yet
+#   cp .env.deploy.example .env                # fill in MINIO_ACCESS_KEY / MINIO_SECRET_KEY
+#   docker compose -f docker-compose.minio.yml up -d
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+    networks:
+      - saas-erp-internal
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: creates the app bucket, then exits. Safe to re-run — mc mb
+  # no-ops if the bucket already exists. Re-run with
+  # `docker compose -f docker-compose.minio.yml up create-bucket` after
+  # changing MINIO_BUCKET.
+  create-bucket:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-saas-erp-documents}
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET
+      "
+    networks:
+      - saas-erp-internal
+    restart: "no"
+
+networks:
+  saas-erp-internal:
+    external: true
+
+volumes:
+  miniodata:
