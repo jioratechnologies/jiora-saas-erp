@@ -71,8 +71,12 @@ services:
       - valkeydata:/data
 
   minio:
-    # Docker Hub's minio/minio was pulled; MinIO now publishes to quay.io only.
-    image: quay.io/minio/minio:latest
+    # MinIO discontinued free distribution of quay.io/minio/minio (and every
+    # other public registry/binary) in 2025 — see
+    # infra/docker-compose.minio.yaml's header for what was tested. This is
+    # our own mirror, pushed to a Docker Hub repo we control, same image
+    # bits as the last working quay.io pull.
+    image: bhindwarg/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:

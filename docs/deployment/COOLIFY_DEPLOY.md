@@ -27,7 +27,7 @@ so the browser never talks to `api` directly.
 Postgres, object storage, and the app stack all need to land on the same
 Docker network so they can reach each other by service name (object storage
 also needs the `coolify` network — see step 2 — but still joins this one
-too, for the `create-bucket` one-shot job's internal call). Coolify calls
+too, for the `setup` one-shot job's internal call). Coolify calls
 this a **Destination**.
 
 In Coolify: **Servers → your server → Destinations → + Add Docker Network**,
@@ -85,8 +85,23 @@ GET/PUT URLs that the browser fetches directly (see
 `apps/api/src/storage/storage.service.ts`), bypassing `api` entirely, so the
 storage endpoint has to be a public HTTPS host. Same shape as real AWS S3: a
 public endpoint protected by request signing, not an open door. The
-console (port 9001) is deliberately left off the `coolify` network — no
-public route for it.
+console (port 9001) has no route baked into the compose file's labels — add
+it separately via Coolify's **Domains** page if you want console access
+(pick the `Minio` service, port `9001`, and turn on that domain's **Basic
+Auth** option before saving — it's the full admin console, not the S3 API).
+
+MinIO Inc. discontinued free distribution of the plain community image in
+2025 — `quay.io/minio/minio`, Docker Hub's `minio/minio`, `ghcr.io/minio/minio`,
+and the `dl.min.io` binary all deny anonymous access now, even pinned to old
+release tags, confirmed by testing all four directly. Rather than depend on
+MinIO's AIStor image (works, but needs a license file mounted at runtime) or
+on quay.io's anonymous-pull policy holding, the compose file points at
+`bhindwarg/minio:latest` and `bhindwarg/mc:latest` — a mirror of the last
+working images, pulled while quay.io still allowed it and pushed to a plain
+Docker Hub repo under our own account. No license, no third-party access
+policy to depend on. If that account ever needs to change, re-pull the
+last-known-good quay.io images (still cached wherever they were pulled
+before) and re-push under the new account — same process as before.
 
 Before first deploy, create the fixed host path the compose file bind-mounts
 (a named volume would get re-namespaced if this resource is ever deleted and
@@ -100,18 +115,27 @@ Fill in `.env` for this resource (copy `infra/.env.deploy.example`, take the
 object storage section, plus add the domain):
 
 ```
+MINIO_ROOT_USER=...
+MINIO_ROOT_PASSWORD=...
 OBJECT_STORAGE_ACCESS_KEY=...
 OBJECT_STORAGE_SECRET_KEY=...
 OBJECT_STORAGE_BUCKET=saas-erp-documents
 MINIO_DOMAIN=storage.your-domain.example
 ```
 
-The compose file includes a one-shot `create-bucket` service that runs
-`mc mb --ignore-existing` against the bucket name on every deploy — it exits
-immediately, no attention needed. For a one-off look at the console, use
-Coolify's "Execute Command" against the `minio` container and `mc` as
-above, or a temporary SSH tunnel to port 9001 — don't add a permanent public
-route for it.
+`MINIO_ROOT_USER`/`PASSWORD` and `OBJECT_STORAGE_ACCESS_KEY`/`SECRET_KEY`
+must be different values — see the compose file's header comment for why.
+The root pair is the console/admin login; the `OBJECT_STORAGE_*` pair is a
+separate, scoped user the compose file creates automatically, restricted to
+this one bucket, which is what `apps/api` actually connects with.
+
+The compose file includes a one-shot `setup` service that, on every deploy,
+creates the bucket, creates that scoped user, and attaches a policy limiting
+it to read/write/list on `OBJECT_STORAGE_BUCKET` only — then exits. Every
+step is idempotent, safe to re-run. Verify the scoping actually holds before
+trusting it: `mc admin user list` (or creating another bucket) using the
+`OBJECT_STORAGE_*` credentials should fail with Access Denied — if it
+doesn't, something's wrong with the policy attach step.
 
 Any other self-hosted S3-compatible service (Garage, SeaweedFS, etc.) works
 the same way — `apps/api`'s `StorageService` talks to it through the generic

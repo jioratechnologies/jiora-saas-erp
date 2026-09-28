@@ -1,11 +1,24 @@
 # Standalone MinIO deploy for Coolify — its own resource, separate from the
-# app stack and from Postgres. No `ports:` mapping (Traefik routes it), no
-# console exposure (console/admin control plane is internal-only). The S3
-# API IS publicly routed on purpose: apps/api issues presigned GET/PUT URLs
-# that the browser fetches directly (see apps/api/src/storage/storage.service.ts),
-# bypassing `api` entirely — same shape as real AWS S3, a public endpoint
-# protected by request signing, not an open door. See
+# app stack and from Postgres. No `ports:` mapping (Traefik routes it). See
 # docs/deployment/COOLIFY_DEPLOY.md for full setup steps.
+#
+# MinIO Inc. discontinued free distribution of the plain community image in
+# 2025 (quay.io/minio/minio, docker.io/minio/minio, ghcr.io/minio/minio, and
+# the dl.min.io binary all now deny anonymous access, even pinned to old
+# release tags — confirmed by testing all four directly). Rather than depend
+# on MinIO's AIStor image (needs a license file) or quay.io's anonymous-pull
+# policy holding, these are our own mirror of the last working images —
+# pulled while quay.io still allowed it, pushed to a plain Docker Hub repo
+# we control. No license, no dependency on any third party's access policy.
+#
+# MINIO_ROOT_USER/PASSWORD are the console/admin login — full control over
+# every bucket, every user, the whole server. apps/api never uses these.
+# OBJECT_STORAGE_ACCESS_KEY/SECRET_KEY are a separate, scoped user this
+# compose file creates on first boot (via `setup`, below), with a policy
+# restricted to read/write on OBJECT_STORAGE_BUCKET only — nothing else. If
+# that key ever leaks (a log line, a misconfigured error message, whatever),
+# it can only touch this one bucket, not the server. Keep the two credential
+# pairs different — using the root user as the app's key defeats this.
 #
 # Usage (on the Coolify host, or any host that will run this resource):
 #   docker network create saas-erp-internal   # once, if it doesn't exist yet
@@ -14,53 +27,68 @@
 #                                              # resource (a named volume would
 #                                              # get a new per-resource UUID prefix
 #                                              # and start empty)
-#   cp .env.deploy.example .env                # fill in OBJECT_STORAGE_* and MINIO_DOMAIN
+#   cp .env.deploy.example .env                # fill in MINIO_ROOT_*, OBJECT_STORAGE_*, MINIO_DOMAIN
 #   docker compose -f docker-compose.minio.yaml up -d
 
 services:
   minio:
-    image: quay.io/minio/minio:latest
+    image: bhindwarg/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - /data/saas-erp/minio:/data
     networks:
       - saas-erp-internal
       - coolify
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+    # No healthcheck: this image is our own source build on a distroless
+    # base (see infra/minio-build/Dockerfile) — no shell, no `mc`, nothing
+    # to run a CMD-style check with. `setup` below polls the S3 API itself
+    # instead of depending on a Docker healthcheck gate.
     labels:
       - traefik.enable=true
-      # S3 API only — console (9001) is deliberately not routed here.
       - traefik.http.routers.minio.rule=Host(`${MINIO_DOMAIN}`)
       - traefik.http.routers.minio.entryPoints=https
       - traefik.http.routers.minio.tls=true
       - traefik.http.routers.minio.tls.certresolver=letsencrypt
       - traefik.http.services.minio.loadbalancer.server.port=9000
 
-  # One-shot: creates the app bucket, then exits. Safe to re-run — mc mb
-  # no-ops if the bucket already exists. Re-run with
-  # `docker compose -f docker-compose.minio.yaml up create-bucket` after
-  # changing OBJECT_STORAGE_BUCKET.
-  create-bucket:
-    image: quay.io/minio/mc:latest
+  # One-shot: creates the bucket, then a scoped non-root user restricted to
+  # that bucket only, then attaches a matching policy — then exits. Safe to
+  # re-run: every step is idempotent (mc mb --ignore-existing, user add
+  # resets the password rather than erroring, policy create/attach on an
+  # unchanged policy no-ops). Re-run with
+  # `docker compose -f docker-compose.minio.yaml up setup` after changing
+  # OBJECT_STORAGE_BUCKET or rotating OBJECT_STORAGE_SECRET_KEY.
+  setup:
+    image: bhindwarg/mc:latest
     depends_on:
       minio:
-        condition: service_healthy
+        condition: service_started
     environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
       OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
     entrypoint: >
       sh -c "
-      mc alias set local http://minio:9000 $$OBJECT_STORAGE_ACCESS_KEY $$OBJECT_STORAGE_SECRET_KEY &&
-      mc mb --ignore-existing local/$$OBJECT_STORAGE_BUCKET
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 1; done &&
+      mc mb --ignore-existing local/$$OBJECT_STORAGE_BUCKET &&
+      mc admin user add local $$OBJECT_STORAGE_ACCESS_KEY $$OBJECT_STORAGE_SECRET_KEY &&
+      cat > /tmp/policy.json <<EOF
+      {
+        \"Version\": \"2012-10-17\",
+        \"Statement\": [
+          {\"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\", \"s3:PutObject\", \"s3:DeleteObject\"], \"Resource\": [\"arn:aws:s3:::$$OBJECT_STORAGE_BUCKET/*\"]},
+          {\"Effect\": \"Allow\", \"Action\": [\"s3:ListBucket\"], \"Resource\": [\"arn:aws:s3:::$$OBJECT_STORAGE_BUCKET\"]}
+        ]
+      }
+      EOF
+      mc admin policy create local saas-erp-app-policy /tmp/policy.json &&
+      mc admin policy attach local saas-erp-app-policy --user $$OBJECT_STORAGE_ACCESS_KEY
       "
     networks:
       - saas-erp-internal
