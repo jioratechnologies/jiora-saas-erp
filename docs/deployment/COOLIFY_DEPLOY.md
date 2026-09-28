@@ -1,28 +1,37 @@
 # Deploying to Coolify
 
-This deployment splits into three independent Coolify resources on one shared
-internal Docker network:
+This deployment splits into three independent Coolify resources:
 
 1. **Postgres** — Coolify's native PostgreSQL resource (not a compose file).
-2. **MinIO** — `infra/docker-compose.minio.yml`.
-3. **App stack** — `infra/docker-compose.coolify.yml` (pgbouncer, mongo,
+2. **Object storage** — Coolify's one-click **Garage** template (S3-compatible;
+   any other S3-compatible service works too — `apps/api` talks to it through
+   the generic AWS S3 SDK, nothing Garage- or MinIO-specific in the code).
+3. **App stack** — `infra/docker-compose.coolify.yaml` (pgbouncer, mongo,
    valkey, Zitadel, api, web).
 
-Nothing publishes a `ports:` mapping. The only two things reachable from the
-public internet are `web` (the frontend) and `zitadel` (the auth server —
-browsers must be redirected to it directly for the OIDC login flow). The
-`api` container has no public route of any kind: `web`'s nginx proxies
-`/api/*` to it over the internal network (see `apps/web/nginx.conf`), so the
-browser only ever talks to your app's own domain.
+Nothing publishes a `ports:` mapping, with one deliberate exception: object
+storage. `web` (the frontend) and `zitadel` (the auth server — browsers must
+be redirected to it directly for the OIDC login flow) are the two things
+meant to be reachable from the public internet. Object storage also ends up
+publicly reachable, but not because it's added to the app stack's network —
+`apps/api` issues presigned GET/PUT URLs that the browser fetches directly
+(see `apps/api/src/storage/storage.service.ts`), bypassing `api` entirely,
+so the storage endpoint has to be a public HTTPS host. This is the same
+shape as real AWS S3: a public endpoint protected by request signing, not an
+open door. `api` itself has no public route of any kind: `web`'s nginx
+proxies `/api/*` to it over the internal network (see `apps/web/nginx.conf`),
+so the browser never talks to `api` directly.
 
 ## 0. Create the shared internal network
 
-All three resources need to land on the same Docker network so they can
-reach each other by service name. Coolify calls this a **Destination**.
+Postgres and the app stack need to land on the same Docker network so they
+can reach each other by service name. Coolify calls this a **Destination**.
+Object storage does *not* need to join it — see the note in the intro above,
+it's reached over its public HTTPS endpoint instead.
 
 In Coolify: **Servers → your server → Destinations → + Add Docker Network**,
-name it `saas-erp-internal`. When you create each resource below, pick this
-Destination for it.
+name it `saas-erp-internal`. When you create the Postgres and app stack
+resources below, pick this Destination for them.
 
 If you'd rather do it by hand once on the host instead:
 
@@ -33,7 +42,7 @@ docker network create saas-erp-internal
 Coolify's own Traefik listens on a separate network it manages itself,
 usually named `coolify` — that one already exists on every Coolify server
 and is what the `web` and `zitadel` services in
-`docker-compose.coolify.yml` join in addition to `saas-erp-internal`.
+`docker-compose.coolify.yaml` join in addition to `saas-erp-internal`.
 
 ## 1. Postgres (separate resource)
 
@@ -65,53 +74,69 @@ compose file — you get backups and a UI for free.
    resource when creating it — make sure it matches `POSTGRES_DB` in the
    app stack's `.env`.
 
-## 2. MinIO (separate resource)
+## 2. Object storage (separate resource)
 
-Deploy `infra/docker-compose.minio.yml` as a Coolify **Docker Compose**
-resource, Destination `saas-erp-internal`.
+Use Coolify's one-click **Garage** service template rather than a compose
+file from this repo — **Resources → + Add → Garage** (or search "Garage" in
+the service catalog). Leave its **Network attachment** as "Use the stack
+network only" — it doesn't need `saas-erp-internal`, since `api` reaches it
+over its public S3 API URL (required for presigned URLs, see the intro
+above), not an internal service name.
 
-Fill in `.env` for this resource (copy `infra/.env.deploy.example` and take
-just the MinIO section):
+Garage has no web dashboard — it's CLI/API only. Once the service is
+running, open its **Terminal** (or **Actions → Execute Command**) on the
+`Garage` container and run, once:
+
+```bash
+garage bucket create saas-erp-documents
+garage key create saas-erp-app-key
+garage bucket allow --read --write --owner saas-erp-documents --key saas-erp-app-key
+```
+
+`garage key create` prints a **Key ID** and **Secret Access Key** — shown
+only once, copy both. These, plus the service's **S3 API URL** (shown on its
+General page, e.g. `s3-<host>.sslip.io`), are what the app stack needs:
 
 ```
-MINIO_ACCESS_KEY=...
-MINIO_SECRET_KEY=...
-MINIO_BUCKET=saas-erp-documents
+OBJECT_STORAGE_ENDPOINT=s3-<host>.sslip.io   # host only, no https:// or port
+OBJECT_STORAGE_ACCESS_KEY=<Key ID>
+OBJECT_STORAGE_SECRET_KEY=<Secret Access Key>
+OBJECT_STORAGE_BUCKET=saas-erp-documents
 ```
 
-The compose file includes a one-shot `create-bucket` service that runs `mc mb --ignore-existing` against the bucket name on every deploy — it exits
-immediately and doesn't need attention. There's no public console route by
-design; if you need the MinIO console for a one-off look, use Coolify's
-"Execute Command" against the `minio` container, or temporarily run
-`docker run --rm -it --network saas-erp-internal minio/mc mc alias set local http://minio:9000 <access-key> <secret-key>` from the host, then `mc ls local/saas-erp-documents`.
+Any other self-hosted S3-compatible service (MinIO, SeaweedFS, etc.) works
+the same way — `apps/api`'s `StorageService` talks to it through the generic
+`@aws-sdk/client-s3` SDK with `forcePathStyle: true`, nothing provider-specific
+in the code.
 
 ## 3. App stack
 
-Deploy `infra/docker-compose.coolify.yml` as a Coolify **Docker Compose**
+Deploy `infra/docker-compose.coolify.yaml` as a Coolify **Docker Compose**
 resource, Destination `saas-erp-internal` (the compose file itself also
 joins the `coolify` network for the two public-facing services — Coolify
 handles that network's existence for you).
 
 Copy `infra/.env.deploy.example` to `.env` for this resource and fill in
 every value, plus these additions the compose file needs that aren't in the
-example file (because they point at the now-separate Postgres resource and
-your real domains):
+example file (because they point at the now-separate Postgres and object
+storage resources, and your real domains):
 
-| Variable              | Value                                                                                    |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| `POSTGRES_HOST`     | Internal hostname from the Postgres resource's Connection tab                            |
-| `POSTGRES_PORT`     | Usually`5432`                                                                          |
-| `WEB_DOMAIN`        | e.g.`app.your-domain.example`                                                          |
-| `ZITADEL_DOMAIN`    | e.g.`auth.your-domain.example`                                                         |
-| `ZITADEL_CLIENT_ID` | From the one-time Zitadel console step, see`docs/onboarding/GETTING_STARTED.md` step 4 |
+| Variable | Value |
+| --- | --- |
+| `POSTGRES_HOST` | Internal hostname from the Postgres resource's Connection tab |
+| `POSTGRES_PORT` | Usually `5432` |
+| `OBJECT_STORAGE_ENDPOINT` | Garage's S3 API URL host, no scheme/port — see step 2 |
+| `WEB_DOMAIN` | e.g. `app.your-domain.example` |
+| `ZITADEL_DOMAIN` | e.g. `auth.your-domain.example` |
+| `ZITADEL_CLIENT_ID` | From the one-time Zitadel console step, see `docs/onboarding/GETTING_STARTED.md` step 4 |
 
 Point Coolify's DNS/domain settings at `WEB_DOMAIN` and `ZITADEL_DOMAIN` as
 you would for any Coolify app — Traefik picks up the routing from the
 labels already in the compose file, no port numbers involved anywhere.
 
-Deploy order matters on first bring-up: Postgres and MinIO need to exist
-and be reachable before the app stack starts, since `zitadel` needs its
-database on first boot and `api` needs both on startup.
+Deploy order matters on first bring-up: Postgres and object storage need to
+exist and be reachable before the app stack starts, since `zitadel` needs
+its database on first boot and `api` needs both on startup.
 
 ## Notes
 

@@ -1,6 +1,8 @@
-# Main app stack for Coolify. Postgres and MinIO are separate Coolify
-# resources (see docker-compose.minio.yml and docs/deployment/COOLIFY_DEPLOY.md
-# for the Postgres instructions) — this file only has what talks to them.
+# Main app stack for Coolify. Postgres and object storage are separate
+# Coolify resources (see docs/deployment/COOLIFY_DEPLOY.md) — this file only
+# has what talks to them. Object storage is deployed as Coolify's one-click
+# Garage template (or any other S3-compatible service) — not from a compose
+# file in this repo, since apps/api talks to it as a generic S3 endpoint.
 #
 # No `ports:` anywhere. Every service sits on `saas-erp-internal` (shared
 # with the Postgres and MinIO resources). Only `web` and `zitadel` also join
@@ -12,17 +14,22 @@
 # Usage:
 #   docker network create saas-erp-internal   # once, if it doesn't exist yet
 #   cp .env.deploy.example .env                 # fill in every value, see below
-#   docker compose -f docker-compose.coolify.yml up -d --build
+#   docker compose -f docker-compose.coolify.yaml up -d --build
 #
-# Required env additions beyond .env.deploy.example (external Postgres, since
-# that resource is deployed separately, not by this file):
-#   POSTGRES_HOST        internal hostname/service-name Coolify gives the
-#                         Postgres resource (Coolify shows this on the
-#                         resource's "Connection" tab)
-#   POSTGRES_PORT         usually 5432
-#   WEB_DOMAIN            e.g. app.your-domain.example
-#   ZITADEL_DOMAIN        e.g. auth.your-domain.example — must match
-#                         ZITADEL_ISSUER's host
+# Required env additions beyond .env.deploy.example (external Postgres and
+# object storage, since both resources are deployed separately, not by this
+# file):
+#   POSTGRES_HOST            internal hostname/service-name Coolify gives the
+#                             Postgres resource (Coolify shows this on the
+#                             resource's "Connection" tab)
+#   POSTGRES_PORT             usually 5432
+#   OBJECT_STORAGE_ENDPOINT   object storage's S3 API host, no scheme/port
+#                             (its presigned URLs go straight to the browser,
+#                             so this has to be the public hostname, not an
+#                             internal service name — see COOLIFY_DEPLOY.md)
+#   WEB_DOMAIN                e.g. app.your-domain.example
+#   ZITADEL_DOMAIN            e.g. auth.your-domain.example — must match
+#                             ZITADEL_ISSUER's host
 
 services:
   pgbouncer:
@@ -109,12 +116,12 @@ services:
       DIRECT_URL: postgres://${POSTGRES_USER:-saaserp}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public
       MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
       VALKEY_URL: redis://valkey:6379
-      MINIO_ENDPOINT: minio
-      MINIO_PORT: "9000"
-      MINIO_USE_SSL: "false"
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_BUCKET: ${MINIO_BUCKET:-saas-erp-documents}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT}
+      OBJECT_STORAGE_PORT: "443"
+      OBJECT_STORAGE_USE_SSL: "true"
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
       ZITADEL_ISSUER: https://${ZITADEL_DOMAIN}
       ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID}
       PORT: "3000"

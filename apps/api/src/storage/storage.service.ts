@@ -17,38 +17,38 @@ export class StorageService implements OnModuleInit {
   private bucket!: string;
 
   onModuleInit() {
-    const endpointHost = process.env.MINIO_ENDPOINT || "localhost";
-    const endpointPort = process.env.MINIO_PORT || "9010";
-    const useSsl = process.env.MINIO_USE_SSL === "true";
+    const endpointHost = process.env.OBJECT_STORAGE_ENDPOINT || "localhost";
+    const endpointPort = process.env.OBJECT_STORAGE_PORT || "9010";
+    const useSsl = process.env.OBJECT_STORAGE_USE_SSL === "true";
     const protocol = useSsl ? "https" : "http";
 
-    this.bucket = process.env.MINIO_BUCKET || "saas-erp-documents";
+    this.bucket = process.env.OBJECT_STORAGE_BUCKET || "saas-erp-documents";
 
     this.client = new S3Client({
       endpoint: `${protocol}://${endpointHost}:${endpointPort}`,
       region: "us-east-1",
       credentials: {
-        accessKeyId: process.env.MINIO_ACCESS_KEY || "saaserp",
-        secretAccessKey: process.env.MINIO_SECRET_KEY || "saaserp_dev_password",
+        accessKeyId: process.env.OBJECT_STORAGE_ACCESS_KEY || "saaserp",
+        secretAccessKey: process.env.OBJECT_STORAGE_SECRET_KEY || "saaserp_dev_password",
       },
-      forcePathStyle: true, // Needed for MinIO local buckets
+      forcePathStyle: true, // Needed for path-style S3-compatible endpoints (MinIO, Garage, etc.)
     });
 
     this.ensureBucket().catch((err) => {
-      this.logger.warn(`MinIO bucket init check failed: ${err.message}`);
+      this.logger.warn(`Object storage bucket init check failed: ${err.message}`);
     });
   }
 
   async ensureBucket(): Promise<void> {
     try {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-      this.logger.log(`MinIO bucket "${this.bucket}" ready`);
+      this.logger.log(`Object storage bucket "${this.bucket}" ready`);
     } catch {
       try {
         await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-        this.logger.log(`Created MinIO bucket "${this.bucket}"`);
+        this.logger.log(`Created object storage bucket "${this.bucket}"`);
       } catch (err: any) {
-        this.logger.warn(`Failed to create MinIO bucket "${this.bucket}": ${err.message}`);
+        this.logger.warn(`Failed to create object storage bucket "${this.bucket}": ${err.message}`);
       }
     }
   }
@@ -102,7 +102,7 @@ export class StorageService implements OnModuleInit {
         }),
       );
     } catch (err: any) {
-      this.logger.warn(`Failed to delete MinIO object "${key}": ${err.message}`);
+      this.logger.warn(`Failed to delete object storage object "${key}": ${err.message}`);
     }
   }
 }

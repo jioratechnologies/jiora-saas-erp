@@ -28,12 +28,12 @@ services:
       DIRECT_URL: postgres://saaserp:saaserp_dev_password@postgres:5432/saaserp?schema=public
       MONGO_URL: mongodb://saaserp:saaserp_dev_password@mongo:27017/saaserp_audit?authSource=admin
       VALKEY_URL: redis://valkey:6379
-      MINIO_ENDPOINT: minio
-      MINIO_PORT: "9000"
-      MINIO_USE_SSL: "false"
-      MINIO_ACCESS_KEY: saaserp
-      MINIO_SECRET_KEY: saaserp_dev_password
-      MINIO_BUCKET: saas-erp-documents
+      OBJECT_STORAGE_ENDPOINT: minio
+      OBJECT_STORAGE_PORT: "9000"
+      OBJECT_STORAGE_USE_SSL: "false"
+      OBJECT_STORAGE_ACCESS_KEY: saaserp
+      OBJECT_STORAGE_SECRET_KEY: saaserp_dev_password
+      OBJECT_STORAGE_BUCKET: saas-erp-documents
       ZITADEL_ISSUER: http://localhost:8081
       ZITADEL_PROJECT_ID: ""
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
