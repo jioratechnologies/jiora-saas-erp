@@ -98,6 +98,11 @@ services:
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
       ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
       ZITADEL_EXTERNALSECURE: "true"
+      # Defaults to 8080 if unset, which leaks into self-advertised URLs
+      # (Console's environment.json "api" field showed
+      # "http://<domain>:8080" instead of "https://<domain>" without this —
+      # confirmed via direct curl against a live deploy).
+      ZITADEL_EXTERNALPORT: "443"
       ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN}
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME}
