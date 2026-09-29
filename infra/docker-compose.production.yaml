@@ -66,6 +66,12 @@ services:
       IGNORE_STARTUP_PARAMETERS: "search_path,extra_float_digits"
     networks:
       - saas-erp-internal
+      # Dokploy's native Postgres resource isn't on saas-erp-internal — it
+      # only lives on dokploy-network (confirmed: zitadel, which is also on
+      # dokploy-network, reaches Postgres fine; pgbouncer, which wasn't,
+      # couldn't resolve/reach the same host at all). Needed here so
+      # pgbouncer's own backend connection to Postgres actually works.
+      - dokploy-network
 
   mongo:
     image: mongo:7
