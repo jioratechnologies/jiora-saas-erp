@@ -170,9 +170,24 @@ Point Coolify's DNS/domain settings at `WEB_DOMAIN` and `ZITADEL_DOMAIN` as
 you would for any Coolify app — Traefik picks up the routing from the
 labels already in the compose file, no port numbers involved anywhere.
 
-Deploy order matters on first bring-up: Postgres and object storage need to
-exist and be reachable before the app stack starts, since `zitadel` needs
-its database on first boot and `api` needs both on startup.
+### Critical: Deployment order and MinIO setup
+
+**Deploy order matters on first bring-up.** Postgres and object storage need to
+exist and be reachable before the app stack starts:
+
+1. **Postgres** (Coolify native resource) — `zitadel` needs its database on first boot
+2. **Object storage** (MinIO compose resource) — **must include the `setup` one-shot service**
+   - When you deploy `infra/docker-compose.minio.yaml` to Coolify, the `setup` service runs automatically and creates:
+     - The `saas-erp-documents` bucket
+     - The scoped app user with `OBJECT_STORAGE_ACCESS_KEY`/`SECRET_KEY`
+     - A restrictive policy (read/write/delete/list on the bucket only — cannot create buckets or other resources)
+   - **Wait for `setup` to complete** before proceeding (check the resource logs in Coolify — it should finish with policy attachment and exit).
+   - If you redeploy MinIO later, `setup` is safe to re-run (all steps are idempotent).
+3. **App stack** (`infra/docker-compose.coolify.yaml`) — now safe to start
+   - The `api` container will start and verify the bucket exists.
+   - If you see a warning in logs: `Failed to create object storage bucket "saas-erp-documents": Access Denied`, it means `setup` didn't run or hasn't completed yet — wait for it and redeploy `api` once the bucket exists.
+
+**Why this order?** The app user (`OBJECT_STORAGE_ACCESS_KEY`) is intentionally scoped and cannot create buckets — only read/write within an existing one. The `setup` service runs with root credentials (`MINIO_ROOT_USER`/`PASSWORD`) and does the one-time initialization.
 
 ## Notes
 

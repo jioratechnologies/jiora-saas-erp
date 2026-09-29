@@ -43,12 +43,20 @@ export class StorageService implements OnModuleInit {
     try {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
       this.logger.log(`Object storage bucket "${this.bucket}" ready`);
-    } catch {
+    } catch (headErr) {
       try {
         await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
         this.logger.log(`Created object storage bucket "${this.bucket}"`);
-      } catch (err: any) {
-        this.logger.warn(`Failed to create object storage bucket "${this.bucket}": ${err.message}`);
+      } catch (createErr: any) {
+        if (createErr.name === "AccessDenied" || createErr.message?.includes("Access Denied")) {
+          this.logger.warn(
+            `Object storage bucket "${this.bucket}" does not exist and app user lacks CreateBucket permission. ` +
+            `Ensure the bucket exists and is accessible before file operations. ` +
+            `(In Coolify: run the MinIO setup service first to create the bucket with proper permissions.)`,
+          );
+        } else {
+          this.logger.warn(`Failed to create object storage bucket "${this.bucket}": ${createErr.message}`);
+        }
       }
     }
   }
