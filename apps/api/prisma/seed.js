@@ -21,13 +21,14 @@ async function main() {
   console.log("==========================================================");
 
   // Find target tenant
+  const targetSlug = process.env.SEED_TENANT_SLUG || "jiorasacchisahelitest1";
   const tenant = await prisma.tenant.findFirst({
-    where: { slug: "jiorasacchisahelitest1" },
+    where: { slug: targetSlug },
     include: { users: true },
   });
 
   if (!tenant) {
-    console.error("Target tenant jiorasacchisahelitest1 not found.");
+    console.error(`Target tenant "${targetSlug}" not found.`);
     return;
   }
 
@@ -410,17 +411,18 @@ async function main() {
   // ==========================================
   // 6. MinIO S3 Verification & KYC Documents
   // ==========================================
+  const objectStorageUseSsl = process.env.OBJECT_STORAGE_USE_SSL === "true";
   const s3 = new S3Client({
-    endpoint: `http://${process.env.MINIO_ENDPOINT || "localhost"}:${process.env.MINIO_PORT || "9010"}`,
+    endpoint: `${objectStorageUseSsl ? "https" : "http"}://${process.env.OBJECT_STORAGE_ENDPOINT || "localhost"}:${process.env.OBJECT_STORAGE_PORT || "9010"}`,
     region: "us-east-1",
     credentials: {
-      accessKeyId: process.env.MINIO_ACCESS_KEY || "saaserp",
-      secretAccessKey: process.env.MINIO_SECRET_KEY || "saaserp_dev_password",
+      accessKeyId: process.env.OBJECT_STORAGE_ACCESS_KEY || "saaserp",
+      secretAccessKey: process.env.OBJECT_STORAGE_SECRET_KEY || "saaserp_dev_password",
     },
     forcePathStyle: true,
   });
 
-  const bucket = process.env.MINIO_BUCKET || "saas-erp-documents";
+  const bucket = process.env.OBJECT_STORAGE_BUCKET || "saas-erp-documents";
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
   } catch {
