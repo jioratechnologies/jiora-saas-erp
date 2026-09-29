@@ -76,7 +76,15 @@ services:
       OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
       OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
-    entrypoint: >
+    # entrypoint MUST use "|" (literal block), not ">" (folded) — folded
+    # style collapses every newline below into a space, which silently
+    # destroys the heredoc (it needs a real newline to find its EOF
+    # terminator). Confirmed live: with ">", the policy.json heredoc failed
+    # ("cat: '{': No such file or directory") on every run, meaning the
+    # scoped IAM policy was never created or attached — OBJECT_STORAGE_
+    # ACCESS_KEY had full unrestricted access instead of being locked to
+    # just this one bucket. Don't change this back to ">".
+    entrypoint: |
       sh -c "
       until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 1; done &&
       mc mb --ignore-existing local/$$OBJECT_STORAGE_BUCKET &&
