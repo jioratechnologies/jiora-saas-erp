@@ -1,13 +1,16 @@
 # Local self-hosted deployment, built from source.
 #
 # Adds the api + web app containers on top of the shared infra stack
-# (docker-compose.yml), building their images from this repo's own
-# Dockerfiles. Use this when you have the source checked out and want
-# everything — infra AND the app — running in Docker, without needing
-# anything published to a registry first.
+# (docker-compose.yml) plus the separate postgres/minio compose files,
+# building their images from this repo's own Dockerfiles. Use this when you
+# have the source checked out and want everything — infra AND the app —
+# running in Docker, without needing anything published to a registry first.
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   docker network create saas-erp-local-internal   # once, if it doesn't exist yet
+#   docker compose -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.minio.local.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.build.yaml up -d --build
 #
 # Compare with docker-compose.images.yml, which runs the app from
 # already-published images instead of building — see that file's header.
@@ -21,13 +24,16 @@ services:
     depends_on:
       pgbouncer:
         condition: service_started
-      postgres:
-        condition: service_healthy
+      # postgres and minio are separate compose projects now — depends_on
+      # with a condition only works within the same project, so api/web
+      # just retry on their own if either isn't up yet (matches how the
+      # prod app stack behaves against its own separate Postgres/MinIO
+      # resources).
     environment:
       DATABASE_URL: postgres://app_runtime:app_runtime_dev_password@pgbouncer:5432/saaserp
       DIRECT_URL: postgres://saaserp:saaserp_dev_password@postgres:5432/saaserp?schema=public
       MONGO_URL: mongodb://saaserp:saaserp_dev_password@mongo:27017/saaserp_audit?authSource=admin
-      VALKEY_URL: redis://valkey:6379
+      REDIS_URL: redis://redis:6379
       OBJECT_STORAGE_ENDPOINT: minio
       OBJECT_STORAGE_PORT: "9000"
       OBJECT_STORAGE_USE_SSL: "false"
@@ -40,6 +46,8 @@ services:
       PORT: "3000"
     ports:
       - "3000:3000"
+    networks:
+      - saas-erp-local-internal
 
   web:
     build:
@@ -56,3 +64,9 @@ services:
       # 5174, not 5173/80 — this machine's port-conflict note in
       # docker-compose.yml applies here too.
       - "5174:80"
+    networks:
+      - saas-erp-local-internal
+
+networks:
+  saas-erp-local-internal:
+    external: true

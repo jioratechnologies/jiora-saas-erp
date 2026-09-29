@@ -7,26 +7,26 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   private client: Redis | null = null;
 
   onModuleInit() {
-    const valkeyUrl = process.env.VALKEY_URL || "redis://localhost:6380";
+    const redisUrl = process.env.REDIS_URL || "redis://localhost:6380";
     try {
-      this.client = new Redis(valkeyUrl, {
+      this.client = new Redis(redisUrl, {
         lazyConnect: true,
         maxRetriesPerRequest: 1,
         enableOfflineQueue: false,
       });
 
       this.client.connect().then(() => {
-        this.logger.log(`Connected to Valkey at ${valkeyUrl}`);
+        this.logger.log(`Connected to Redis at ${redisUrl}`);
       }).catch((err) => {
-        this.logger.warn(`Valkey connection failed (${err.message}). Caching disabled.`);
+        this.logger.warn(`Redis connection failed (${err.message}). Caching disabled.`);
         this.client = null;
       });
 
       this.client.on("error", (err) => {
-        this.logger.warn(`Valkey error: ${err.message}`);
+        this.logger.warn(`Redis error: ${err.message}`);
       });
     } catch (err: any) {
-      this.logger.warn(`Valkey init failed: ${err.message}`);
+      this.logger.warn(`Redis init failed: ${err.message}`);
       this.client = null;
     }
   }

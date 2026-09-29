@@ -86,11 +86,13 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
 
-  // Tenant branding
+  // Tenant branding — platform staff have no tenant (isPlatformContext),
+  // so this never fires for them; GET /admin/org has nothing meaningful to
+  // return without a tenantId.
   const { data: org } = useQuery({
     queryKey: ["org", "theme"],
     queryFn: () => api.get<Tenant>("/admin/org"),
-    enabled: Boolean(user),
+    enabled: Boolean(user) && me?.isPlatformContext === false,
     staleTime: 60 * 1000,
   });
 

@@ -12,17 +12,24 @@ follow-up.
 
 ## 2. Start infrastructure
 
+Postgres and MinIO are separate compose files, mirroring how they're split into their own
+resources in production (see `docs/deployment/PRODUCTION_DEPLOY.md`) — this is deliberate, not
+accidental sprawl, so local dev and prod share the same shape.
+
 ```bash
 cd infra
+docker network create saas-erp-local-internal   # once, if it doesn't exist yet
+docker compose -f docker-compose.postgres.yaml up -d
+docker compose -f docker-compose.minio.local.yaml up -d
 docker compose up -d
 ```
 
-This starts Postgres 17, PgBouncer, MongoDB, Valkey, MinIO, Zitadel, and the OTel/Grafana stack.
+That starts Postgres 18, MinIO, PgBouncer, MongoDB, Redis, Zitadel, and the OTel/Grafana stack.
 
 **Note on ports:** several services are mapped to non-default host ports (Postgres on 5433 not
-5432, PgBouncer on 6433, Valkey on 6380, MinIO on 9010/9011, Zitadel on 8081 not 8080) — this is
+5432, PgBouncer on 6433, Redis on 6380, MinIO on 9010/9011, Zitadel on 8081 not 8080) — this is
 deliberate, not a typo. This machine runs other unrelated projects that already hold the default
-ports for some of these. See `infra/docker-compose.yml`'s top comment and inline comments.
+ports for some of these. See `infra/docker-compose.yaml`'s top comment and inline comments.
 
 ## 3. Install dependencies and set up the database
 
@@ -43,7 +50,7 @@ Zitadel is running, but creating the actual login application inside it is a man
 repo doesn't automate yet:
 
 1. Open <http://localhost:8081>, log in with the bootstrap admin
-   (`ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME` / `_PASSWORD` in `infra/docker-compose.yml`).
+   (`ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME` / `_PASSWORD` in `infra/docker-compose.yaml`).
 2. Create a Project, then an Application inside it of type **User Agent** (SPA), with:
    - Redirect URI: `http://localhost:5174/callback`
    - Post-logout redirect URI: `http://localhost:5174`
@@ -115,10 +122,10 @@ apps/web/src/routes/
 | `pnpm typecheck` | Typecheck everything |
 | `pnpm --filter @saas-erp/api prisma migrate dev` | Create/apply a migration |
 | `pnpm --filter @saas-erp/api prisma studio` | Browse the database in a GUI |
-| `docker compose -f infra/docker-compose.yml logs -f <service>` | Tail one infra service's logs |
+| `docker compose -f infra/docker-compose.yaml logs -f <service>` | Tail one infra service's logs |
 
 ## 9. If something's already running on these ports
 
 This is a shared dev machine in some setups — check `docs/architecture/ARCHITECTURE.md`'s port
-note, and `infra/docker-compose.yml`'s top comment, before assuming a port conflict means
+note, and `infra/docker-compose.yaml`'s top comment, before assuming a port conflict means
 something's broken.

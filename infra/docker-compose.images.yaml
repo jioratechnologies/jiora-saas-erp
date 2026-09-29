@@ -26,7 +26,7 @@ services:
       DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-saaserp}
       DIRECT_URL: postgres://${POSTGRES_USER:-saaserp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saaserp}?schema=public
       MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
-      VALKEY_URL: redis://valkey:6379
+      REDIS_URL: redis://redis:6379
       OBJECT_STORAGE_ENDPOINT: minio
       OBJECT_STORAGE_PORT: "9000"
       OBJECT_STORAGE_USE_SSL: "false"

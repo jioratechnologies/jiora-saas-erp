@@ -7,7 +7,17 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors();
+
+  // Wide open (undefined -> allow any origin) if CORS_ALLOWED_ORIGINS isn't
+  // set, which is fine for local dev and for as long as `api` stays
+  // internal-only behind web's nginx proxy. Once `api` gets its own public
+  // domain (needed for the mobile app, which can't use that same-origin
+  // proxy trick), set this explicitly to the web app's origin(s) —
+  // comma-separated. Native mobile HTTP clients aren't CORS-restricted at
+  // all (that's a browser-only mechanism), so they're unaffected either way
+  // — this only ever gates browser-based callers.
+  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(",").map((o) => o.trim());
+  app.enableCors({ origin: allowedOrigins ?? true });
 
   const config = new DocumentBuilder()
     .setTitle("saas-erp API")

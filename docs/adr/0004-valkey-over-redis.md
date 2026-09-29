@@ -1,5 +1,9 @@
 # ADR 0004 — Valkey instead of Redis
 
+> **Superseded by [ADR 0009](0009-redis-over-valkey.md).** Kept for history —
+> the reasoning below was correct at the time, but the project reverted to
+> Redis; see 0009 for why.
+
 ## Context
 
 The platform needs an in-memory store for job queues, caching, and rate limiting.

@@ -1,0 +1,48 @@
+# Standalone Postgres for local dev — mirrors the separate Postgres resource
+# in production (see docs/deployment/PRODUCTION_DEPLOY.md). Everything else
+# (pgbouncer, zitadel, api) reaches this by its service name "postgres" over
+# the shared saas-erp-local-internal network — same shape locally as in
+# prod, just without whatever native-Postgres-resource wrapper your host
+# provides.
+#
+# Usage:
+#   docker network create saas-erp-local-internal   # once, if it doesn't exist yet
+#   docker compose -f docker-compose.postgres.yml up -d
+
+name: saas-erp-local-postgres
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saaserp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-saaserp}
+      # Read by infra/postgres/init/02-create-app-runtime-role.sh on first boot only.
+      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:-app_runtime_dev_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      # 18+'s official images expect the volume at /var/lib/postgresql (the
+      # parent dir), not /var/lib/postgresql/data — they now lay out data
+      # in pg_ctlcluster-style major-version-specific subdirectories
+      # underneath it and refuse to start against the old mount point
+      # (confirmed locally: crash-looped with an explicit error on this
+      # exact issue before this was fixed).
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - saas-erp-local-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saaserp} -d ${POSTGRES_DB:-saaserp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  saas-erp-local-internal:
+    external: true
+
+volumes:
+  pgdata:

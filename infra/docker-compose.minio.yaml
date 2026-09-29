@@ -1,6 +1,6 @@
-# Standalone MinIO deploy for Coolify — its own resource, separate from the
-# app stack and from Postgres. No `ports:` mapping (Traefik routes it). See
-# docs/deployment/COOLIFY_DEPLOY.md for full setup steps.
+# Standalone MinIO deploy for production — its own resource, separate from
+# the app stack and from Postgres. No `ports:` mapping (Traefik routes it).
+# See docs/deployment/PRODUCTION_DEPLOY.md for full setup steps.
 #
 # MinIO Inc. discontinued free distribution of the plain community image in
 # 2025 (quay.io/minio/minio, docker.io/minio/minio, ghcr.io/minio/minio, and
@@ -20,13 +20,16 @@
 # it can only touch this one bucket, not the server. Keep the two credential
 # pairs different — using the root user as the app's key defeats this.
 #
-# Usage (on the Coolify host, or any host that will run this resource):
+# Usage (on the production host):
 #   docker network create saas-erp-internal   # once, if it doesn't exist yet
 #   mkdir -p /data/saas-erp/minio             # once — fixed host path, survives
-#                                              # Coolify deleting/recreating this
-#                                              # resource (a named volume would
-#                                              # get a new per-resource UUID prefix
-#                                              # and start empty)
+#                                              # this resource being deleted and
+#                                              # recreated by whatever's managing
+#                                              # it (a named volume would get a
+#                                              # new per-resource identifier and
+#                                              # start empty on most PaaS-style
+#                                              # Docker hosts — Coolify, Dokploy,
+#                                              # etc.)
 #   cp .env.deploy.example .env                # fill in MINIO_ROOT_*, OBJECT_STORAGE_*, MINIO_DOMAIN
 #   docker compose -f docker-compose.minio.yaml up -d
 
@@ -42,7 +45,7 @@ services:
       - /data/saas-erp/minio:/data
     networks:
       - saas-erp-internal
-      - coolify
+      - dokploy-network
     # No healthcheck: this image is our own source build on a distroless
     # base (see infra/minio-build/Dockerfile) — no shell, no `mc`, nothing
     # to run a CMD-style check with. `setup` below polls the S3 API itself
@@ -97,5 +100,10 @@ services:
 networks:
   saas-erp-internal:
     external: true
-  coolify:
+  # Whatever network your host's own Traefik listens on. Dokploy creates
+  # this one itself during install (see its traefik.yml: providers.docker.network) —
+  # don't `docker network create` it, it already exists. A different host's
+  # reverse proxy will use a different name; rename this key (and the
+  # reference to it above) to match.
+  dokploy-network:
     external: true

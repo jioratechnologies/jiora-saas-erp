@@ -1,40 +1,29 @@
 name: saas-erp-dev
-# Host ports are deliberately non-default (5433, 6433, 6380, 9010/9011, 8081) because this
+# Everything except Postgres and MinIO, which are their own separate compose
+# files now (docker-compose.postgres.yaml, docker-compose.minio.local.yaml) —
+# mirrors the split used in production (see docs/deployment/PRODUCTION_DEPLOY.md).
+# All three share the saas-erp-local-internal network so services resolve
+# each other by name across compose projects.
+#
+# Host ports are deliberately non-default (6433, 6380, 8081) because this
 # dev machine already runs other projects on the standard ports — see
 # docs/onboarding/GETTING_STARTED.md.
+#
+# Usage:
+#   docker network create saas-erp-local-internal   # once, if it doesn't exist yet
+#   docker compose -f docker-compose.postgres.yaml up -d
+#   docker compose -f docker-compose.minio.local.yaml up -d
+#   docker compose -f docker-compose.yaml up -d
 #
 # Every secret below is `${VAR:-dev-default}` — safe to run as-is for local dev with no
 # .env file at all, but every value is overridable. For a real self-hosted deployment,
 # copy .env.deploy.example to .env in this directory and set real values for all of
-# them — see docker-compose.images.yml's header for the full from-env deploy flow.
+# them — see docker-compose.images.yaml's header for the full from-env deploy flow.
 
 services:
-  postgres:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-saaserp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-saaserp}
-      # Read by infra/postgres/init/02-create-app-runtime-role.sh on first boot only.
-      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:-app_runtime_dev_password}
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saaserp} -d ${POSTGRES_DB:-saaserp}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   pgbouncer:
     image: edoburu/pgbouncer:latest
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       # app_runtime, NOT saaserp: the app must never connect as the table owner,
       # or Postgres RLS policies below would silently not apply to it.
@@ -48,6 +37,8 @@ services:
       IGNORE_STARTUP_PARAMETERS: "search_path,extra_float_digits"
     ports:
       - "6433:5432"
+    networks:
+      - saas-erp-local-internal
 
   mongo:
     image: mongo:7
@@ -60,33 +51,19 @@ services:
       - "27017:27017"
     volumes:
       - mongodata:/data/db
+    networks:
+      - saas-erp-local-internal
 
-  valkey:
-    image: valkey/valkey:8-alpine
+  redis:
+    image: redis:8-alpine
     restart: unless-stopped
-    command: ["valkey-server", "--save", "60", "1"]
+    command: ["redis-server", "--save", "60", "1"]
     ports:
       - "6380:6379"
     volumes:
-      - valkeydata:/data
-
-  minio:
-    # MinIO discontinued free distribution of quay.io/minio/minio (and every
-    # other public registry/binary) in 2025 — see
-    # infra/docker-compose.minio.yaml's header for what was tested. This is
-    # our own mirror, pushed to a Docker Hub repo we control, same image
-    # bits as the last working quay.io pull.
-    image: bhindwarg/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-saaserp}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-saaserp_dev_password}
-    ports:
-      - "9010:9000"
-      - "9011:9001"
-    volumes:
-      - miniodata:/data
+      - redisdata:/data
+    networks:
+      - saas-erp-local-internal
 
   mailpit:
     # Local SMTP catcher for dev — nothing here ever leaves the machine. Every
@@ -106,14 +83,19 @@ services:
     ports:
       - "1025:1025" # SMTP
       - "8025:8025" # web inbox
+    networks:
+      - saas-erp-local-internal
 
   zitadel:
     image: ghcr.io/zitadel/zitadel:latest
     restart: unless-stopped
+    # external (not disabled!): per Zitadel's own cmd/tls/tls.go, --tlsMode
+    # always overwrites externalSecure/tls.enabled, ignoring the env var
+    # entirely — see the same fix applied to docker-compose.production.yaml for
+    # the full explanation. Local dev is plain http throughout though, so
+    # externalSecure=false here is actually correct; "external" is only
+    # required once ExternalSecure needs to be true (prod, behind Traefik).
     command: start-from-init --masterkey "${ZITADEL_MASTERKEY:-MasterkeyNeedsToHave32Characters}" --tlsMode disabled
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       ZITADEL_DATABASE_POSTGRES_HOST: postgres
       ZITADEL_DATABASE_POSTGRES_PORT: 5432
@@ -139,6 +121,8 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:-Sup3rAdmin!Dev}
     ports:
       - "8081:8080"
+    networks:
+      - saas-erp-local-internal
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -153,6 +137,8 @@ services:
       - tempo
       - loki
       - prometheus
+    networks:
+      - saas-erp-local-internal
 
   tempo:
     image: grafana/tempo:latest
@@ -163,6 +149,8 @@ services:
       - tempodata:/var/tempo
     ports:
       - "3200:3200"
+    networks:
+      - saas-erp-local-internal
 
   loki:
     image: grafana/loki:latest
@@ -171,6 +159,8 @@ services:
       - "3100:3100"
     volumes:
       - lokidata:/loki
+    networks:
+      - saas-erp-local-internal
 
   prometheus:
     image: prom/prometheus:latest
@@ -180,6 +170,8 @@ services:
       - promdata:/prometheus
     ports:
       - "9090:9090"
+    networks:
+      - saas-erp-local-internal
 
   grafana:
     image: grafana/grafana:latest
@@ -195,12 +187,16 @@ services:
       - tempo
       - loki
       - prometheus
+    networks:
+      - saas-erp-local-internal
+
+networks:
+  saas-erp-local-internal:
+    external: true
 
 volumes:
-  pgdata:
   mongodata:
-  valkeydata:
-  miniodata:
+  redisdata:
   tempodata:
   lokidata:
   promdata:

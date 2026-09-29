@@ -1,40 +1,47 @@
-# Main app stack for Coolify. Postgres and object storage are separate
-# Coolify resources (see docs/deployment/COOLIFY_DEPLOY.md) — this file only
-# has what talks to them. Object storage is deployed from
+# Main production app stack. Postgres and object storage are separate
+# resources (see docs/deployment/PRODUCTION_DEPLOY.md) — this file only has
+# what talks to them. Object storage is deployed from
 # docker-compose.minio.yaml (or any other S3-compatible service) — its own
 # resource, since apps/api talks to it as a generic S3 endpoint.
 #
 # No `ports:` anywhere. Every service sits on `saas-erp-internal` (shared
-# with the Postgres and MinIO resources). Only `web` and `zitadel` also join
-# `coolify`, the network Coolify's own Traefik listens on — that's what
-# makes them the only two things reachable from outside. `api` has no
-# public route at all: the browser only ever calls `web`, which proxies
-# `/api/*` to `api` over `saas-erp-internal` (see apps/web/nginx.conf).
+# with the Postgres and MinIO resources). `web`, `zitadel`, and `api` also
+# join `dokploy-network`, the network Dokploy's own Traefik listens on (see
+# that network's own comment further down for naming notes). `api` does get
+# a public route — needed for the mobile app, which can't use web's
+# same-origin nginx `/api/*` proxy trick the way a browser can (see
+# apps/web/nginx.conf) — but the browser itself still only ever calls
+# `web`'s own domain; `CORS_ALLOWED_ORIGINS` locks `api` to that origin for
+# any browser-based caller regardless.
 #
 # Usage:
 #   docker network create saas-erp-internal   # once, if it doesn't exist yet
-#   mkdir -p /data/saas-erp/mongo /data/saas-erp/valkey   # once — fixed host
-#                                              # paths, survive Coolify deleting/
-#                                              # recreating this resource (named
+#   mkdir -p /data/saas-erp/mongo /data/saas-erp/redis   # once — fixed host
+#                                              # paths, survive this resource
+#                                              # being deleted and recreated by
+#                                              # whatever's managing it (named
 #                                              # volumes get a new per-resource
-#                                              # UUID prefix and start empty —
+#                                              # identifier and start empty on
+#                                              # most PaaS-style Docker hosts —
 #                                              # same issue docker-compose.minio.yaml
 #                                              # hit)
 #   cp .env.deploy.example .env                 # fill in every value, see below
-#   docker compose -f docker-compose.coolify.yaml up -d --build
+#   docker compose -f docker-compose.production.yaml up -d --build
 #
 # Required env additions beyond .env.deploy.example (external Postgres and
 # object storage, since both resources are deployed separately, not by this
 # file):
-#   POSTGRES_HOST            internal hostname/service-name Coolify gives the
-#                             Postgres resource (Coolify shows this on the
-#                             resource's "Connection" tab)
+#   POSTGRES_HOST            internal hostname/service-name your host gives
+#                             the Postgres resource (check its connection
+#                             details page)
 #   POSTGRES_PORT             usually 5432
 #   OBJECT_STORAGE_ENDPOINT   object storage's S3 API host, no scheme/port
 #                             (its presigned URLs go straight to the browser,
 #                             so this has to be the public hostname, not an
-#                             internal service name — see COOLIFY_DEPLOY.md)
+#                             internal service name — see PRODUCTION_DEPLOY.md)
 #   WEB_DOMAIN                e.g. app.your-domain.example
+#   API_DOMAIN                e.g. api.your-domain.example — what the mobile
+#                             app points its baseUrl at
 #   ZITADEL_DOMAIN            e.g. auth.your-domain.example — must match
 #                             ZITADEL_ISSUER's host
 #   RESEND_API_KEY            from Resend's dashboard — used as the SMTP
@@ -49,8 +56,8 @@ services:
     restart: unless-stopped
     environment:
       # app_runtime, not the table owner — see infra/postgres/init for why,
-      # and docs/deployment/COOLIFY_DEPLOY.md for how to create this role on
-      # the standalone Postgres resource.
+      # and docs/deployment/PRODUCTION_DEPLOY.md for how to create this role
+      # on the standalone Postgres resource.
       DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 200
@@ -72,12 +79,12 @@ services:
     networks:
       - saas-erp-internal
 
-  valkey:
-    image: valkey/valkey:8-alpine
+  redis:
+    image: redis:8-alpine
     restart: unless-stopped
-    command: ["valkey-server", "--save", "60", "1"]
+    command: ["redis-server", "--save", "60", "1"]
     volumes:
-      - /data/saas-erp/valkey:/data
+      - /data/saas-erp/redis:/data
     networks:
       - saas-erp-internal
 
@@ -114,17 +121,20 @@ services:
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME}
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
-      # SMTP via Resend temporarily removed — Coolify never resolved
-      # RESEND_API_KEY/RESEND_FROM_ADDRESS/RESEND_FROM_NAME (added after this
-      # app's initial setup; stayed literal "${VAR}" text across 3 redeploys
-      # and a no-cache rebuild), so Zitadel's bootstrap kept failing validation
-      # on an empty from-address and crash-looping. Without SMTP config,
-      # bootstrap completes fine (confirmed earlier) — the activation email
-      # just won't send. Re-add once Coolify's var resolution is sorted, or
-      # configure SMTP via the Console UI after first login instead.
+      # SMTP via Resend temporarily removed — on Coolify, RESEND_API_KEY/
+      # RESEND_FROM_ADDRESS/RESEND_FROM_NAME (added after the app's initial
+      # setup there) never resolved, stayed literal "${VAR}" text across 3
+      # redeploys and a no-cache rebuild, so Zitadel's bootstrap kept failing
+      # validation on an empty from-address and crash-looping. Without SMTP
+      # config, bootstrap completes fine (confirmed) — the activation email
+      # just won't send. Worth re-testing on whatever host actually runs
+      # this (that failure was specific to Coolify's variable handling, not
+      # a Zitadel or Docker Compose issue) — re-add if var substitution
+      # works cleanly there, or configure SMTP via the Console UI after
+      # first login instead either way.
     networks:
       - saas-erp-internal
-      - coolify
+      - dokploy-network
     labels:
       - traefik.enable=true
       - traefik.http.routers.zitadel.rule=Host(`${ZITADEL_DOMAIN}`)
@@ -141,13 +151,13 @@ services:
     depends_on:
       - pgbouncer
       - mongo
-      - valkey
+      - redis
       - zitadel
     environment:
       DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-saaserp}
       DIRECT_URL: postgres://${POSTGRES_USER:-saaserp}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public
       MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
-      VALKEY_URL: redis://valkey:6379
+      REDIS_URL: redis://redis:6379
       OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT}
       OBJECT_STORAGE_PORT: "443"
       OBJECT_STORAGE_USE_SSL: "true"
@@ -156,11 +166,26 @@ services:
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
       ZITADEL_ISSUER: https://${ZITADEL_DOMAIN}
       ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID}
+      # Only matters for browser callers — mobile's native HTTP client isn't
+      # CORS-restricted at all. Locked to just the web app's own origin;
+      # mobile reaches this same public API_DOMAIN directly, no CORS
+      # involved on that path.
+      CORS_ALLOWED_ORIGINS: https://${WEB_DOMAIN}
       PORT: "3000"
     networks:
       - saas-erp-internal
-    # No `coolify` network, no Traefik labels: not reachable from outside
-    # the internal network under any circumstance. web proxies to it.
+      - dokploy-network
+    labels:
+      # Public route exists for the mobile app, which can't use web's
+      # same-origin nginx /api proxy trick the way a browser can. The
+      # browser still only ever talks to web's own domain though — nothing
+      # here changes that path.
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.api.entryPoints=https
+      - traefik.http.routers.api.tls=true
+      - traefik.http.routers.api.tls.certresolver=letsencrypt
+      - traefik.http.services.api.loadbalancer.server.port=3000
 
   web:
     build:
@@ -177,7 +202,7 @@ services:
       - api
     networks:
       - saas-erp-internal
-      - coolify
+      - dokploy-network
     labels:
       - traefik.enable=true
       - traefik.http.routers.web.rule=Host(`${WEB_DOMAIN}`)
@@ -189,5 +214,10 @@ services:
 networks:
   saas-erp-internal:
     external: true
-  coolify:
+  # Whatever network your host's own Traefik listens on. Dokploy creates
+  # this one itself during install (see its traefik.yml: providers.docker.network) —
+  # don't `docker network create` it, it already exists. A different host's
+  # reverse proxy will use a different name; rename this key (and the three
+  # references to it above) to match.
+  dokploy-network:
     external: true

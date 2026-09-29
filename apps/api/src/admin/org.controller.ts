@@ -33,11 +33,15 @@ export class OrgController {
 
   /**
    * Any authenticated tenant user can read their organisation's branding and profile.
-   * Updating theme still strictly requires admin.org.write.
+   * Updating theme still strictly requires admin.org.write. Platform staff (no
+   * tenantId — isPlatformContext) have no "own org" concept; the frontend
+   * doesn't call this for them, but return null rather than crash on the
+   * off chance something else does.
    */
   @Get()
   get(@CurrentUser() user: AuthContext) {
-    return this.tenants.getOwn(user.tenantId!);
+    if (!user.tenantId) return null;
+    return this.tenants.getOwn(user.tenantId);
   }
 
   @Patch("theme")

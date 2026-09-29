@@ -1,0 +1,35 @@
+# Standalone MinIO for local dev — mirrors the separate object-storage
+# resource in production (infra/docker-compose.minio.yaml), minus Traefik
+# and domains: ports are just published directly since there's no local
+# reverse proxy.
+#
+# Usage:
+#   docker network create saas-erp-local-internal   # once, if it doesn't exist yet
+#   docker compose -f docker-compose.minio.local.yml up -d
+
+name: saas-erp-local-minio
+
+services:
+  minio:
+    # Same image as the production compose file — see its header comment
+    # for why this isn't quay.io/minio/minio.
+    image: bhindwarg/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-saaserp}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-saaserp_dev_password}
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      - miniodata:/data
+    networks:
+      - saas-erp-local-internal
+
+networks:
+  saas-erp-local-internal:
+    external: true
+
+volumes:
+  miniodata:
