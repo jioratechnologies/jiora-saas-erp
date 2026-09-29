@@ -161,6 +161,9 @@ storage resources, and your real domains):
 | `OBJECT_STORAGE_ENDPOINT` | Same as `MINIO_DOMAIN` from step 2, no scheme/port |
 | `WEB_DOMAIN` | e.g. `app.your-domain.example` |
 | `ZITADEL_DOMAIN` | e.g. `auth.your-domain.example` |
+| `RESEND_API_KEY` | From Resend's dashboard |
+| `RESEND_FROM_ADDRESS` | Must be on a domain verified in Resend |
+| `RESEND_FROM_NAME` | Optional, defaults to "Jiora SaaS ERP" |
 | `ZITADEL_CLIENT_ID` | From the one-time Zitadel console step, see `docs/onboarding/GETTING_STARTED.md` step 4 |
 
 Point Coolify's DNS/domain settings at `WEB_DOMAIN` and `ZITADEL_DOMAIN` as
@@ -182,6 +185,12 @@ its database on first boot and `api` needs both on startup.
   `VITE_ZITADEL_ISSUER` (baked into the `web` build) must both resolve to
   the same public HTTPS URL — `https://${ZITADEL_DOMAIN}` — since it's
   embedded in issued tokens and used for JWKS discovery.
+- SMTP (Resend) is configured via env vars directly on `zitadel`, not
+  through its Console UI — the very first bootstrap admin activation email
+  has to send before anyone can log in to reach the Console at all, so it
+  can't wait for a post-login manual step the way local dev's Mailpit setup
+  does. Mailpit itself is intentionally not used here — it only catches
+  mail locally, doesn't deliver anywhere a real user could read it.
 - Observability (`otel-collector`, `tempo`, `loki`, `prometheus`, `grafana`
   from the local dev stack) is intentionally left out of the Coolify compose
   file. Add it as its own resource on `saas-erp-internal` later if needed;

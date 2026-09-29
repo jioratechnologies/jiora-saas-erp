@@ -37,6 +37,11 @@
 #   WEB_DOMAIN                e.g. app.your-domain.example
 #   ZITADEL_DOMAIN            e.g. auth.your-domain.example — must match
 #                             ZITADEL_ISSUER's host
+#   RESEND_API_KEY            from Resend's dashboard — used as the SMTP
+#                             password Zitadel authenticates with
+#   RESEND_FROM_ADDRESS       must be on a domain verified in Resend, or
+#                             every send fails
+#   RESEND_FROM_NAME          optional, defaults to "Jiora SaaS ERP"
 
 services:
   pgbouncer:
@@ -97,6 +102,16 @@ services:
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME}
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
+      # SMTP via Resend — set via env, not the Console UI, since the very
+      # first bootstrap admin activation email needs to send before anyone
+      # can log in to reach the Console at all. RESEND_FROM_ADDRESS must be
+      # on a domain verified in Resend's dashboard, or sends will fail.
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_HOST: smtp.resend.com:465
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_USER: resend
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_PASSWORD: ${RESEND_API_KEY}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_TLS: "true"
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROM_ADDRESS: ${RESEND_FROM_ADDRESS}
+      ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROM_NAME: ${RESEND_FROM_NAME:-Jiora SaaS ERP}
     networks:
       - saas-erp-internal
       - coolify
