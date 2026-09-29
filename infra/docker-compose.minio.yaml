@@ -50,13 +50,13 @@ services:
     # base (see infra/minio-build/Dockerfile) — no shell, no `mc`, nothing
     # to run a CMD-style check with. `setup` below polls the S3 API itself
     # instead of depending on a Docker healthcheck gate.
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.minio.rule=Host(`${MINIO_DOMAIN}`)
-      - traefik.http.routers.minio.entryPoints=https
-      - traefik.http.routers.minio.tls=true
-      - traefik.http.routers.minio.tls.certresolver=letsencrypt
-      - traefik.http.services.minio.loadbalancer.server.port=9000
+    #
+    # No Traefik labels here — configure MINIO_DOMAIN through Dokploy's own
+    # Domains UI for this Compose service instead (container port 9000).
+    # Hand-written labels alongside Dokploy's auto-generated ones create two
+    # competing routers for the same host — confirmed live on web/api/
+    # zitadel, same risk here. A host without Dokploy's own Domains UI
+    # (plain Traefik, Coolify, etc.) would need labels added back instead.
 
   # One-shot: creates the bucket, then a scoped non-root user restricted to
   # that bucket only, then attaches a matching policy — then exits. Safe to
