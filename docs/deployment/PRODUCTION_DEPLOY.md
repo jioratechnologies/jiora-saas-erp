@@ -186,9 +186,17 @@ storage resources, and your real domains):
 | `ZITADEL_CLIENT_ID` | From the one-time Zitadel console step, see `docs/onboarding/GETTING_STARTED.md` step 4 |
 
 Point your platform's DNS/domain settings at `WEB_DOMAIN`, `API_DOMAIN`, and
-`ZITADEL_DOMAIN` as you would for any app on it — Traefik picks up the
-routing from the labels already in the compose file, no port numbers
-involved anywhere.
+`ZITADEL_DOMAIN` as you would for any app on it. On Dokploy specifically,
+configure these three domains through its own **Domains** UI on this Compose
+service — one entry per service, picking the right container and port
+(`web` → 80, `api` → 3000, `zitadel` → 8080), HTTPS on, cert resolver
+`letsencrypt`. Don't also hand-write `traefik.*` labels in the compose file
+for these services — confirmed live: labels alongside Dokploy's
+auto-generated ones create two competing routers for the same host, one of
+them pointing at the wrong container port, and the losing router's HTTPS
+entryPoint never takes effect. A host without Dokploy's own Domains
+UI (plain Traefik, Coolify, etc.) would instead read routing straight from
+`traefik.*` labels in the compose file — add them back for that case.
 
 ### Critical: Deployment order and MinIO setup
 
