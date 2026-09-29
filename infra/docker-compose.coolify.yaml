@@ -84,9 +84,16 @@ services:
   zitadel:
     image: ghcr.io/zitadel/zitadel:latest
     restart: unless-stopped
-    # ExternalSecure true + no ExternalPort: Traefik terminates TLS in front
-    # of this, Zitadel itself stays on plain HTTP internally (tlsMode disabled).
-    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode disabled
+    # --tlsMode external (not "disabled"!): per Zitadel's own cmd/tls/tls.go,
+    # this flag *always* overwrites externalSecure/tls.enabled, ignoring
+    # ZITADEL_EXTERNALSECURE entirely. "disabled" sets tls.enabled=false AND
+    # externalSecure=false — wrong for a reverse-proxy setup, and the actual
+    # cause of Console's environment.json advertising "http://" instead of
+    # "https://" (browsers then block every post-login API call as mixed
+    # content). "external" is the mode built for exactly this: Traefik
+    # terminates TLS, Zitadel stays plain HTTP internally, but still
+    # correctly tells clients it's reachable over HTTPS externally.
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode external
     environment:
       ZITADEL_DATABASE_POSTGRES_HOST: ${POSTGRES_HOST}
       ZITADEL_DATABASE_POSTGRES_PORT: ${POSTGRES_PORT:-5432}
