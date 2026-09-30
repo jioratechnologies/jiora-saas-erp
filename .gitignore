@@ -19,3 +19,5 @@ infra/grafana-data/
 docs/CREDENTIALS.local.md
 *.local.md
 AI_TRACKER.local.md
+.gradle/
+*.bin

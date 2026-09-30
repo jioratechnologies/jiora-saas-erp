@@ -51,7 +51,7 @@ interface ProfileResponse {
     department?: string | null;
     designation?: string | null;
     roles: string[];
-  };
+  } | null;
   person?: {
     id: string;
     firstName: string;
@@ -116,8 +116,8 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
   useEffect(() => {
     if (profileData) {
-      setDisplayName(profileData.user.displayName || "");
-      const pPhone = profileData.person?.phone || profileData.user.phone || "";
+      setDisplayName(profileData.user?.displayName || "");
+      const pPhone = profileData.person?.phone || profileData.user?.phone || "";
       const pWhatsapp = profileData.person?.whatsapp || pPhone;
       setPhone(pPhone);
       setWhatsapp(pWhatsapp);
