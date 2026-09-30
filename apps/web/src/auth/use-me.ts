@@ -25,9 +25,18 @@ export function useMe() {
     queryKey: ["auth", "me"],
     queryFn: () => api.get<Me>("/auth/me"),
     enabled: isLoggedIn,
-    retry: false,
-    staleTime: 0,           // always treat as stale so permissions are never served from cache
-    refetchOnWindowFocus: true, // re-fetch when user switches back to tab
+    // Retry up to 2 times for network-level failures (ECONNREFUSED, fetch
+    // failures on first container startup) but never retry auth errors
+    // (401 = not provisioned, 403 = forbidden — retrying won't help).
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const notProvisioned = query.error instanceof ApiError && query.error.status === 401;
