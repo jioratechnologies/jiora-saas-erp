@@ -1,0 +1,34 @@
+# Production network overlay for docker-compose.yaml.
+#
+# Usage on production server:
+#   docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d --build
+#
+# Why this file exists:
+#   The Dokploy-managed Postgres container (saaserp-saaserppostgres-txcrxt)
+#   lives on `dokploy-network` — the shared network Dokploy's Traefik manages.
+#   pgbouncer must join that network to resolve/reach the Postgres hostname.
+#   The backend and frontend also join it so Traefik can route public traffic.
+#
+# In local dev: do NOT use this file. Local Postgres is external (cloud/remote)
+#   so pgbouncer reaches it via the outbound internet — no extra network needed.
+
+services:
+  pgbouncer:
+    networks:
+      - saas-erp-local-internal
+      - dokploy-network
+
+  backend:
+    networks:
+      - saas-erp-local-internal
+      - dokploy-network
+
+  frontend:
+    networks:
+      - saas-erp-local-internal
+      - dokploy-network
+
+networks:
+  # Dokploy creates this during install — do not docker network create it.
+  dokploy-network:
+    external: true
