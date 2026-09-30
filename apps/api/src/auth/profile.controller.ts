@@ -45,14 +45,33 @@ export class ProfileController {
   async getProfile(@CurrentUser() auth: AuthContext) {
     if (!auth.tenantId) {
       // Platform admin
-      const user = await this.prisma.user.findUnique({
-        where: { id: auth.userId },
-      });
-      return {
-        user,
-        person: null,
-        documents: [],
-      };
+      return this.prisma.runInTenantContext(
+        { tenantId: null, isPlatformContext: true },
+        async (tx) => {
+          const user = await tx.user.findUnique({
+            where: { id: auth.userId },
+            include: {
+              roles: { include: { role: true } },
+            },
+          });
+          return {
+            user: user
+              ? {
+                  id: user.id,
+                  email: user.email,
+                  displayName: user.displayName,
+                  phone: user.phone,
+                  avatarUrl: user.avatarUrl,
+                  department: null,
+                  designation: null,
+                  roles: user.roles.map((r) => r.role.name),
+                }
+              : null,
+            person: null,
+            documents: [],
+          };
+        },
+      );
     }
 
     return this.prisma.runInTenantContext(
@@ -149,13 +168,18 @@ export class ProfileController {
   ) {
     if (!auth.tenantId) {
       if (dto.displayName || dto.phone) {
-        await this.prisma.user.update({
-          where: { id: auth.userId },
-          data: {
-            displayName: dto.displayName,
-            phone: dto.phone,
+        await this.prisma.runInTenantContext(
+          { tenantId: null, isPlatformContext: true },
+          async (tx) => {
+            await tx.user.update({
+              where: { id: auth.userId },
+              data: {
+                displayName: dto.displayName,
+                phone: dto.phone,
+              },
+            });
           },
-        });
+        );
       }
       return { success: true };
     }

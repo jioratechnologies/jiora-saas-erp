@@ -41,8 +41,24 @@ export interface SelectProps {
   name?: string;
   id?: string;
   className?: string;
+  triggerClassName?: string;
+  size?: "xs" | "sm" | "md" | "lg";
   children?: ReactNode;
 }
+
+const selectSizeClasses = {
+  xs: "h-7 px-2.5 py-0 text-xs rounded-lg gap-1.5",
+  sm: "h-8 px-3 py-0 text-xs rounded-xl gap-2",
+  md: "h-10 px-3.5 py-2 text-sm rounded-xl gap-2.5",
+  lg: "h-12 px-4 py-2.5 text-base rounded-2xl gap-3",
+};
+
+const selectIconSizes = {
+  xs: "h-3 w-3",
+  sm: "h-3.5 w-3.5",
+  md: "h-4 w-4",
+  lg: "h-4.5 w-4.5",
+};
 
 /**
  * Custom Dropdown Select with floating popover listbox, portal rendering,
@@ -66,6 +82,8 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
       isRequired = false,
       name,
       className,
+      triggerClassName,
+      size = "md",
       children,
     },
     ref,
@@ -207,7 +225,7 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
     };
 
     return (
-      <div className={cn("relative w-full space-y-1.5", className)}>
+      <div className={cn("relative w-full", (label || helperText || error) && "space-y-1.5", className)}>
         {label && (
           <label className="block text-xs font-semibold text-foreground">
             {label}
@@ -228,16 +246,18 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
             }
           }}
           className={cn(
-            "flex w-full cursor-pointer items-center justify-between rounded-xl border bg-background px-3.5 py-2.5 text-sm transition-all duration-150 select-none",
-            "border-zinc-200 dark:border-zinc-800",
+            "flex w-full cursor-pointer items-center justify-between border bg-background transition-all duration-150 select-none",
+            selectSizeClasses[size],
+            "border-zinc-200/90 dark:border-zinc-800",
             "hover:border-zinc-300 dark:hover:border-zinc-700",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary",
             isOpen && "ring-2 ring-primary border-primary",
             disabled && "cursor-not-allowed opacity-50 hover:border-zinc-200",
             error && "border-red-500 focus-visible:ring-red-500",
+            triggerClassName,
           )}
         >
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             {selectedOption?.icon && (
               <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                 {selectedOption.icon}
@@ -245,7 +265,8 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
             )}
             <span
               className={cn(
-                "truncate text-sm",
+                "truncate",
+                size === "xs" || size === "sm" ? "text-xs" : "text-sm",
                 displayLabel ? "text-foreground font-medium" : "text-muted-foreground/60",
               )}
             >
@@ -253,7 +274,7 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
             </span>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0 ml-2">
+          <div className="flex items-center gap-1 shrink-0 ml-1.5">
             {clearable && displayLabel && !disabled && (
               <button
                 type="button"
@@ -266,7 +287,8 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
             )}
             <ChevronDown
               className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                selectIconSizes[size],
+                "text-muted-foreground transition-transform duration-200 shrink-0",
                 isOpen && "rotate-180",
               )}
             />

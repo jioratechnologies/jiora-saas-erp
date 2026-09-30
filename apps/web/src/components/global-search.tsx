@@ -48,12 +48,23 @@ const QUICK_PAGES = [
   { title: "Roles & Permissions", path: "/admin/roles", icon: ShieldCheck, category: "Admin" },
 ];
 
-export function GlobalSearch() {
+export interface GlobalSearchProps {
+  isMobileModal?: boolean;
+  onClose?: () => void;
+}
+
+export function GlobalSearch({ isMobileModal = false, onClose }: GlobalSearchProps = {}) {
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(isMobileModal);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isMobileModal) {
+      setTimeout(() => inputRef.current?.focus(), 80);
+    }
+  }, [isMobileModal]);
 
   // Global Ctrl+K / Cmd+K listener
   useEffect(() => {
@@ -111,13 +122,131 @@ export function GlobalSearch() {
     navigate(path);
     setOpen(false);
     setQuery("");
+    onClose?.();
   };
 
   const handleSelectPerson = (person: SearchPerson) => {
     navigate(`/hr/people?id=${person.id}`);
     setOpen(false);
     setQuery("");
+    onClose?.();
   };
+
+  if (isMobileModal) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex flex-col p-3 sm:p-4 pt-3 sm:pt-16 animate-in fade-in-0 duration-150">
+        <div ref={containerRef} className="w-full max-w-lg mx-auto bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
+          {/* Mobile Search Header */}
+          <div className="flex items-center gap-2 p-3 border-b border-zinc-100 dark:border-zinc-800">
+            <Search className="h-4 w-4 text-primary shrink-0 ml-1" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search people, modules, or pages..."
+              className="flex-1 h-9 px-2 text-sm bg-transparent outline-hidden placeholder:text-muted-foreground text-foreground"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+
+          {/* Results List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* People Section */}
+            {q && (
+              <div>
+                <div className="px-2 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Staff & Personnel ({filteredPeople.length})
+                </div>
+                {filteredPeople.length === 0 ? (
+                  <p className="px-2.5 py-2 text-xs text-muted-foreground italic">
+                    No staff members matching "{query}"
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {filteredPeople.map((person) => (
+                      <button
+                        key={person.id}
+                        onClick={() => handleSelectPerson(person)}
+                        className="w-full flex items-center justify-between gap-2.5 p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-left transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar
+                            name={`${person.firstName} ${person.lastName}`}
+                            src={person.avatarUrl}
+                            size="sm"
+                            className="h-8 w-8 text-xs shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-foreground truncate">
+                              {person.firstName} {person.lastName}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {person.designation?.name || "Staff"} • {person.department?.name || "General"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant={person.personType === "EMPLOYEE" ? "default" : "secondary"}
+                          className="text-[9px] py-0 px-1 shrink-0"
+                        >
+                          {person.personType === "EMPLOYEE" ? "Emp" : "Vol"}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Quick Pages & Modules */}
+            <div>
+              <div className="px-2 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                {q ? "Matching Modules" : "Quick Navigation"}
+              </div>
+              <div className="space-y-1">
+                {filteredPages.map((page) => {
+                  const Icon = page.icon;
+                  return (
+                    <button
+                      key={page.path}
+                      onClick={() => handleSelectPage(page.path)}
+                      className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-left transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span className="text-xs font-medium text-foreground truncate">
+                          {page.title}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{page.category}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative flex-1 max-w-sm sm:max-w-md mx-2 sm:mx-4">

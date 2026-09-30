@@ -1,10 +1,14 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "../mail/services/mail.service";
 import type { InviteUserDto } from "./dto";
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   list(tenantId: string) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
@@ -16,9 +20,9 @@ export class UsersService {
     );
   }
 
-  /** Creates the app-side profile only — see claim-invite.controller.ts for how it gets linked to a real login. */
+  /** Creates the app-side profile and dispatches an invitation email. */
   async invite(tenantId: string, dto: InviteUserDto) {
-    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+    const result = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const existing = await tx.user.findUnique({ where: { tenantId_email: { tenantId, email: dto.email } } });
       if (existing) throw new ConflictException(`${dto.email} is already invited or a member`);
 
@@ -26,6 +30,8 @@ export class UsersService {
       if (roles.length !== dto.roleIds.length) {
         throw new NotFoundException("One or more roleIds do not exist in this tenant");
       }
+
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
 
       const user = await tx.user.create({
         data: {
@@ -40,8 +46,23 @@ export class UsersService {
       await tx.userRole.createMany({
         data: dto.roleIds.map((roleId) => ({ userId: user.id, roleId })),
       });
-      return tx.user.findUniqueOrThrow({ where: { id: user.id }, include: { roles: true } });
+      const createdUser = await tx.user.findUniqueOrThrow({ where: { id: user.id }, include: { roles: true } });
+      return {
+        user: createdUser,
+        tenantName: tenant?.name || "Your Organization",
+        roleNames: roles.map((r) => r.name),
+      };
     });
+
+    // Dispatch invitation email asynchronously
+    this.mail.sendInvitation({
+      to: dto.email,
+      displayName: dto.displayName,
+      tenantName: result.tenantName,
+      roleNames: result.roleNames,
+    }).catch(() => {});
+
+    return result.user;
   }
 
   async deactivate(tenantId: string, userId: string) {

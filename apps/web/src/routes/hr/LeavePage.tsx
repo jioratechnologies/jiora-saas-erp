@@ -34,6 +34,7 @@ import { useMe } from "../../auth/use-me";
 import { useAuthStore } from "../../auth/auth-store";
 import { cn } from "../../lib/utils";
 import { exportToCsv } from "../../lib/csv-export";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 
 export interface LeaveSupportingDoc {
   name: string;
@@ -283,8 +284,12 @@ export function LeavePage() {
   const canApprove = me?.permissionKeys?.includes("hr.leave.approve");
   const canManageTypes = me?.permissionKeys?.includes("hr.holiday.write");
 
+  // Pagination
+  const myRequestsPagination = usePagination(myRequests ?? [], 10);
+  const approvalsPagination = usePagination(approvals ?? [], 10);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
       <PageHeader
         icon={PlaneTakeoff}
         title="Leave Management"
@@ -407,14 +412,14 @@ export function LeavePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {myRequests?.length === 0 ? (
+                  {myRequestsPagination.paginatedItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
                         You have not submitted any leave requests yet.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    myRequests?.map((req) => (
+                    myRequestsPagination.paginatedItems.map((req) => (
                       <TableRow key={req.id}>
                         <TableCell className="font-semibold text-foreground">
                           <Badge variant="outline" size="sm">
@@ -483,6 +488,14 @@ export function LeavePage() {
                 </TableBody>
               </Table>
             </QueryState>
+            <Pagination
+              currentPage={myRequestsPagination.currentPage}
+              totalPages={myRequestsPagination.totalPages}
+              totalItems={myRequestsPagination.totalItems}
+              pageSize={myRequestsPagination.pageSize}
+              onPageChange={myRequestsPagination.setCurrentPage}
+              onPageSizeChange={(size) => { myRequestsPagination.setPageSize(size); myRequestsPagination.setCurrentPage(1); }}
+            />
           </CardContent>
         </Card>
       )}
@@ -504,14 +517,14 @@ export function LeavePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {approvals?.length === 0 ? (
+                  {approvalsPagination.paginatedItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
                         No team leave requests pending your review.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    approvals?.map((req) => (
+                    approvalsPagination.paginatedItems.map((req) => (
                       <TableRow key={req.id}>
                         <TableCell>
                           <User
@@ -608,6 +621,14 @@ export function LeavePage() {
                 </TableBody>
               </Table>
             </QueryState>
+            <Pagination
+              currentPage={approvalsPagination.currentPage}
+              totalPages={approvalsPagination.totalPages}
+              totalItems={approvalsPagination.totalItems}
+              pageSize={approvalsPagination.pageSize}
+              onPageChange={approvalsPagination.setCurrentPage}
+              onPageSizeChange={(size) => { approvalsPagination.setPageSize(size); approvalsPagination.setCurrentPage(1); }}
+            />
           </CardContent>
         </Card>
       )}

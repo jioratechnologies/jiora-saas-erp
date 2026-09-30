@@ -303,12 +303,20 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
           <div className="flex-1 text-center sm:text-left min-w-0">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <h3 className="font-bold text-base text-foreground truncate">{user?.displayName || "Loading…"}</h3>
-              {userRoles.map((role) => (
-                <Badge key={role} variant="outline" className="text-[10px] uppercase font-semibold">
-                  {role}
+              <h3 className="font-bold text-base text-foreground truncate">
+                {isLoading ? "Loading…" : (user?.displayName || (user?.email ? user.email.split("@")[0] : "Account Profile"))}
+              </h3>
+              {userRoles.length > 0 ? (
+                userRoles.map((role) => (
+                  <Badge key={role} variant="outline" className="text-[10px] uppercase font-semibold">
+                    {role}
+                  </Badge>
+                ))
+              ) : (
+                <Badge variant="outline" className="text-[10px] uppercase font-semibold">
+                  Administrator
                 </Badge>
-              ))}
+              )}
               {person?.status && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                   ● {person.status}
@@ -316,7 +324,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
               )}
             </div>
 
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">{user?.email}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">{user?.email || "Platform Administrator"}</p>
 
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-2 text-xs text-muted-foreground">
               {(person?.department || user?.department) && (

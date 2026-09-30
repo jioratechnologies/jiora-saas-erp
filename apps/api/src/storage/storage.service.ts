@@ -4,7 +4,6 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
-  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -17,15 +16,21 @@ export class StorageService implements OnModuleInit {
   private bucket!: string;
 
   onModuleInit() {
-    const endpointHost = process.env.OBJECT_STORAGE_ENDPOINT || "localhost";
-    const endpointPort = process.env.OBJECT_STORAGE_PORT || "9010";
-    const useSsl = process.env.OBJECT_STORAGE_USE_SSL === "true";
+    const rawEndpoint = process.env.OBJECT_STORAGE_ENDPOINT || "localhost";
+    const endpointPort = process.env.OBJECT_STORAGE_PORT;
+    const useSsl = process.env.OBJECT_STORAGE_USE_SSL === "true" || rawEndpoint.startsWith("https://");
     const protocol = useSsl ? "https" : "http";
+    const endpointHost = rawEndpoint.replace(/^https?:\/\//, "");
+
+    const endpoint =
+      endpointPort && endpointPort !== "443" && endpointPort !== "80"
+        ? `${protocol}://${endpointHost}:${endpointPort}`
+        : `${protocol}://${endpointHost}`;
 
     this.bucket = process.env.OBJECT_STORAGE_BUCKET || "saas-erp-documents";
 
     this.client = new S3Client({
-      endpoint: `${protocol}://${endpointHost}:${endpointPort}`,
+      endpoint,
       region: "us-east-1",
       credentials: {
         accessKeyId: process.env.OBJECT_STORAGE_ACCESS_KEY || "saaserp",
@@ -61,23 +66,6 @@ export class StorageService implements OnModuleInit {
     }
   }
 
-  async ensureFileExists(key: string): Promise<void> {
-    try {
-      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-    } catch {
-      // Auto-create a valid minimal PDF file if key was missing (e.g. seeded data)
-      const validPdf = Buffer.from(
-        `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000053 00000 n\n0000000102 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF`
-      );
-      try {
-        await this.uploadFile(key, validPdf, "application/pdf");
-        this.logger.log(`Created fallback file for key: ${key}`);
-      } catch (uploadErr: any) {
-        this.logger.warn(`Could not create fallback file for ${key}: ${uploadErr.message}`);
-      }
-    }
-  }
-
   async uploadFile(key: string, body: Buffer, contentType: string): Promise<string> {
     await this.client.send(
       new PutObjectCommand({
@@ -91,7 +79,6 @@ export class StorageService implements OnModuleInit {
   }
 
   async getPresignedUrl(key: string, expiresIn = 900, downloadFilename?: string): Promise<string> {
-    await this.ensureFileExists(key);
     const cleanFilename = downloadFilename ? downloadFilename.replace(/[^a-zA-Z0-9._-]/g, "_") : undefined;
     const command = new GetObjectCommand({
       Bucket: this.bucket,

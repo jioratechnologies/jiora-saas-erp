@@ -1,5 +1,8 @@
 import { UserManager, WebStorageStateStore } from "oidc-client-ts";
 
+const origin = typeof window !== "undefined" ? window.location.origin.replace(/\/+$/, "") : "";
+const postLogoutUri = `${origin}/`;
+
 /**
  * One shared UserManager for the whole app. `oidc-client-ts` is Zitadel's
  * own recommended library for SPA login (Authorization Code + PKCE — no
@@ -12,8 +15,8 @@ import { UserManager, WebStorageStateStore } from "oidc-client-ts";
 export const userManager = new UserManager({
   authority: import.meta.env.VITE_ZITADEL_ISSUER ?? "http://localhost:8080",
   client_id: import.meta.env.VITE_ZITADEL_CLIENT_ID ?? "",
-  redirect_uri: `${window.location.origin}/callback`,
-  post_logout_redirect_uri: window.location.origin,
+  redirect_uri: `${origin}/callback`,
+  post_logout_redirect_uri: postLogoutUri,
   response_type: "code",
   // offline_access is what gets a refresh token issued at all — without it,
   // automaticSilentRenew has nothing to renew with (no iframe-based silent

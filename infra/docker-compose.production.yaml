@@ -73,17 +73,62 @@ services:
       # pgbouncer's own backend connection to Postgres actually works.
       - dokploy-network
 
-  mongo:
-    image: mongo:7
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${POSTGRES_USER:-saaserp}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
-      MONGO_INITDB_DATABASE: saaserp_audit
-    volumes:
-      - /data/saas-erp/mongo:/data/db
-    networks:
-      - saas-erp-internal
+  # ==============================================================================
+  # Disabled / Commented Services (Kept for future reference if needed)
+  # Per production requirements: Mailpit, Grafana, Loki, Tempo, Mongo, OTEL,
+  # and Prometheus are disabled. Zitadel, Redis, PgBouncer, API, and Web remain active.
+  # ==============================================================================
+  # mongo:
+  #   image: mongo:7
+  #   restart: unless-stopped
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: ${POSTGRES_USER:-saaserp}
+  #     MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+  #     MONGO_INITDB_DATABASE: saaserp_audit
+  #   volumes:
+  #     - /data/saas-erp/mongo:/data/db
+  #   networks:
+  #     - saas-erp-internal
+
+  # mailpit:
+  #   image: axllent/mailpit:latest
+  #   restart: unless-stopped
+  #   environment:
+  #     MP_SMTP_AUTH_ACCEPT_ANY: "1"
+  #     MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+  #   networks:
+  #     - saas-erp-internal
+
+  # otel-collector:
+  #   image: otel/opentelemetry-collector-contrib:latest
+  #   restart: unless-stopped
+  #   command: ["--config=/etc/otel-collector-config.yaml"]
+  #   networks:
+  #     - saas-erp-internal
+
+  # tempo:
+  #   image: grafana/tempo:latest
+  #   restart: unless-stopped
+  #   networks:
+  #     - saas-erp-internal
+
+  # loki:
+  #   image: grafana/loki:latest
+  #   restart: unless-stopped
+  #   networks:
+  #     - saas-erp-internal
+
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   restart: unless-stopped
+  #   networks:
+  #     - saas-erp-internal
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   restart: unless-stopped
+  #   networks:
+  #     - saas-erp-internal
 
   redis:
     image: redis:8-alpine
@@ -158,13 +203,13 @@ services:
     restart: unless-stopped
     depends_on:
       - pgbouncer
-      - mongo
+      # - mongo
       - redis
       - zitadel
     environment:
       DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-saaserp}
       DIRECT_URL: postgres://${POSTGRES_USER:-saaserp}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public
-      MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
+      # MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
       REDIS_URL: redis://redis:6379
       OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT}
       OBJECT_STORAGE_PORT: "443"

@@ -25,6 +25,7 @@ import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
 import { PageHeader } from "../../components/page-header";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 
 interface PayrollRun {
   id: string;
@@ -95,6 +96,16 @@ export function PayrollRunsPage() {
     queryFn: () => api.get<PayrollRun[]>(`/payroll/runs?year=${selectedYear}`),
   });
 
+  const {
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    totalPages,
+    totalItems,
+    paginatedItems: paginatedRuns,
+  } = usePagination(runs || [], 10);
+
   const { data: selectedRun, isLoading: loadingSelectedRun, refetch: refetchSelectedRun } = useQuery({
     queryKey: ["payroll", "runs", "detail", selectedRunId],
     queryFn: () => api.get<PayrollRun & { payslips: Payslip[] }>(`/payroll/runs/${selectedRunId}`),
@@ -155,7 +166,7 @@ export function PayrollRunsPage() {
   };
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6 w-full">
       {/* Sticky Enterprise Header */}
       <PageHeader
         title="Monthly Payroll Runs"
@@ -189,80 +200,141 @@ export function PayrollRunsPage() {
                 { label: "2026", value: "2026" },
                 { label: "2025", value: "2025" },
               ]}
-              className="w-28"
+              className="w-24 h-8 text-xs"
             />
             {canManagePayroll && (
-              <Button size="sm" onClick={() => setCalcModalOpen(true)} className="gap-2 text-xs">
+              <Button size="sm" onClick={() => setCalcModalOpen(true)} className="gap-1.5 text-xs h-8 px-2.5 sm:px-3 rounded-xl font-semibold">
                 <Play className="h-3.5 w-3.5" />
-                Run Payroll
+                <span>Run Payroll</span>
               </Button>
             )}
           </div>
         }
       />
 
-      {/* Runs Table */}
+      {/* Runs Container */}
       <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-        <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
-          <CardTitle className="text-sm font-semibold">Payroll History</CardTitle>
-          <CardDescription className="text-xs">
-            Monthly runs generated from employee daily attendance, leaves, and salary structures.
-          </CardDescription>
+        <CardHeader className="py-2.5 px-4 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/50 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-xs sm:text-sm font-semibold">Payroll History</CardTitle>
+            <CardDescription className="text-[11px] sm:text-xs">
+              Monthly runs generated from employee attendance, leaves, and salary structures.
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="text-[11px] font-mono shrink-0">
+            {runs?.length || 0} Cycles
+          </Badge>
         </CardHeader>
         <CardContent className="p-0">
-          <QueryState
-            isLoading={loadingRuns}
-            error={runsError}
-          >
-            <div className="overflow-x-auto">
+          <QueryState isLoading={loadingRuns} error={runsError}>
+            {/* Mobile Native Card View */}
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 sm:hidden">
+              {(runs || []).length === 0 ? (
+                <div className="p-6 text-center text-xs text-muted-foreground">
+                  No payroll runs recorded for {selectedYear}.
+                </div>
+              ) : (
+                paginatedRuns.map((r) => {
+                  const statusVariant =
+                    r.status === "DISBURSED" ? "success" : r.status === "APPROVED" ? "default" : "secondary";
+                  return (
+                    <div key={r.id} className="p-3.5 space-y-2.5 bg-background hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="font-semibold text-xs text-foreground block truncate">{r.title}</span>
+                          <span className="text-[11px] text-muted-foreground">{MONTH_NAMES[r.month - 1]} {r.year}</span>
+                        </div>
+                        <Badge variant={statusVariant} size="sm" className="text-[10px] shrink-0">
+                          {r.status}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800 text-[11px]">
+                        <div>
+                          <span className="text-[10px] text-muted-foreground block">Net Payout</span>
+                          <span className="font-bold text-foreground text-xs">₹{r.totalNet.toLocaleString("en-IN")}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-muted-foreground block">Gross / Ded</span>
+                          <span className="text-muted-foreground font-mono">
+                            ₹{r.totalGross.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-muted-foreground block">Staff</span>
+                          <span className="font-medium text-foreground">
+                            {r.processedStaffCount} Emp
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-0.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenDetail(r.id)}
+                          className="h-7 text-xs px-3 gap-1.5 rounded-lg w-full"
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>Review Run & Payslips</span>
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Desktop High-Density Table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-zinc-200 dark:border-zinc-800 text-muted-foreground bg-zinc-50/50 dark:bg-zinc-900/50">
-                    <th className="py-3 px-4 text-left font-semibold">Payroll Cycle</th>
-                    <th className="py-3 px-4 text-center font-semibold">Staff Count</th>
-                    <th className="py-3 px-4 text-right font-semibold">Total Gross</th>
-                    <th className="py-3 px-4 text-right font-semibold">Deductions</th>
-                    <th className="py-3 px-4 text-right font-semibold">Net Payout</th>
-                    <th className="py-3 px-4 text-center font-semibold">Status</th>
-                    <th className="py-3 px-4 text-center font-semibold">Actions</th>
+                    <th className="py-2.5 px-3.5 text-left font-semibold">Payroll Cycle</th>
+                    <th className="py-2.5 px-3 text-center font-semibold">Staff Count</th>
+                    <th className="py-2.5 px-3 text-right font-semibold">Total Gross</th>
+                    <th className="py-2.5 px-3 text-right font-semibold">Deductions</th>
+                    <th className="py-2.5 px-3.5 text-right font-semibold">Net Payout</th>
+                    <th className="py-2.5 px-3 text-center font-semibold">Status</th>
+                    <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                  {(runs || []).map((r) => {
+                <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
+                  {paginatedRuns.map((r) => {
                     const statusVariant =
                       r.status === "DISBURSED" ? "success" : r.status === "APPROVED" ? "default" : "secondary";
                     return (
                       <tr key={r.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors">
-                        <td className="py-3 px-4">
+                        <td className="py-2 px-3.5">
                           <div className="font-semibold text-foreground">{r.title}</div>
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-[10px] text-muted-foreground">
                             {MONTH_NAMES[r.month - 1]} {r.year}
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-center font-medium text-foreground">
+                        <td className="py-2 px-3 text-center font-medium text-foreground">
                           {r.processedStaffCount} Employees
                         </td>
-                        <td className="py-3 px-4 text-right text-muted-foreground">
+                        <td className="py-2 px-3 text-right text-muted-foreground">
                           ₹{r.totalGross.toLocaleString("en-IN")}
                         </td>
-                        <td className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">
+                        <td className="py-2 px-3 text-right text-rose-600 dark:text-rose-400">
                           -₹{r.totalDeductions.toLocaleString("en-IN")}
                         </td>
-                        <td className="py-3 px-4 text-right font-bold text-foreground">
+                        <td className="py-2 px-3.5 text-right font-bold text-foreground">
                           ₹{r.totalNet.toLocaleString("en-IN")}
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <Badge variant={statusVariant}>{r.status}</Badge>
+                        <td className="py-2 px-3 text-center">
+                          <Badge variant={statusVariant} size="sm">{r.status}</Badge>
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-2 px-3 text-center">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleOpenDetail(r.id)}
-                            className="h-7 text-[11px] px-2.5 gap-1.5"
+                            className="h-6.5 text-[11px] px-2 gap-1 rounded-lg"
                           >
                             <Eye className="h-3 w-3" />
-                            Review Run
+                            <span>Review Run</span>
                           </Button>
                         </td>
                       </tr>
@@ -271,6 +343,16 @@ export function PayrollRunsPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           </QueryState>
         </CardContent>
       </Card>

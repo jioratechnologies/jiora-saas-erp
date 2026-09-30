@@ -186,7 +186,7 @@ export function DepartmentTeamsPage() {
   };
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6 w-full">
       {/* Sticky Enterprise Header */}
       <PageHeader
         title="Department Teams & Managers"
@@ -208,27 +208,28 @@ export function DepartmentTeamsPage() {
             <Button
               size="sm"
               onClick={() => setCreateDeptOpen(true)}
-              className="gap-1.5 text-xs font-semibold rounded-xl"
+              className="gap-1.5 text-xs font-semibold rounded-xl h-8 px-2 sm:px-3"
             >
-              <Plus className="h-4 w-4" />
-              New Department
+              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">New Department</span>
+              <span className="sm:hidden">New</span>
             </Button>
           </div>
         }
       />
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search department, manager, or member..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 rounded-xl h-9 text-xs"
+            className="pl-9 rounded-xl h-9 text-xs w-full"
           />
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between sm:justify-end gap-2 text-xs text-muted-foreground">
           <span>Showing {filteredDepts.length} of {totalDepts} departments</span>
         </div>
       </div>
@@ -280,11 +281,12 @@ export function DepartmentTeamsPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => openAssignModal(dept.id, false)}
-                          className="h-8 px-2.5 text-xs text-primary hover:bg-primary/10 gap-1 rounded-lg"
+                          className="h-8 px-2 sm:px-2.5 text-xs text-primary hover:bg-primary/10 gap-1 rounded-lg"
                           title="Add staff to department"
                         >
                           <UserPlus className="h-3.5 w-3.5" />
-                          <span>Add Staff</span>
+                          <span className="hidden sm:inline">Add Staff</span>
+                          <span className="sm:hidden">Add</span>
                         </Button>
 
                         <button
@@ -307,7 +309,7 @@ export function DepartmentTeamsPage() {
 
                   <CardContent className="pt-4 pb-4 space-y-4 flex-1">
                     {/* Department Head / Lead Manager Card */}
-                    <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-850/60 p-3.5">
+                    <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-950/50 p-3.5">
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                           <Shield className="h-3.5 w-3.5 text-primary" />

@@ -1,61 +1,12 @@
 name: saas-erp-dev
-# Everything except Postgres and MinIO, which are their own separate compose
-# files now (docker-compose.postgres.yaml, docker-compose.minio.local.yaml) —
-# mirrors the split used in production (see docs/deployment/PRODUCTION_DEPLOY.md).
-# All three share the saas-erp-local-internal network so services resolve
-# each other by name across compose projects.
-#
-# Host ports are deliberately non-default (6433, 6380, 8081) because this
-# dev machine already runs other projects on the standard ports — see
-# docs/onboarding/GETTING_STARTED.md.
-#
-# Usage:
-#   docker network create saas-erp-local-internal   # once, if it doesn't exist yet
-#   docker compose -f docker-compose.postgres.yaml up -d
-#   docker compose -f docker-compose.minio.local.yaml up -d
-#   docker compose -f docker-compose.yaml up -d
-#
-# Every secret below is `${VAR:-dev-default}` — safe to run as-is for local dev with no
-# .env file at all, but every value is overridable. For a real self-hosted deployment,
-# copy .env.deploy.example to .env in this directory and set real values for all of
-# them — see docker-compose.images.yaml's header for the full from-env deploy flow.
+
+# Local development stack: frontend, backend, and Redis.
+# Cloud services (PostgreSQL DB, MinIO Object Storage, and Zitadel Auth) are accessed via environment variables.
 
 services:
-  pgbouncer:
-    image: edoburu/pgbouncer:latest
-    restart: unless-stopped
-    environment:
-      # app_runtime, NOT saaserp: the app must never connect as the table owner,
-      # or Postgres RLS policies below would silently not apply to it.
-      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD:-app_runtime_dev_password}@postgres:5432/${POSTGRES_DB:-saaserp}
-      POOL_MODE: transaction
-      MAX_CLIENT_CONN: 200
-      DEFAULT_POOL_SIZE: 20
-      AUTH_TYPE: scram-sha-256
-      # Prisma sends `search_path` as a connection startup parameter; PgBouncer
-      # rejects unknown startup parameters unless told to ignore them.
-      IGNORE_STARTUP_PARAMETERS: "search_path,extra_float_digits"
-    ports:
-      - "6433:5432"
-    networks:
-      - saas-erp-local-internal
-
-  mongo:
-    image: mongo:7
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${POSTGRES_USER:-saaserp}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-saaserp_dev_password}
-      MONGO_INITDB_DATABASE: saaserp_audit
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodata:/data/db
-    networks:
-      - saas-erp-local-internal
-
   redis:
     image: redis:8-alpine
+    container_name: saas-erp-redis
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1"]
     ports:
@@ -63,141 +14,62 @@ services:
     volumes:
       - redisdata:/data
     networks:
-      - saas-erp-local-internal
+      saas-erp-local-internal:
+        aliases:
+          - redis
 
-  mailpit:
-    # Local SMTP catcher for dev — nothing here ever leaves the machine. Every
-    # email Zitadel (or later, the app) tries to send lands in Mailpit's web
-    # inbox instead of a real mailbox. Zitadel's own SMTP settings still need
-    # to be pointed at this via its Console (Instance > Settings > SMTP
-    # Provider), NOT via env — see docs/onboarding/GETTING_STARTED.md step 4a.
-    image: axllent/mailpit:latest
+  backend:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: saas-erp-backend
     restart: unless-stopped
-    environment:
-      # Zitadel's SMTP settings form requires a username, and sends an AUTH
-      # command even against a provider that doesn't need one — Mailpit
-      # rejects unsolicited AUTH by default ("502 Command not implemented").
-      # Accept it (any credentials) rather than fighting Zitadel's form.
-      MP_SMTP_AUTH_ACCEPT_ANY: "1"
-      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
-    ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # web inbox
-    networks:
-      - saas-erp-local-internal
-
-  zitadel:
-    image: ghcr.io/zitadel/zitadel:latest
-    restart: unless-stopped
-    # external (not disabled!): per Zitadel's own cmd/tls/tls.go, --tlsMode
-    # always overwrites externalSecure/tls.enabled, ignoring the env var
-    # entirely — see the same fix applied to docker-compose.production.yaml for
-    # the full explanation. Local dev is plain http throughout though, so
-    # externalSecure=false here is actually correct; "external" is only
-    # required once ExternalSecure needs to be true (prod, behind Traefik).
-    command: start-from-init --masterkey "${ZITADEL_MASTERKEY:-MasterkeyNeedsToHave32Characters}" --tlsMode disabled
-    environment:
-      ZITADEL_DATABASE_POSTGRES_HOST: postgres
-      ZITADEL_DATABASE_POSTGRES_PORT: 5432
-      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
-      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: ${POSTGRES_USER:-saaserp}
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
-      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
-      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: ${POSTGRES_USER:-saaserp}
-      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-saaserp_dev_password}
-      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
-      ZITADEL_EXTERNALSECURE: "false"
-      # Host port 8080 is taken by an unrelated project on this machine (akmatori-proxy) —
-      # Zitadel is reachable on 8081 instead. ExternalPort must match the host port, since
-      # Zitadel issues browser-facing URLs (OIDC discovery, JWKS) based on it.
-      ZITADEL_EXTERNALPORT: "8081"
-      ZITADEL_EXTERNALDOMAIN: localhost
-      # New instances default to requiring Login V2, a separate UI container the core
-      # redirects to at /ui/v2/login — without it running, sign-in 404s. Fall back to the
-      # bundled legacy login (served from core at /ui/login) instead of running a second
-      # container for this single-instance dev/self-hosted setup.
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME:-platform-admin@saas-erp.local}
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:-Sup3rAdmin!Dev}
-    ports:
-      - "8081:8080"
-    networks:
-      - saas-erp-local-internal
-
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    restart: unless-stopped
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./otel/collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
     depends_on:
-      - tempo
-      - loki
-      - prometheus
-    networks:
-      - saas-erp-local-internal
-
-  tempo:
-    image: grafana/tempo:latest
-    restart: unless-stopped
-    command: ["-config.file=/etc/tempo.yaml"]
-    volumes:
-      - ./otel/tempo-config.yaml:/etc/tempo.yaml:ro
-      - tempodata:/var/tempo
-    ports:
-      - "3200:3200"
-    networks:
-      - saas-erp-local-internal
-
-  loki:
-    image: grafana/loki:latest
-    restart: unless-stopped
-    ports:
-      - "3100:3100"
-    volumes:
-      - lokidata:/loki
-    networks:
-      - saas-erp-local-internal
-
-  prometheus:
-    image: prom/prometheus:latest
-    restart: unless-stopped
-    volumes:
-      - ./otel/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-      - promdata:/prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - saas-erp-local-internal
-
-  grafana:
-    image: grafana/grafana:latest
-    restart: unless-stopped
+      - redis
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-    volumes:
-      - grafanadata:/var/lib/grafana
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-saaserpobject.jioratech.com}
+      OBJECT_STORAGE_PORT: ${OBJECT_STORAGE_PORT:-443}
+      OBJECT_STORAGE_USE_SSL: ${OBJECT_STORAGE_USE_SSL:-true}
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER:-https://authsaaserp.jioratech.com}
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID:-392943311536521733}
+      PORT: ${PORT:-3000}
     ports:
-      - "3300:3000"
-    depends_on:
-      - tempo
-      - loki
-      - prometheus
+      - "3000:3000"
     networks:
-      - saas-erp-local-internal
+      saas-erp-local-internal:
+        aliases:
+          - backend
+          - api
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-https://authsaaserp.jioratech.com}
+        VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-392943470081278469}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    container_name: saas-erp-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5174:80"
+    networks:
+      saas-erp-local-internal:
+        aliases:
+          - frontend
+          - web
 
 networks:
   saas-erp-local-internal:
-    external: true
+    name: saas-erp-local-internal
 
 volumes:
-  mongodata:
   redisdata:
-  tempodata:
-  lokidata:
-  promdata:
-  grafanadata:

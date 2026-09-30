@@ -24,6 +24,7 @@ import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
 import { PageHeader } from "../../components/page-header";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 
 interface SalaryComponent {
   id: string;
@@ -178,6 +179,8 @@ export function SalaryStructurePage() {
     return fullName.includes(q) || a.person.email.toLowerCase().includes(q) || a.person.department?.name?.toLowerCase().includes(q);
   });
 
+  const assignmentPagination = usePagination(filteredAssignments, 10);
+
   const handleOpenAssign = (person: any, currentAssignment?: SalaryAssignment) => {
     setTargetPerson(person);
     if (currentAssignment) {
@@ -231,59 +234,48 @@ export function SalaryStructurePage() {
   const totalMonthlyPayroll = (assignments || []).reduce((sum, a) => sum + Number(a.baseGross || 0), 0);
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6 w-full">
       <PageHeader
         icon={Banknote}
         title="Compensation & Salary Structures"
         description="Manage employee CTC packages, salary templates, statutory deductions, and appraisal histories."
-        badge={
-          <Badge variant="outline" className="text-xs font-mono">
-            {assignments?.length || 0} Staff Assigned
-          </Badge>
-        }
-        action={
+        badge={{
+          label: `${assignments?.length || 0} Staff Assigned`,
+          variant: "outline",
+        }}
+        actions={
           <div className="flex items-center gap-2">
             {activeTab === "assignments" && (
-              <Button variant="outline" size="sm" onClick={handleExportCompensationCsv} className="gap-2 text-xs rounded-xl">
+              <Button variant="outline" size="sm" onClick={handleExportCompensationCsv} className="gap-1.5 text-xs rounded-xl h-8 px-2.5 sm:px-3">
                 <Download className="h-3.5 w-3.5" />
-                Export Register
+                <span className="hidden sm:inline">Export Register</span>
               </Button>
             )}
             {activeTab === "components" && canManageSalary && (
-              <Button size="sm" onClick={() => setComponentModalOpen(true)} className="gap-2 text-xs rounded-xl shadow-sm">
+              <Button size="sm" onClick={() => setComponentModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
                 <Plus className="h-3.5 w-3.5" />
-                Add Component
+                <span>Add Component</span>
               </Button>
             )}
           </div>
         }
-        stats={
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Assigned Employees</span>
-              <span className="text-base font-bold text-foreground">{assignments?.length || 0}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Total Monthly Gross</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{totalMonthlyPayroll.toLocaleString("en-IN")}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Salary Templates</span>
-              <span className="text-base font-bold text-primary">{structures?.length || 0}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Salary Components</span>
-              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{components?.length || 0}</span>
-            </div>
-          </div>
-        }
+        stats={[
+          { label: "Assigned Staff", value: assignments?.length || 0 },
+          {
+            label: "Monthly Gross",
+            value: `₹${totalMonthlyPayroll.toLocaleString("en-IN")}`,
+            color: "text-emerald-600 dark:text-emerald-400",
+          },
+          { label: "Templates", value: structures?.length || 0, color: "text-primary" },
+          { label: "Components", value: components?.length || 0, color: "text-amber-600 dark:text-amber-400" },
+        ]}
       />
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">
+      <div className="flex items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-2 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab("assignments")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
             activeTab === "assignments"
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -293,7 +285,7 @@ export function SalaryStructurePage() {
         </button>
         <button
           onClick={() => setActiveTab("components")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
             activeTab === "components"
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -303,7 +295,7 @@ export function SalaryStructurePage() {
         </button>
         <button
           onClick={() => setActiveTab("structures")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
             activeTab === "structures"
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -313,7 +305,7 @@ export function SalaryStructurePage() {
         </button>
         <button
           onClick={() => setActiveTab("revisions")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
             activeTab === "revisions"
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -325,7 +317,7 @@ export function SalaryStructurePage() {
 
       {/* TAB 1: Assignments */}
       {activeTab === "assignments" && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -333,65 +325,126 @@ export function SalaryStructurePage() {
                 placeholder="Search by name, email, department…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-9 text-xs"
+                className="pl-8 h-8 text-xs"
               />
             </div>
           </div>
 
           <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
             <CardContent className="p-0">
-              <QueryState
-                isLoading={loadingAssignments}
-                error={assignmentsError}
-              >
-                <div className="overflow-x-auto">
+              <QueryState isLoading={loadingAssignments} error={assignmentsError}>
+                {/* Mobile Native Card View */}
+                <div className="divide-y divide-zinc-200 dark:divide-zinc-800 sm:hidden">
+                  {filteredAssignments.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground">
+                      No compensation records found.
+                    </div>
+                  ) : (
+                    assignmentPagination.paginatedItems.map((a) => (
+                      <div key={a.id} className="p-3.5 space-y-2 bg-background hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-xs text-foreground block truncate">
+                              {a.person.firstName} {a.person.lastName}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground truncate block">{a.person.email}</span>
+                          </div>
+                          <Badge variant="secondary" size="sm" className="text-[10px] shrink-0">
+                            {a.person.department?.name || "General"}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800 text-[11px]">
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Monthly Gross</span>
+                            <span className="font-bold text-foreground">₹{a.baseGross.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Annual CTC</span>
+                            <span className="text-emerald-600 font-semibold">₹{a.ctc.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Payment</span>
+                            <span className="text-muted-foreground truncate block">
+                              {a.paymentMode === "BANK_TRANSFER" ? "Bank" : a.paymentMode}
+                            </span>
+                          </div>
+                        </div>
+
+                        {canManageSalary && (
+                          <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenAssign(a.person, a)}
+                              className="h-7 text-xs px-2.5"
+                            >
+                              Edit CTC
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenRevision(a)}
+                              className="h-7 text-xs px-2.5 text-indigo-600 dark:text-indigo-400"
+                            >
+                              Appraisal
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Desktop High-Density Table */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 text-muted-foreground">
-                        <th className="py-3 px-4 text-left font-semibold">Employee</th>
-                        <th className="py-3 px-4 text-left font-semibold">Department & Role</th>
-                        <th className="py-3 px-4 text-right font-semibold">Monthly Gross</th>
-                        <th className="py-3 px-4 text-right font-semibold">Annual CTC</th>
-                        <th className="py-3 px-4 text-left font-semibold">Payment Details</th>
-                        <th className="py-3 px-4 text-center font-semibold">Actions</th>
+                        <th className="py-2.5 px-3.5 text-left font-semibold">Employee</th>
+                        <th className="py-2.5 px-3 text-left font-semibold">Department & Role</th>
+                        <th className="py-2.5 px-3 text-right font-semibold">Monthly Gross</th>
+                        <th className="py-2.5 px-3 text-right font-semibold">Annual CTC</th>
+                        <th className="py-2.5 px-3 text-left font-semibold">Payment Details</th>
+                        <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                      {filteredAssignments.map((a) => (
+                    <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
+                      {assignmentPagination.paginatedItems.map((a) => (
                         <tr key={a.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors">
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-3.5">
                             <div className="font-semibold text-foreground">
                               {a.person.firstName} {a.person.lastName}
                             </div>
-                            <div className="text-[11px] text-muted-foreground">{a.person.email}</div>
+                            <div className="text-[10px] text-muted-foreground">{a.person.email}</div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-3">
                             <div className="text-foreground">{a.person.department?.name || "General"}</div>
-                            <div className="text-[11px] text-muted-foreground">{a.person.designation?.name || "Staff"}</div>
+                            <div className="text-[10px] text-muted-foreground">{a.person.designation?.name || "Staff"}</div>
                           </td>
-                          <td className="py-3 px-4 text-right font-semibold text-foreground">
+                          <td className="py-2 px-3 text-right font-semibold text-foreground">
                             ₹{a.baseGross.toLocaleString("en-IN")}
                           </td>
-                          <td className="py-3 px-4 text-right font-medium text-emerald-600 dark:text-emerald-400">
+                          <td className="py-2 px-3 text-right font-medium text-emerald-600 dark:text-emerald-400">
                             ₹{a.ctc.toLocaleString("en-IN")}
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-1.5 text-foreground font-medium">
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1 text-foreground font-medium">
                               <CreditCard className="h-3 w-3 text-muted-foreground" />
                               {a.paymentMode}
                             </div>
-                            <div className="text-[11px] text-muted-foreground">
+                            <div className="text-[10px] text-muted-foreground">
                               {a.bankAccount ? `A/c: ****${a.bankAccount.slice(-4)}` : "No bank linked"}
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-2 px-3 text-center">
                             {canManageSalary && (
                               <div className="flex items-center justify-center gap-1.5">
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleOpenAssign(a.person, a)}
-                                  className="h-7 text-[11px] px-2"
+                                  className="h-6.5 text-[11px] px-2"
                                 >
                                   Edit CTC
                                 </Button>
@@ -399,7 +452,7 @@ export function SalaryStructurePage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleOpenRevision(a)}
-                                  className="h-7 text-[11px] px-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                                  className="h-6.5 text-[11px] px-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
                                 >
                                   Appraisal
                                 </Button>
@@ -411,6 +464,16 @@ export function SalaryStructurePage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination Controls */}
+                <Pagination
+                  currentPage={assignmentPagination.currentPage}
+                  totalPages={assignmentPagination.totalPages}
+                  totalItems={assignmentPagination.totalItems}
+                  pageSize={assignmentPagination.pageSize}
+                  onPageChange={assignmentPagination.setCurrentPage}
+                  onPageSizeChange={assignmentPagination.setPageSize}
+                />
               </QueryState>
             </CardContent>
           </Card>
@@ -429,28 +492,28 @@ export function SalaryStructurePage() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 text-muted-foreground">
-                      <th className="py-3 px-4 text-left font-semibold">Component Name</th>
-                      <th className="py-3 px-4 text-left font-semibold">Code</th>
-                      <th className="py-3 px-4 text-left font-semibold">Type</th>
-                      <th className="py-3 px-4 text-center font-semibold">Taxable</th>
-                      <th className="py-3 px-4 text-center font-semibold">Statutory</th>
+                      <th className="py-2.5 px-3.5 text-left font-semibold">Component Name</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Code</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Type</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Taxable</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Statutory</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
                     {(components || []).map((c) => (
                       <tr key={c.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
-                        <td className="py-3 px-4 font-semibold text-foreground">{c.name}</td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-muted-foreground">{c.code}</td>
-                        <td className="py-3 px-4">
-                          <Badge variant={c.type === "EARNING" ? "success" : "secondary"}>
+                        <td className="py-2 px-3.5 font-semibold text-foreground">{c.name}</td>
+                        <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground">{c.code}</td>
+                        <td className="py-2 px-3">
+                          <Badge variant={c.type === "EARNING" ? "success" : "secondary"} size="sm">
                             {c.type}
                           </Badge>
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-2 px-3 text-center">
                           {c.isTaxable ? <span className="text-emerald-600 font-semibold">Yes</span> : <span className="text-zinc-400">No</span>}
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          {c.isStatutory ? <Badge variant="outline">Mandatory</Badge> : <span className="text-zinc-400">Optional</span>}
+                        <td className="py-2 px-3 text-center">
+                          {c.isStatutory ? <Badge variant="outline" size="sm">Mandatory</Badge> : <span className="text-zinc-400">Optional</span>}
                         </td>
                       </tr>
                     ))}
@@ -502,36 +565,36 @@ export function SalaryStructurePage() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 text-muted-foreground">
-                      <th className="py-3 px-4 text-left font-semibold">Employee</th>
-                      <th className="py-3 px-4 text-right font-semibold">Old Gross</th>
-                      <th className="py-3 px-4 text-right font-semibold">New Gross</th>
-                      <th className="py-3 px-4 text-right font-semibold">Hike</th>
-                      <th className="py-3 px-4 text-left font-semibold">Effective Date</th>
-                      <th className="py-3 px-4 text-left font-semibold">Remarks</th>
+                      <th className="py-2.5 px-3.5 text-left font-semibold">Employee</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">Old Gross</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">New Gross</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">Hike</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Effective Date</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
                     {(revisions || []).map((r) => {
                       const diff = r.newGross - (r.oldGross || 0);
                       const pct = r.oldGross ? ((diff / r.oldGross) * 100).toFixed(1) : "N/A";
                       return (
                         <tr key={r.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
-                          <td className="py-3 px-4 font-semibold text-foreground">
+                          <td className="py-2 px-3.5 font-semibold text-foreground">
                             {r.person.firstName} {r.person.lastName}
                           </td>
-                          <td className="py-3 px-4 text-right text-muted-foreground">
+                          <td className="py-2 px-3 text-right text-muted-foreground">
                             ₹{(r.oldGross || 0).toLocaleString("en-IN")}
                           </td>
-                          <td className="py-3 px-4 text-right font-semibold text-foreground">
+                          <td className="py-2 px-3 text-right font-semibold text-foreground">
                             ₹{r.newGross.toLocaleString("en-IN")}
                           </td>
-                          <td className="py-3 px-4 text-right text-emerald-600 font-semibold">
+                          <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
                             +{pct}% (+₹{diff.toLocaleString("en-IN")})
                           </td>
-                          <td className="py-3 px-4 text-muted-foreground">
+                          <td className="py-2 px-3 text-muted-foreground">
                             {r.effectiveDate?.substring(0, 10)}
                           </td>
-                          <td className="py-3 px-4 text-muted-foreground">{r.remarks || "—"}</td>
+                          <td className="py-2 px-3 text-muted-foreground">{r.remarks || "—"}</td>
                         </tr>
                       );
                     })}

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Tenant } from "@saas-erp/shared-types";
 import { api } from "../api/client";
 import { useAuthStore } from "../auth/auth-store";
-import { hexToHslTriple } from "./hex-to-hsl";
+import { hexToHslTriple, applyThemeVariables } from "./hex-to-hsl";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -89,10 +89,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") {
       const cached = localStorage.getItem("saas_erp_org_color");
       if (cached) {
-        document.documentElement.style.setProperty("--primary", hexToHslTriple(cached));
+        applyThemeVariables(document.documentElement, cached, resolvedTheme === "dark");
       }
     }
-  }, []);
+  }, [resolvedTheme]);
 
   const { data: org } = useQuery({
     queryKey: ["org", "theme"],
@@ -104,14 +104,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (org?.primaryColor) {
-      root.style.setProperty("--primary", hexToHslTriple(org.primaryColor));
-      localStorage.setItem("saas_erp_org_color", org.primaryColor);
+    const color =
+      org?.primaryColor || (typeof window !== "undefined" ? localStorage.getItem("saas_erp_org_color") : null);
+
+    if (color) {
+      applyThemeVariables(root, color, resolvedTheme === "dark");
+      localStorage.setItem("saas_erp_org_color", color);
     } else if (!isLoggedIn) {
       root.style.removeProperty("--primary");
+      root.style.removeProperty("--primary-foreground");
+      root.style.removeProperty("--ring");
       localStorage.removeItem("saas_erp_org_color");
     }
-  }, [org?.primaryColor, isLoggedIn]);
+  }, [org?.primaryColor, isLoggedIn, resolvedTheme]);
 
   return (
     <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme, toggleTheme }}>

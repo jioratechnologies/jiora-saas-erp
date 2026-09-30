@@ -14,9 +14,16 @@ export function LoginPage() {
           <CardTitle className="text-base">saas-erp</CardTitle>
           <CardDescription>Sign in to continue to your workspace</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button onClick={signIn} className="w-full">
+        <CardContent className="space-y-2">
+          <Button onClick={() => signIn("select_account")} className="w-full">
             Sign in with Zitadel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => signIn("login")}
+            className="w-full text-xs text-muted-foreground hover:text-foreground"
+          >
+            Switch / Use different account
           </Button>
         </CardContent>
       </Card>

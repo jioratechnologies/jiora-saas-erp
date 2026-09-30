@@ -53,7 +53,7 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
       <PageHeader title={title} description={`Manage the ${title.toLowerCase()} used across your organisation.`} />
 
       <Card className="mb-4">
-        <CardContent className="pt-5">
+        <CardContent className="pt-3.5 sm:pt-5">
           <form
             className="flex gap-2"
             onSubmit={(e) => {

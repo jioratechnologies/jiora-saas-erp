@@ -26,6 +26,6 @@ export function Alert({
   );
 }
 
-export function AlertDescription({ children }: { children: ReactNode }) {
-  return <p className="leading-relaxed">{children}</p>;
+export function AlertDescription({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn("leading-relaxed", className)}>{children}</p>;
 }

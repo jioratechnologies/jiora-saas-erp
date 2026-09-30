@@ -1,6 +1,15 @@
-/** "#1F4E78" -> "209 58% 30%" — the space-separated triple format the CSS variables use (see src/index.css). */
-export function hexToHslTriple(hex: string): string {
+export interface HslColor {
+  h: number;
+  s: number;
+  l: number;
+}
+
+/** Converts any hex color ("#1F4E78" or "1F4E78") to HSL values. */
+export function hexToHsl(hex: string): HslColor {
   const clean = hex.replace("#", "");
+  if (!clean || clean.length < 6) {
+    return { h: 209, s: 58, l: 30 }; // Fallback to corporate blue
+  }
   const r = parseInt(clean.slice(0, 2), 16) / 255;
   const g = parseInt(clean.slice(2, 4), 16) / 255;
   const b = parseInt(clean.slice(4, 6), 16) / 255;
@@ -27,5 +36,49 @@ export function hexToHslTriple(hex: string): string {
     h /= 6;
   }
 
-  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100),
+  };
+}
+
+/**
+ * Returns space-separated HSL triple ("209 58% 30%").
+ * When isDark is true, automatically ensures minimum lightness (58%-65%)
+ * so text-primary and badges have crystal clear, vibrant contrast against dark backgrounds.
+ */
+export function hexToHslTriple(hex: string, isDark = false): string {
+  const { h, s, l } = hexToHsl(hex);
+  if (isDark) {
+    const darkL = Math.max(l, 58);
+    const darkS = Math.min(Math.max(s, 50), 92);
+    return `${h} ${darkS}% ${darkL}%`;
+  }
+  const lightL = Math.min(Math.max(l, 25), 45);
+  return `${h} ${s}% ${lightL}%`;
+}
+
+/**
+ * Applies tenant theme CSS variables onto the target element (usually <html>).
+ * Updates --primary, --primary-foreground, and --ring dynamically.
+ */
+export function applyThemeVariables(root: HTMLElement, hex: string, isDark: boolean) {
+  if (!hex) return;
+  const { h, s, l } = hexToHsl(hex);
+
+  if (isDark) {
+    // Dark Mode: Elevated lightness for luminous contrast on dark surfaces
+    const darkL = Math.max(l, 58);
+    const darkS = Math.min(Math.max(s, 50), 92);
+    root.style.setProperty("--primary", `${h} ${darkS}% ${darkL}%`);
+    root.style.setProperty("--primary-foreground", darkL > 75 ? "0 0% 0%" : "0 0% 100%");
+    root.style.setProperty("--ring", `${h} ${darkS}% ${darkL}%`);
+  } else {
+    // Light Mode: Rich saturated color for contrast on white surfaces
+    const lightL = Math.min(Math.max(l, 25), 45);
+    root.style.setProperty("--primary", `${h} ${s}% ${lightL}%`);
+    root.style.setProperty("--primary-foreground", "0 0% 100%");
+    root.style.setProperty("--ring", `${h} ${s}% ${lightL}%`);
+  }
 }

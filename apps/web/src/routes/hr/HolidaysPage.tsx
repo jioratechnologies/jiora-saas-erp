@@ -84,7 +84,7 @@ export function HolidaysPage() {
   const optionalCount = (holidays || []).filter((h) => h.isOptional).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
       <PageHeader
         icon={CalendarDays}
         title="Holiday Calendar"

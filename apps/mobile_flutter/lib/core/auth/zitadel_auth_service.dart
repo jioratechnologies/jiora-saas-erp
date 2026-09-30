@@ -10,8 +10,8 @@ import 'auth_models.dart';
 import 'auth_web_helper.dart';
 
 class ZitadelAuthService {
-  static const String defaultIssuer = 'http://localhost:8081';
-  static const String defaultClientId = '392363686792003595';
+  static const String defaultIssuer = 'https://authsaaserp.jioratech.com';
+  static const String defaultClientId = '392943470081278469';
   static const String scopes = 'openid profile email offline_access';
 
   final ApiClient apiClient;

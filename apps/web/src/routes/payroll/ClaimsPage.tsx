@@ -27,6 +27,7 @@ import { QueryState } from "../../components/query-state";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
 import { PageHeader } from "../../components/page-header";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 
 interface ExpenseClaim {
   id: string;
@@ -125,6 +126,9 @@ export function ClaimsPage() {
     },
   });
 
+  const claimsPagination = usePagination(claims || [], 10);
+  const advancesPagination = usePagination(advances || [], 10);
+
   // Mutations
   const submitClaimMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -221,66 +225,63 @@ export function ClaimsPage() {
   const activeAdvancesCount = (advances || []).filter((a) => a.status === "APPROVED" || a.status === "RECOVERING").length;
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6 w-full">
       {/* Sticky Header with Stats */}
       <PageHeader
         icon={CreditCard}
         title="Claims & Advances"
         description="Reimbursement claims with receipt uploads and emergency salary advance requests with EMI repayment."
-        badge={
-          <Badge variant="outline" className="text-xs font-mono">
-            {activeSection === "expenses" ? `${claims?.length || 0} Claims` : `${advances?.length || 0} Advances`}
-          </Badge>
-        }
-        action={
+        badge={{
+          label: activeSection === "expenses" ? `${claims?.length || 0} Claims` : `${advances?.length || 0} Advances`,
+          variant: "outline",
+        }}
+        actions={
           <div className="flex items-center gap-2">
             {activeSection === "expenses" && (
-              <Button variant="outline" size="sm" onClick={handleExportClaimsCsv} className="gap-2 text-xs rounded-xl">
+              <Button variant="outline" size="sm" onClick={handleExportClaimsCsv} className="gap-1.5 text-xs rounded-xl h-8 px-2.5 sm:px-3">
                 <Download className="h-3.5 w-3.5" />
-                Export CSV
+                <span className="hidden sm:inline">Export CSV</span>
               </Button>
             )}
             {activeSection === "expenses" ? (
-              <Button size="sm" onClick={() => setClaimModalOpen(true)} className="gap-2 text-xs rounded-xl shadow-sm">
+              <Button size="sm" onClick={() => setClaimModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
                 <Plus className="h-3.5 w-3.5" />
-                Submit Claim
+                <span>Submit Claim</span>
               </Button>
             ) : (
-              <Button size="sm" onClick={() => setAdvanceModalOpen(true)} className="gap-2 text-xs rounded-xl shadow-sm">
+              <Button size="sm" onClick={() => setAdvanceModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
                 <Plus className="h-3.5 w-3.5" />
-                Request Advance
+                <span>Request Advance</span>
               </Button>
             )}
           </div>
         }
-        stats={
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Total Claims</span>
-              <span className="text-base font-bold text-foreground">{claims?.length || 0}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Approved & Settled</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{totalApprovedAmount.toLocaleString("en-IN")}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Pending Review</span>
-              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{pendingCount}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Active Advances</span>
-              <span className="text-base font-bold text-primary">{activeAdvancesCount}</span>
-            </div>
-          </div>
-        }
+        stats={[
+          { label: "Total Claims", value: claims?.length || 0 },
+          {
+            label: "Approved & Settled",
+            value: `₹${totalApprovedAmount.toLocaleString("en-IN")}`,
+            color: "text-emerald-600 dark:text-emerald-400",
+          },
+          {
+            label: "Pending Review",
+            value: pendingCount,
+            color: pendingCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+          },
+          {
+            label: "Active Advances",
+            value: activeAdvancesCount,
+            color: "text-primary",
+          },
+        ]}
       />
 
       {/* Tabs & Queue Filter Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 rounded-2xl bg-zinc-100/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80">
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-1 rounded-xl bg-zinc-100/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
           <button
             onClick={() => setActiveSection("expenses")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
               activeSection === "expenses"
                 ? "bg-white dark:bg-zinc-800 text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
@@ -290,22 +291,22 @@ export function ClaimsPage() {
           </button>
           <button
             onClick={() => setActiveSection("advances")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
               activeSection === "advances"
                 ? "bg-white dark:bg-zinc-800 text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            Emergency Salary Advances ({advances?.length ?? 0})
+            Salary Advances ({advances?.length ?? 0})
           </button>
         </div>
 
         {/* Filter scope: My vs Team */}
         {(canReadClaims || canReadAdvances) && (
-          <div className="flex items-center bg-white/70 dark:bg-zinc-950/70 p-1 rounded-xl text-xs border border-zinc-200/60 dark:border-zinc-800/60">
+          <div className="flex items-center bg-white/70 dark:bg-zinc-950/70 p-0.5 rounded-lg text-xs border border-zinc-200/60 dark:border-zinc-800/60 shrink-0 self-end sm:self-auto">
             <button
               onClick={() => setFilterMode("my")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
                 filterMode === "my"
                   ? "bg-primary text-primary-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -315,13 +316,13 @@ export function ClaimsPage() {
             </button>
             <button
               onClick={() => setFilterMode("team")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
                 filterMode === "team"
                   ? "bg-primary text-primary-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              All / Review Queue
+              Review Queue
             </button>
           </div>
         )}
@@ -331,56 +332,46 @@ export function ClaimsPage() {
       {activeSection === "expenses" && (
         <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
           <CardContent className="p-0">
-            <QueryState
-              isLoading={loadingClaims}
-              error={claimsError}
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 text-muted-foreground">
-                      <th className="py-3 px-4 text-left font-semibold">Claim Title</th>
-                      <th className="py-3 px-4 text-left font-semibold">Category</th>
-                      <th className="py-3 px-4 text-left font-semibold">Staff Member</th>
-                      <th className="py-3 px-4 text-right font-semibold">Amount</th>
-                      <th className="py-3 px-4 text-left font-semibold">Expense Date</th>
-                      <th className="py-3 px-4 text-center font-semibold">Status</th>
-                      <th className="py-3 px-4 text-center font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {(claims || []).map((c) => {
-                      const statusVariant =
-                        c.status === "SETTLED" ? "success" : c.status === "APPROVED" ? "default" : c.status === "REJECTED" ? "destructive" : "secondary";
-                      return (
-                        <tr key={c.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
-                          <td className="py-3 px-4 font-semibold text-foreground">
-                            <div>{c.title}</div>
-                            {c.description && <div className="text-[11px] text-muted-foreground font-normal">{c.description}</div>}
-                          </td>
-                          <td className="py-3 px-4">
-                            <Badge variant="outline">{c.category}</Badge>
-                          </td>
-                          <td className="py-3 px-4 text-foreground">
-                            {c.person.firstName} {c.person.lastName}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold text-foreground">
-                            ₹{c.amount.toLocaleString("en-IN")}
-                          </td>
-                          <td className="py-3 px-4 text-muted-foreground">
-                            {c.expenseDate?.substring(0, 10)}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <Badge variant={statusVariant}>{c.status}</Badge>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            {filterMode === "team" && canManageClaims && c.status === "SUBMITTED" && (
-                              <div className="flex items-center justify-center gap-1.5">
+            <QueryState isLoading={loadingClaims} error={claimsError}>
+              {/* Mobile Card List */}
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800 sm:hidden">
+                {(claims || []).length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground">
+                    No expense claims found.
+                  </div>
+                ) : (
+                  claimsPagination.paginatedItems.map((c) => {
+                    const statusVariant =
+                      c.status === "SETTLED" ? "success" : c.status === "APPROVED" ? "default" : c.status === "REJECTED" ? "destructive" : "secondary";
+                    return (
+                      <div key={c.id} className="p-3.5 space-y-2 bg-background hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-xs text-foreground block truncate">{c.title}</span>
+                            <span className="text-[11px] text-muted-foreground">{c.person.firstName} {c.person.lastName}</span>
+                          </div>
+                          <Badge variant={statusVariant} size="sm" className="text-[10px] shrink-0">
+                            {c.status}
+                          </Badge>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] py-0">{c.category}</Badge>
+                            <span className="text-[11px] text-muted-foreground">{c.expenseDate?.substring(0, 10)}</span>
+                          </div>
+                          <span className="font-bold text-foreground text-sm">₹{c.amount.toLocaleString("en-IN")}</span>
+                        </div>
+
+                        {filterMode === "team" && canManageClaims && (c.status === "SUBMITTED" || c.status === "APPROVED") && (
+                          <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
+                            {c.status === "SUBMITTED" && (
+                              <>
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleOpenDecision("claim", c.id, "APPROVED")}
-                                  className="h-7 text-[11px] px-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                  className="h-7 text-xs px-2.5 text-emerald-600 dark:text-emerald-400"
                                 >
                                   Approve
                                 </Button>
@@ -388,7 +379,86 @@ export function ClaimsPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleOpenDecision("claim", c.id, "REJECTED")}
-                                  className="h-7 text-[11px] px-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                  className="h-7 text-xs px-2.5 text-rose-600 dark:text-rose-400"
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            )}
+                            {c.status === "APPROVED" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => settleMutation.mutate(c.id)}
+                                disabled={settleMutation.isPending}
+                                className="h-7 text-xs px-2.5 text-indigo-600 dark:text-indigo-400"
+                              >
+                                Mark Settled
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop High-Density Table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 text-muted-foreground">
+                      <th className="py-2.5 px-3.5 text-left font-semibold">Claim Title</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Category</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Staff Member</th>
+                      <th className="py-2.5 px-3.5 text-right font-semibold">Amount</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Expense Date</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Status</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
+                    {claimsPagination.paginatedItems.map((c) => {
+                      const statusVariant =
+                        c.status === "SETTLED" ? "success" : c.status === "APPROVED" ? "default" : c.status === "REJECTED" ? "destructive" : "secondary";
+                      return (
+                        <tr key={c.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
+                          <td className="py-2 px-3.5 font-semibold text-foreground">
+                            <div>{c.title}</div>
+                            {c.description && <div className="text-[10px] text-muted-foreground font-normal">{c.description}</div>}
+                          </td>
+                          <td className="py-2 px-3">
+                            <Badge variant="outline" size="sm" className="text-[10px]">{c.category}</Badge>
+                          </td>
+                          <td className="py-2 px-3 text-foreground">
+                            {c.person.firstName} {c.person.lastName}
+                          </td>
+                          <td className="py-2 px-3.5 text-right font-bold text-foreground">
+                            ₹{c.amount.toLocaleString("en-IN")}
+                          </td>
+                          <td className="py-2 px-3 text-muted-foreground">
+                            {c.expenseDate?.substring(0, 10)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <Badge variant={statusVariant} size="sm">{c.status}</Badge>
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {filterMode === "team" && canManageClaims && c.status === "SUBMITTED" && (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenDecision("claim", c.id, "APPROVED")}
+                                  className="h-6.5 text-[11px] px-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenDecision("claim", c.id, "REJECTED")}
+                                  className="h-6.5 text-[11px] px-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                                 >
                                   Reject
                                 </Button>
@@ -400,7 +470,7 @@ export function ClaimsPage() {
                                 size="sm"
                                 onClick={() => settleMutation.mutate(c.id)}
                                 disabled={settleMutation.isPending}
-                                className="h-7 text-[11px] px-2 text-indigo-600 dark:text-indigo-400"
+                                className="h-6.5 text-[11px] px-2 text-indigo-600 dark:text-indigo-400"
                               >
                                 Mark Settled
                               </Button>
@@ -412,6 +482,16 @@ export function ClaimsPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Claims Pagination */}
+              <Pagination
+                currentPage={claimsPagination.currentPage}
+                totalPages={claimsPagination.totalPages}
+                totalItems={claimsPagination.totalItems}
+                pageSize={claimsPagination.pageSize}
+                onPageChange={claimsPagination.setCurrentPage}
+                onPageSizeChange={claimsPagination.setPageSize}
+              />
             </QueryState>
           </CardContent>
         </Card>
@@ -421,56 +501,119 @@ export function ClaimsPage() {
       {activeSection === "advances" && (
         <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
           <CardContent className="p-0">
-            <QueryState
-              isLoading={loadingAdvances}
-              error={advancesError}
-            >
-              <div className="overflow-x-auto">
+            <QueryState isLoading={loadingAdvances} error={advancesError}>
+              {/* Mobile Card List */}
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800 sm:hidden">
+                {(advances || []).length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground">
+                    No salary advance requests found.
+                  </div>
+                ) : (
+                  advancesPagination.paginatedItems.map((adv) => {
+                    const statusVariant =
+                      adv.status === "RECOVERED" ? "success" : adv.status === "APPROVED" || adv.status === "RECOVERING" ? "default" : adv.status === "REJECTED" ? "destructive" : "secondary";
+                    return (
+                      <div key={adv.id} className="p-3.5 space-y-2 bg-background hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-xs text-foreground block truncate">
+                              {adv.person.firstName} {adv.person.lastName}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">{adv.reason}</span>
+                          </div>
+                          <Badge variant={statusVariant} size="sm" className="text-[10px] shrink-0">
+                            {adv.status}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800 text-[11px]">
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Amount</span>
+                            <span className="font-bold text-foreground">₹{adv.amountRequested.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Tenure / EMI</span>
+                            <span className="text-muted-foreground">{adv.tenureMonths}m (₹{adv.monthlyDeduction})</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Recovered</span>
+                            <span className="text-emerald-600 font-medium">₹{adv.amountRecovered.toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+
+                        {filterMode === "team" && canManageAdvances && adv.status === "PENDING" && (
+                          <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenDecision("advance", adv.id, "APPROVED")}
+                              className="h-7 text-xs px-2.5 text-emerald-600 dark:text-emerald-400"
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenDecision("advance", adv.id, "REJECTED")}
+                              className="h-7 text-xs px-2.5 text-rose-600 dark:text-rose-400"
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop High-Density Table */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 text-muted-foreground">
-                      <th className="py-3 px-4 text-left font-semibold">Staff Member</th>
-                      <th className="py-3 px-4 text-right font-semibold">Amount Requested</th>
-                      <th className="py-3 px-4 text-center font-semibold">Tenure</th>
-                      <th className="py-3 px-4 text-right font-semibold">Monthly EMI</th>
-                      <th className="py-3 px-4 text-right font-semibold">Recovered</th>
-                      <th className="py-3 px-4 text-center font-semibold">Status</th>
-                      <th className="py-3 px-4 text-center font-semibold">Actions</th>
+                      <th className="py-2.5 px-3.5 text-left font-semibold">Staff Member</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">Amount Requested</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Tenure</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">Monthly EMI</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">Recovered</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Status</th>
+                      <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {(advances || []).map((adv) => {
+                  <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
+                    {advancesPagination.paginatedItems.map((adv) => {
                       const statusVariant =
                         adv.status === "RECOVERED" ? "success" : adv.status === "APPROVED" || adv.status === "RECOVERING" ? "default" : adv.status === "REJECTED" ? "destructive" : "secondary";
                       return (
                         <tr key={adv.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-3.5">
                             <div className="font-semibold text-foreground">
                               {adv.person.firstName} {adv.person.lastName}
                             </div>
-                            <div className="text-[11px] text-muted-foreground">{adv.reason}</div>
+                            <div className="text-[10px] text-muted-foreground">{adv.reason}</div>
                           </td>
-                          <td className="py-3 px-4 text-right font-bold text-foreground">
+                          <td className="py-2 px-3 text-right font-bold text-foreground">
                             ₹{adv.amountRequested.toLocaleString("en-IN")}
                           </td>
-                          <td className="py-3 px-4 text-center text-foreground">{adv.tenureMonths} Months</td>
-                          <td className="py-3 px-4 text-right text-rose-600 font-semibold">
+                          <td className="py-2 px-3 text-center text-foreground">{adv.tenureMonths} Months</td>
+                          <td className="py-2 px-3 text-right text-rose-600 font-semibold">
                             ₹{adv.monthlyDeduction.toLocaleString("en-IN")} / mo
                           </td>
-                          <td className="py-3 px-4 text-right text-emerald-600 font-medium">
+                          <td className="py-2 px-3 text-right text-emerald-600 font-medium">
                             ₹{adv.amountRecovered.toLocaleString("en-IN")}
                           </td>
-                          <td className="py-3 px-4 text-center">
-                            <Badge variant={statusVariant}>{adv.status}</Badge>
+                          <td className="py-2 px-3 text-center">
+                            <Badge variant={statusVariant} size="sm">{adv.status}</Badge>
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-2 px-3 text-center">
                             {filterMode === "team" && canManageAdvances && adv.status === "PENDING" && (
                               <div className="flex items-center justify-center gap-1.5">
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleOpenDecision("advance", adv.id, "APPROVED")}
-                                  className="h-7 text-[11px] px-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                  className="h-6.5 text-[11px] px-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
                                 >
                                   Approve
                                 </Button>
@@ -478,7 +621,7 @@ export function ClaimsPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleOpenDecision("advance", adv.id, "REJECTED")}
-                                  className="h-7 text-[11px] px-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                  className="h-6.5 text-[11px] px-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                                 >
                                   Reject
                                 </Button>
@@ -491,6 +634,16 @@ export function ClaimsPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Advances Pagination */}
+              <Pagination
+                currentPage={advancesPagination.currentPage}
+                totalPages={advancesPagination.totalPages}
+                totalItems={advancesPagination.totalItems}
+                pageSize={advancesPagination.pageSize}
+                onPageChange={advancesPagination.setCurrentPage}
+                onPageSizeChange={advancesPagination.setPageSize}
+              />
             </QueryState>
           </CardContent>
         </Card>

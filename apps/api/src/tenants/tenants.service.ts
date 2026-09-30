@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { TENANT_OWNER_ROLE } from "@saas-erp/shared-types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RbacService } from "../rbac/rbac.service";
+import { MailService } from "../mail/services/mail.service";
 import type { CreateTenantDto, InviteOwnerDto, UpdateTenantThemeDto } from "./dto";
 
 /** Platform-level tenant management — super_admin/developer/maintainer only (see tenants.controller.ts). */
@@ -11,6 +12,7 @@ export class TenantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
+    private readonly mail: MailService,
   ) {}
 
   async list() {
@@ -114,7 +116,7 @@ export class TenantsService {
    * seeded, protected "admin" role — see RbacService.seedTenantOwnerRole).
    */
   async inviteOwner(tenantId: string, dto: InviteOwnerDto) {
-    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+    const result = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       await this.assertExists(tx, tenantId);
 
       const ownerRole = await tx.role.findFirst({ where: { tenantId, name: TENANT_OWNER_ROLE } });
@@ -123,12 +125,24 @@ export class TenantsService {
       const existing = await tx.user.findUnique({ where: { tenantId_email: { tenantId, email: dto.email } } });
       if (existing) throw new ConflictException(`${dto.email} is already invited or a member of this tenant`);
 
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+
       const user = await tx.user.create({
         data: { tenantId, email: dto.email, displayName: dto.displayName, zitadelSubjectId: null },
       });
       await tx.userRole.create({ data: { userId: user.id, roleId: ownerRole.id } });
-      return user;
+      return { user, tenantName: tenant?.name || "Your Organization" };
     });
+
+    // Dispatch invitation email asynchronously
+    this.mail.sendInvitation({
+      to: dto.email,
+      displayName: dto.displayName,
+      tenantName: result.tenantName,
+      isOwner: true,
+    }).catch(() => {});
+
+    return result.user;
   }
 
   /** Platform view of one tenant's users — who's a member, who's still a pending invite. */

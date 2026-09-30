@@ -20,3 +20,4 @@ export * from "./separator";
 export * from "./skeleton";
 export * from "./file-dropzone";
 export * from "./phone-input";
+export * from "./pagination";

@@ -4,8 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
-  static String get defaultBaseUrl =>
-      kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
+  static String get defaultBaseUrl => 'https://apisaaserp.jioratech.com';
 
   String baseUrl;
   String? token;

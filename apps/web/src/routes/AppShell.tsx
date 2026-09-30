@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Tenant } from "@saas-erp/shared-types";
@@ -26,11 +26,19 @@ import {
   FileSpreadsheet,
   CreditCard,
   Receipt,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  CloudOff,
+  RefreshCw,
+  UserX,
+  Loader2,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../auth/auth-store";
 import { useMe } from "../auth/use-me";
 import { Avatar } from "../components/ui/avatar";
+import { Button } from "../components/ui/button";
 import { useTheme } from "../theme/ThemeProvider";
 import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { GlobalSearch } from "../components/global-search";
@@ -73,7 +81,7 @@ const navItems: NavItem[] = [
 export function AppShell() {
   const signOut = useAuthStore((s) => s.signOut);
   const user = useAuthStore((s) => s.user);
-  const { data: me } = useMe();
+  const { data: me, isLoading: isMeLoading, error: meError, notProvisioned, refetch: refetchMe } = useMe();
   const { theme, resolvedTheme, setTheme, toggleTheme } = useTheme();
   const location = useLocation();
 
@@ -84,6 +92,7 @@ export function AppShell() {
     return false;
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   // Tenant branding — platform staff have no tenant (isPlatformContext),
@@ -123,12 +132,19 @@ export function AppShell() {
   const userRoleLabel = me?.isPlatformContext
     ? "Platform Admin"
     : me?.roles && me.roles.length > 0
-    ? me.roles.join(", ")
-    : "Tenant Member";
+      ? me.roles.join(", ")
+      : "Tenant Member";
 
   const avatarUrl = profileData?.user?.avatarUrl || profileData?.person?.avatarUrl;
   const orgName = org?.name || "saas-erp";
-  const orgLogo = org?.logoUrl;
+  const orgLogo = org?.logoUrl || undefined;
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [orgLogo]);
+
+  const showLogo = Boolean(orgLogo && !logoError);
 
   const hrNavItems = navItems.filter(
     (item) => item.section === "hr" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
@@ -141,23 +157,85 @@ export function AppShell() {
   );
   const hasNavItems = hrNavItems.length > 0 || payrollNavItems.length > 0 || adminNavItems.length > 0;
 
+  if (isMeLoading) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center gap-3 bg-zinc-50 dark:bg-zinc-950 text-foreground">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 font-bold text-xl">
+          {orgName.slice(0, 1).toUpperCase()}
+        </div>
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground mt-2">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <span>Loading workspace...</span>
+        </div>
+        <p className="text-xs text-muted-foreground">Connecting to SaaS ERP services</p>
+      </div>
+    );
+  }
+
+  if (notProvisioned) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+        <div className="max-w-md w-full text-center space-y-4 p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl">
+          <UserX className="mx-auto h-10 w-10 text-muted-foreground" />
+          <h3 className="text-lg font-bold text-foreground">No Account Found</h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            You are signed in with Zitadel, but your account has not been provisioned in SaaS ERP yet. Please contact your organization administrator.
+          </p>
+          <Button variant="outline" onClick={signOut} className="gap-2 rounded-xl">
+            <LogOut className="h-4 w-4" />
+            <span>Sign Out / Switch Account</span>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (meError) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+        <div className="max-w-md w-full text-center space-y-4 p-6 sm:p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl">
+          <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center">
+            <CloudOff className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">SaaS ERP Server Unavailable</h3>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+              Unable to reach the backend API server. Please ensure the server is active or check your network connection.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Button onClick={() => refetchMe()} size="sm" className="gap-2 rounded-xl">
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Retry Connection</span>
+            </Button>
+            <Button onClick={signOut} variant="outline" size="sm" className="gap-2 rounded-xl">
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Sign Out</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
       {/* Mobile Top Header (visible on small/collapsed screens) */}
-      <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 sticky top-0 z-40">
+      <header className="md:hidden flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 z-40">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => setMobileOpen((o) => !o)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800 text-foreground hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800 text-foreground hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
             title={mobileOpen ? "Close menu" : "Open menu"}
             aria-label="Toggle navigation menu"
           >
             {mobileOpen ? <CloseIcon className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          {orgLogo ? (
+          {showLogo ? (
             <img
               src={orgLogo}
               alt={orgName}
+              onError={() => setLogoError(true)}
               className="h-7 w-7 rounded-lg object-contain border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
             />
           ) : (
@@ -167,15 +245,33 @@ export function AppShell() {
           )}
           <span className="text-base font-bold tracking-tight text-foreground truncate">{orgName}</span>
         </div>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          title={`Theme: ${resolvedTheme}`}
-        >
-          {resolvedTheme === "dark" ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-indigo-500" />}
-        </button>
+
+        {/* Mobile Header Right Actions: Search Button & User Avatar */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileSearchOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-foreground transition-colors cursor-pointer"
+            title="Search people & modules"
+            aria-label="Open search"
+          >
+            <Search className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditProfileOpen(true)}
+            className="flex items-center rounded-xl overflow-hidden cursor-pointer"
+            title="View my profile"
+          >
+            <Avatar name={displayName} src={avatarUrl || undefined} size="sm" className="h-7 w-7 text-xs" />
+          </button>
+        </div>
       </header>
+
+      {/* Mobile Search Modal */}
+      {mobileSearchOpen && (
+        <GlobalSearch isMobileModal onClose={() => setMobileSearchOpen(false)} />
+      )}
 
       {/* Mobile Backdrop */}
       {mobileOpen && (
@@ -190,20 +286,24 @@ export function AppShell() {
         className={cn(
           "h-screen shrink-0 flex flex-col border-r border-zinc-200/90 dark:border-zinc-800/90 bg-white dark:bg-zinc-950 transition-all duration-300 ease-in-out select-none",
           // Desktop styles
-          "hidden md:sticky md:top-0 md:flex md:z-30",
+          "hidden md:sticky md:top-0 md:flex md:z-40",
           collapsed ? "md:w-[72px]" : "md:w-64",
           // Mobile drawer styles
           mobileOpen && "!flex fixed inset-y-0 left-0 z-50 w-64 shadow-2xl",
         )}
       >
-        {/* Floating border toggle button (always visible & clickable on desktop) */}
+        {/* Floating border toggle button (prominent, easy to identify & click) */}
         <button
           onClick={toggleCollapsed}
-          className="hidden md:flex absolute -right-3.5 top-5 z-40 h-7 w-7 items-center justify-center rounded-full border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-foreground shadow-md hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white hover:border-primary active:scale-95 transition-all cursor-pointer"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="hidden md:flex absolute -right-4 top-4.5 z-50 h-8 w-8 items-center justify-center rounded-xl border border-zinc-200/90 dark:border-zinc-700/90 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 shadow-md hover:shadow-lg hover:border-primary/60 hover:text-primary dark:hover:text-primary active:scale-95 transition-all cursor-pointer"
+          title={collapsed ? "Expand sidebar (Panel)" : "Collapse sidebar (Panel)"}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+          {collapsed ? (
+            <PanelLeftOpen className="h-4.5 w-4.5" />
+          ) : (
+            <PanelLeftClose className="h-4.5 w-4.5" />
+          )}
         </button>
 
         {/* Header / Brand */}
@@ -215,10 +315,11 @@ export function AppShell() {
               title={`Expand sidebar (${orgName})`}
               aria-label="Expand sidebar"
             >
-              {orgLogo ? (
+              {showLogo ? (
                 <img
                   src={orgLogo}
                   alt={orgName}
+                  onError={() => setLogoError(true)}
                   className="h-9 w-9 rounded-xl object-contain border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
                 />
               ) : (
@@ -227,22 +328,15 @@ export function AppShell() {
                 </span>
               )}
             </button>
-            <button
-              onClick={toggleCollapsed}
-              className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all cursor-pointer group shadow-xs"
-              title="Expand sidebar"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </button>
           </div>
         ) : (
           <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-100 dark:border-zinc-900">
             <div className="flex items-center gap-2.5 min-w-0">
-              {orgLogo ? (
+              {showLogo ? (
                 <img
                   src={orgLogo}
                   alt={orgName}
+                  onError={() => setLogoError(true)}
                   className="h-8 w-8 shrink-0 rounded-xl object-contain border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
                 />
               ) : (
@@ -254,14 +348,7 @@ export function AppShell() {
                 {orgName}
               </span>
             </div>
-            <button
-              onClick={toggleCollapsed}
-              className="hidden md:flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Collapse sidebar"
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+
             <button
               onClick={() => setMobileOpen(false)}
               className="md:hidden flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground"
@@ -541,24 +628,19 @@ export function AppShell() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-zinc-50/70 dark:bg-zinc-950">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto bg-zinc-50/70 dark:bg-zinc-950">
         {/* Sticky Desktop Top Header Bar */}
         <header className="hidden md:flex sticky top-0 z-30 h-14 shrink-0 items-center justify-between px-6 lg:px-8 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 transition-all">
           <div className="flex items-center gap-3 min-w-0">
-            {collapsed && (
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-foreground transition-colors cursor-pointer"
-                title="Expand sidebar"
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-            )}
             <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
               <span className="font-semibold text-foreground flex items-center gap-1.5 truncate">
-                {orgLogo ? (
-                  <img src={orgLogo} alt={orgName} className="h-4 w-4 rounded-md object-contain" />
+                {showLogo ? (
+                  <img
+                    src={orgLogo}
+                    alt={orgName}
+                    onError={() => setLogoError(true)}
+                    className="h-4 w-4 rounded-md object-contain"
+                  />
                 ) : (
                   <span className="h-4 w-4 rounded-md bg-primary text-white flex items-center justify-center text-[10px] font-bold">
                     {orgName.slice(0, 1)}
@@ -580,21 +662,11 @@ export function AppShell() {
             {/* Dynamic Page Action Portal (Primary Page Actions) */}
             <div id="appshell-header-actions" className="hidden lg:flex items-center gap-2" />
 
-            {/* Theme Toggle */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-              title={`Toggle theme (Current: ${resolvedTheme})`}
-            >
-              {resolvedTheme === "dark" ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-indigo-500" />}
-            </button>
-
             {/* User Profile Pill */}
             <button
               type="button"
               onClick={() => setEditProfileOpen(true)}
-              className="flex items-center gap-2 px-2.5 py-1 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-primary/40 hover:bg-zinc-50 dark:hover:bg-zinc-850 transition-all cursor-pointer group"
+              className="flex items-center gap-2 px-2.5 py-1 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-primary/40 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer group"
               title="View & edit my profile"
             >
               <Avatar name={displayName} src={avatarUrl || undefined} size="sm" className="h-6 w-6 text-xs" />
@@ -608,7 +680,7 @@ export function AppShell() {
         </header>
 
         {/* Fluid Responsive Content Container (Wide Screen Optimized) */}
-        <div className="flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex-1 w-full max-w-[1720px] mx-auto px-2.5 sm:px-4 md:px-6 lg:px-8 py-2.5 sm:py-4 md:py-6">
           <Outlet />
         </div>
       </main>

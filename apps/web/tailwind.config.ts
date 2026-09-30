@@ -24,6 +24,9 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        zinc: {
+          850: "#18181b",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

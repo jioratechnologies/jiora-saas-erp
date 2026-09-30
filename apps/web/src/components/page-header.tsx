@@ -56,17 +56,25 @@ export function PageHeader({
   const renderStats = () => {
     if (!stats) return null;
     if (Array.isArray(stats)) {
+      const items = stats as HeaderStatItem[];
+      const gridCols =
+        items.length === 4
+          ? "grid-cols-4"
+          : items.length === 3
+            ? "grid-cols-3"
+            : "grid-cols-2 sm:grid-cols-4";
+
       return (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-          {(stats as HeaderStatItem[]).map((s, idx) => (
+        <div className={cn("grid gap-1 sm:gap-2.5", gridCols)}>
+          {items.map((s, idx) => (
             <div
               key={idx}
-              className="rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 px-3 py-1.5 shadow-2xs"
+              className="rounded-lg sm:rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 px-1.5 sm:px-3 py-1 sm:py-1.5 shadow-2xs min-w-0"
             >
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="text-[8px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
                 {s.label}
               </div>
-              <div className={cn("text-base font-bold text-foreground mt-0.5", s.color)}>
+              <div className={cn("text-xs sm:text-base font-bold text-foreground mt-0.5 truncate", s.color)}>
                 {s.value}
               </div>
             </div>
@@ -91,27 +99,27 @@ export function PageHeader({
       {/* Streamlined In-Page Header */}
       <div
         className={cn(
-          "rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md p-4 sm:p-4.5 mb-4 shadow-xs transition-all",
-          sticky && "sticky top-16 z-20 shadow-sm",
+          "rounded-xl sm:rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-xs transition-all",
+          sticky && "sticky top-0 md:top-14 z-20 shadow-sm",
           className
         )}
       >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             {Icon && (
-              <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0 shadow-2xs">
-                <Icon className="h-4.5 w-4.5" />
+              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg sm:rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0 shadow-2xs">
+                <Icon className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
               </div>
             )}
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground truncate">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h1 className="text-base sm:text-xl font-bold tracking-tight text-foreground truncate">
                   {title}
                 </h1>
                 {renderBadge()}
               </div>
               {description && (
-                <p className="text-xs text-muted-foreground line-clamp-1">
+                <p className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1">
                   {description}
                 </p>
               )}
@@ -126,7 +134,7 @@ export function PageHeader({
         </div>
 
         {stats && (
-          <div className="mt-3 pt-2.5 border-t border-zinc-100 dark:border-zinc-800/80">
+          <div className="mt-2.5 sm:mt-3 pt-2 sm:pt-2.5 border-t border-zinc-100 dark:border-zinc-800/80">
             {renderStats()}
           </div>
         )}

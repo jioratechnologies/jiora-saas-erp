@@ -28,9 +28,12 @@ import {
   ShieldCheck,
   Building2,
   Filter,
-  ArrowRight,
   Network,
   Users,
+  ChevronRight,
+  ArrowRight,
+  Plus,
+  X,
 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import { Button } from "../../components/ui/button";
@@ -45,6 +48,7 @@ import { FileDropzone } from "../../components/ui/file-dropzone";
 import { Badge } from "../../components/ui/badge";
 import { User, Avatar } from "../../components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 import { PageHeader } from "../../components/page-header";
 import { QueryState } from "../../components/query-state";
 import { Modal, Drawer } from "../../components/ui/modal";
@@ -222,6 +226,7 @@ export function PeoplePage() {
   const [docCategory, setDocCategory] = useState<"KYC" | "RESUME" | "CONTRACT" | "OTHER">("KYC");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
 
   // Exit Workflow State
   const [exitDate, setExitDate] = useState("");
@@ -261,6 +266,17 @@ export function PeoplePage() {
   const myDepartmentId = departments?.find(
     (d) => d.name === myProfile?.user?.department || d.name === myProfile?.person?.department
   )?.id;
+
+  // Client-side pagination & DOM virtualization for high performance
+  const {
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    totalPages,
+    totalItems,
+    paginatedItems: paginatedPeople,
+  } = usePagination(people || [], 10);
 
   // Selected person detail query for Drawer
   const { data: selectedPerson, refetch: refetchSelectedPerson } = useQuery({
@@ -605,6 +621,7 @@ export function PeoplePage() {
       setDocName("");
       setDocNumber("");
       setSelectedFile(null);
+      setShowUploadForm(false);
       refetchSelectedPerson();
       toast.success("Document uploaded", "File uploaded securely to MinIO object storage.");
     } catch (err: any) {
@@ -645,26 +662,23 @@ export function PeoplePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
       <PageHeader
         icon={Users}
         title="Person Master"
         description="Manage employee and volunteer profiles, reporting hierarchies, and records."
-        badge={
-          <Badge variant="outline" className="text-xs font-mono">
-            {people?.length || 0} Total Staff
-          </Badge>
-        }
-        action={
-          <div className="flex flex-wrap items-center gap-2">
+        badge={{ label: `${people?.length || 0} Staff`, variant: "secondary" }}
+        actions={
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleExportStaffDirectory}
-              className="gap-1.5 font-semibold rounded-xl text-xs"
+              className="gap-1 font-semibold rounded-xl text-xs h-8 px-2 sm:px-3"
+              title="Export Staff Directory (CSV)"
             >
               <Download className="h-3.5 w-3.5" />
-              <span>Export Directory</span>
+              <span className="hidden sm:inline">Export</span>
             </Button>
             {canManage && (
               <Button
@@ -675,108 +689,123 @@ export function PeoplePage() {
                   setBulkParsedRows([]);
                   setBulkImportModalOpen(true);
                 }}
-                className="gap-1.5 font-semibold rounded-xl text-xs"
+                className="gap-1 font-semibold rounded-xl text-xs h-8 px-2 sm:px-3"
+                title="Bulk Import Staff (CSV/Excel)"
               >
                 <Upload className="h-3.5 w-3.5" />
-                <span>Bulk Import</span>
+                <span className="hidden sm:inline">Bulk Import</span>
               </Button>
             )}
-            <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0 font-bold rounded-xl text-xs shadow-sm">
+            <Button
+              onClick={() => setCreateModalOpen(true)}
+              size="sm"
+              className="gap-1.5 font-bold rounded-xl text-xs h-8 px-3 shadow-sm bg-primary text-primary-foreground shrink-0"
+            >
               <UserPlus className="h-3.5 w-3.5" />
               <span>New Person</span>
             </Button>
           </div>
         }
-        stats={
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">All Personnel</span>
-              <span className="text-base font-bold text-foreground">{people?.length || 0}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Full-Time Employees</span>
-              <span className="text-base font-bold text-primary">
-                {people?.filter((p) => p.personType === "EMPLOYEE").length || 0}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Community Volunteers</span>
-              <span className="text-base font-bold text-amber-600 dark:text-amber-400">
-                {people?.filter((p) => p.personType === "VOLUNTEER").length || 0}
-              </span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Active Status</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-                {people?.filter((p) => p.status === "ACTIVE").length || 0}
-              </span>
-            </div>
-          </div>
-        }
+        stats={[
+          { label: "All Staff", value: people?.length || 0 },
+          {
+            label: "Employees",
+            value: people?.filter((p) => p.personType === "EMPLOYEE").length || 0,
+            color: "text-primary",
+          },
+          {
+            label: "Volunteers",
+            value: people?.filter((p) => p.personType === "VOLUNTEER").length || 0,
+            color: "text-amber-500",
+          },
+          {
+            label: "Active",
+            value: people?.filter((p) => p.status === "ACTIVE").length || 0,
+            color: "text-emerald-500",
+          },
+        ]}
       />
 
       {/* Filters and Search Bar */}
-      <Card>
-        <CardContent className="p-4 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground mr-1">Type:</span>
-              <ButtonGroup size="sm">
-                {(["ALL", "EMPLOYEE", "VOLUNTEER"] as const).map((t) => (
-                  <Button
-                    key={t}
-                    variant={personTypeFilter === t ? "default" : "outline"}
-                    onClick={() => setPersonTypeFilter(t)}
-                    className="text-xs h-7 px-2.5"
-                  >
-                    {t === "ALL" ? "All People" : t === "EMPLOYEE" ? "Employees" : "Volunteers"}
-                  </Button>
-                ))}
-              </ButtonGroup>
+      <Card className="rounded-xl sm:rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
+        <CardContent className="p-2.5 sm:p-4 space-y-2.5 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
+          {/* Mobile: Search first for instant query */}
+          <div className="relative w-full sm:hidden">
+            <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-8 text-xs rounded-xl"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 w-full sm:w-auto">
+            <div className="flex items-center gap-1 shrink-0">
+              {(["ALL", "EMPLOYEE", "VOLUNTEER"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setPersonTypeFilter(t)}
+                  className={cn(
+                    "h-8 text-xs font-semibold px-3 rounded-xl transition-all cursor-pointer shrink-0 border",
+                    personTypeFilter === t
+                      ? "bg-primary text-primary-foreground border-primary shadow-xs font-bold"
+                      : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {t === "ALL" ? "All Staff" : t === "EMPLOYEE" ? "Employees" : "Volunteers"}
+                </button>
+              ))}
             </div>
 
-            <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
+            <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0" />
 
             {/* Department HR Scope Filter */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground mr-1">Dept:</span>
+            <div className="w-36 sm:w-48 shrink-0">
               <Select
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
-                className="h-7 text-xs py-0 w-44"
+                size="sm"
+                placeholder="All Depts"
               >
-                <option value="ALL">All Departments</option>
+                <option value="ALL">All Depts</option>
                 {departments?.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
                 ))}
               </Select>
-
-              {myDepartmentId && (
-                <Button
-                  size="sm"
-                  variant={departmentFilter === myDepartmentId ? "default" : "outline"}
-                  onClick={() =>
-                    setDepartmentFilter(departmentFilter === myDepartmentId ? "ALL" : myDepartmentId)
-                  }
-                  className="text-xs h-7 px-2.5 gap-1 shrink-0"
-                  title="Filter to my assigned department for task escalation"
-                >
-                  <Building2 className="h-3 w-3" />
-                  <span>My Dept</span>
-                </Button>
-              )}
             </div>
+
+            {myDepartmentId && (
+              <button
+                type="button"
+                onClick={() =>
+                  setDepartmentFilter(departmentFilter === myDepartmentId ? "ALL" : myDepartmentId)
+                }
+                className={cn(
+                  "h-8 text-xs font-semibold px-2.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border",
+                  departmentFilter === myDepartmentId
+                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                    : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 border-transparent text-muted-foreground hover:text-foreground"
+                )}
+                title="Filter to my assigned department"
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                <span>My Dept</span>
+              </button>
+            )}
           </div>
 
-          <div className="relative sm:w-64">
+          {/* Desktop Search Box */}
+          <div className="relative sm:w-64 hidden sm:block shrink-0">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by name or email…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 text-s"
+              className="pl-9 h-9 text-xs"
             />
           </div>
         </CardContent>
@@ -804,138 +833,224 @@ export function PeoplePage() {
         </div>
       )}
 
-      {/* People Table */}
-      <Card>
+      {/* People Table & Mobile Cards */}
+      <Card className="rounded-xl sm:rounded-2xl border border-zinc-200/80 dark:border-zinc-800 overflow-hidden">
         <CardContent className="p-0">
           <QueryState isLoading={isLoading} error={error}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Person</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Department & Role</TableHead>
-                  <TableHead>Reporting Manager</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24 text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {people?.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
-                      No records found matching your filters.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  people?.map((p) => (
-                    <TableRow
-                      key={p.id}
-                      className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
-                      onClick={() => setSelectedPersonId(p.id)}
-                    >
-                      <TableCell>
-                        <User
+            {/* Mobile Native Card View (Phones < 640px) */}
+            <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800/80">
+              {people?.length === 0 ? (
+                <div className="text-center py-8 text-xs text-muted-foreground">
+                  No staff records found matching your filters.
+                </div>
+              ) : (
+                paginatedPeople.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedPersonId(p.id)}
+                    className="p-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar
                           name={`${p.firstName} ${p.lastName}`}
-                          description={p.email}
-                          avatarProps={{
-                            src: p.avatarUrl || undefined,
-                            size: "sm",
-                            isBordered: true,
-                            status: p.status === "ACTIVE" ? "online" : undefined,
-                          }}
+                          src={p.avatarUrl || undefined}
+                          size="md"
+                          isBordered
+                          status={p.status === "ACTIVE" ? "online" : undefined}
+                          className="shrink-0 h-10 w-10 text-xs"
                         />
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
-                          size="sm"
-                        >
-                          {p.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-xs font-semibold text-foreground">
-                            {p.designation?.name || "No designation"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {p.department?.name || "No department"}
-                          </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-sm text-foreground truncate">
+                              {p.firstName} {p.lastName}
+                            </p>
+                            <Badge
+                              variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
+                              className="text-[9px] px-1.5 py-0"
+                            >
+                              {p.personType === "EMPLOYEE" ? "Emp" : "Vol"}
+                            </Badge>
+                            <Badge
+                              variant={
+                                p.status === "ACTIVE"
+                                  ? "success"
+                                  : p.status === "NOTICE_PERIOD"
+                                    ? "warning"
+                                    : "secondary"
+                              }
+                              dot
+                              className="text-[9px] px-1.5 py-0"
+                            >
+                              {p.status === "NOTICE_PERIOD" ? "Notice" : p.status.toLowerCase()}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground font-medium truncate mt-0.5">
+                            {p.designation?.name || "Staff Member"} • {p.department?.name || "No Dept"}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {p.manager ? (
-                          <span className="text-xs text-foreground font-medium">
-                            {p.manager.firstName} {p.manager.lastName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">None (Top-level)</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            p.status === "ACTIVE"
-                              ? "success"
-                              : p.status === "NOTICE_PERIOD"
-                                ? "warning"
-                                : "secondary"
-                          }
-                          dot
-                          size="sm"
-                        >
-                          {p.status === "ACTIVE"
-                            ? "Active"
-                            : p.status === "NOTICE_PERIOD"
-                              ? "Notice Period"
-                              : p.status === "JOINED"
-                                ? "Joined"
-                                : p.status === "PROBATION"
-                                  ? "Probation"
-                                  : "Exited"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedPersonId(p.id)}
-                            className="text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 h-8 px-2.5"
-                          >
-                            View
-                          </Button>
-                          <Dropdown>
-                            <DropdownTrigger>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownTrigger>
-                            <DropdownMenu align="end">
-                              <DropdownItem
-                                icon={<ExternalLink className="h-3.5 w-3.5" />}
-                                onClick={() => setSelectedPersonId(p.id)}
-                              >
-                                View Profile
-                              </DropdownItem>
-                              <DropdownItem
-                                icon={<Copy className="h-3.5 w-3.5" />}
-                                onClick={() => {
-                                  navigator.clipboard.writeText(p.email);
-                                  toast.success("Email copied", p.email);
-                                }}
-                              >
-                                Copy Email
-                              </DropdownItem>
-                            </DropdownMenu>
-                          </Dropdown>
-                        </div>
+                      </div>
+
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-2" />
+                    </div>
+
+                    {/* Mobile Card Footer: Contact & Manager */}
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-zinc-100/60 dark:border-zinc-800/60">
+                      <span className="truncate max-w-[170px]">{p.email}</span>
+                      {p.manager ? (
+                        <span className="text-[10px] text-primary font-medium truncate">
+                          Lead: {p.manager.firstName} {p.manager.lastName[0]}.
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">Top Executive</span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View (Tablets & Desktops >= 640px) */}
+            <div className="hidden sm:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Person</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Department & Role</TableHead>
+                    <TableHead>Reporting Manager</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-24 text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {people?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
+                        No records found matching your filters.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    paginatedPeople.map((p) => (
+                      <TableRow
+                        key={p.id}
+                        className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
+                        onClick={() => setSelectedPersonId(p.id)}
+                      >
+                        <TableCell>
+                          <User
+                            name={`${p.firstName} ${p.lastName}`}
+                            description={p.email}
+                            avatarProps={{
+                              src: p.avatarUrl || undefined,
+                              size: "sm",
+                              isBordered: true,
+                              status: p.status === "ACTIVE" ? "online" : undefined,
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
+                            size="sm"
+                          >
+                            {p.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-semibold text-foreground">
+                              {p.designation?.name || "No designation"}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {p.department?.name || "No department"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {p.manager ? (
+                            <span className="text-xs text-foreground font-medium">
+                              {p.manager.firstName} {p.manager.lastName}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">None (Top-level)</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              p.status === "ACTIVE"
+                                ? "success"
+                                : p.status === "NOTICE_PERIOD"
+                                  ? "warning"
+                                  : "secondary"
+                            }
+                            dot
+                            size="sm"
+                          >
+                            {p.status === "ACTIVE"
+                              ? "Active"
+                              : p.status === "NOTICE_PERIOD"
+                                ? "Notice Period"
+                                : p.status === "JOINED"
+                                  ? "Joined"
+                                  : p.status === "PROBATION"
+                                    ? "Probation"
+                                    : "Exited"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedPersonId(p.id)}
+                              className="text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 h-8 px-2.5"
+                            >
+                              View
+                            </Button>
+                            <Dropdown>
+                              <DropdownTrigger>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownTrigger>
+                              <DropdownMenu align="end">
+                                <DropdownItem
+                                  icon={<ExternalLink className="h-3.5 w-3.5" />}
+                                  onClick={() => setSelectedPersonId(p.id)}
+                                >
+                                  View Profile
+                                </DropdownItem>
+                                <DropdownItem
+                                  icon={<Copy className="h-3.5 w-3.5" />}
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(p.email);
+                                    toast.success("Email copied", p.email);
+                                  }}
+                                >
+                                  Copy Email
+                                </DropdownItem>
+                              </DropdownMenu>
+                            </Dropdown>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Pagination Controls */}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           </QueryState>
         </CardContent>
       </Card>
@@ -1192,11 +1307,12 @@ export function PeoplePage() {
                     size="sm"
                     variant="outline"
                     onClick={() => handleOpenEditModal(selectedPerson)}
-                    className="shrink-0 gap-1.5 text-xs rounded-xl border-primary/30 text-primary hover:bg-primary/10"
+                    className="shrink-0 gap-1.5 text-xs rounded-xl border-primary/30 text-primary hover:bg-primary/10 h-8 px-2.5 sm:px-3"
                     title="Edit profile details, department, designation, and reporting manager"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
-                    <span>Edit Profile & Reporting</span>
+                    <span className="hidden sm:inline">Edit Profile & Reporting</span>
+                    <span className="sm:hidden font-medium">Edit</span>
                   </Button>
                 )}
               </div>
@@ -1342,81 +1458,103 @@ export function PeoplePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Documents & KYC
+                    Documents & KYC ({selectedPerson.documents?.length || 0})
                   </h5>
                   <p className="text-[11px] text-muted-foreground">Stored securely in MinIO Object Storage</p>
                 </div>
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant={showUploadForm ? "ghost" : "outline"}
+                    onClick={() => setShowUploadForm(!showUploadForm)}
+                    className="h-7 text-xs px-2.5 gap-1.5 rounded-lg border-primary/20 text-primary hover:bg-primary/10"
+                  >
+                    {showUploadForm ? (
+                      <>
+                        <X className="h-3.5 w-3.5" />
+                        <span>Cancel</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add Document</span>
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
 
               {/* Upload Form with Asset Drag & Drop */}
-              <div className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 space-y-3">
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="text-[11px] font-medium text-foreground block mb-1">
-                      Document Title *
-                    </label>
-                    <Input
-                      placeholder="e.g. Aadhaar Card / Resume"
-                      value={docName}
-                      onChange={(e) => setDocName(e.target.value)}
-                      maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
-                      className="h-10 text-s"
-                    />
+              {showUploadForm && (
+                <div className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 space-y-3 animate-in fade-in-50 duration-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-medium text-foreground block mb-1">
+                        Document Title *
+                      </label>
+                      <Input
+                        placeholder="e.g. Aadhaar Card / Resume"
+                        value={docName}
+                        onChange={(e) => setDocName(e.target.value)}
+                        maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                    <Select
+                      label="Category"
+                      value={docCategory}
+                      onChange={(e) => setDocCategory(e.target.value as any)}
+                      className="h-9 text-xs"
+                    >
+                      <option value="KYC">KYC Document</option>
+                      <option value="RESUME">Resume / CV</option>
+                      <option value="JOINING_LETTER">Joining Letter</option>
+                      <option value="CONTRACT">Contract / Agreement</option>
+                      <option value="OTHER">Other Record</option>
+                    </Select>
                   </div>
-                  <Select
-                    label="Category"
-                    value={docCategory}
-                    onChange={(e) => setDocCategory(e.target.value as any)}
-                    className="h-8 text-xs mb-8"
-                  >
-                    <option value="KYC">KYC Document</option>
-                    <option value="RESUME">Resume / CV</option>
-                    <option value="JOINING_LETTER">Joining Letter</option>
-                    <option value="CONTRACT">Contract / Agreement</option>
-                    <option value="OTHER">Other Record</option>
-                  </Select>
-                </div>
 
-                {docCategory === "KYC" && (
-                  <div>
-                    <label className="text-[11px] font-medium text-foreground block mb-1">
-                      Document / ID Number *
-                    </label>
-                    <Input
-                      placeholder="e.g. 5423-8891-1029 / ABCDE1234F / Passport No"
-                      value={docNumber}
-                      onChange={(e) => setDocNumber(e.target.value)}
-                      maxLength={INPUT_LIMITS.DOC_NUMBER_MAX}
-                      className="h-10 text-xs"
-                      required
-                    />
+                  {docCategory === "KYC" && (
+                    <div>
+                      <label className="text-[11px] font-medium text-foreground block mb-1">
+                        Document / ID Number *
+                      </label>
+                      <Input
+                        placeholder="e.g. 5423-8891-1029 / ABCDE1234F / Passport No"
+                        value={docNumber}
+                        onChange={(e) => setDocNumber(e.target.value)}
+                        maxLength={INPUT_LIMITS.DOC_NUMBER_MAX}
+                        className="h-9 text-xs"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {/* Asset Drag & Drop Zone */}
+                  <FileDropzone
+                    file={selectedFile}
+                    onFileSelect={(f) => {
+                      setSelectedFile(f);
+                      if (f && !docName.trim()) {
+                        setDocName(f.name.replace(/\.[^/.]+$/, ""));
+                      }
+                    }}
+                    disabled={uploadingDoc}
+                  />
+
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      size="sm"
+                      onClick={handleUploadDocument}
+                      disabled={!selectedFile || !docName.trim() || (docCategory === "KYC" && !docNumber.trim()) || uploadingDoc}
+                      className="gap-1.5 h-8 text-xs"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{uploadingDoc ? "Uploading to MinIO…" : "Upload Document"}</span>
+                    </Button>
                   </div>
-                )}
-
-                {/* Asset Drag & Drop Zone */}
-                <FileDropzone
-                  file={selectedFile}
-                  onFileSelect={(f) => {
-                    setSelectedFile(f);
-                    if (f && !docName.trim()) {
-                      setDocName(f.name.replace(/\.[^/.]+$/, ""));
-                    }
-                  }}
-                  disabled={uploadingDoc}
-                />
-
-                <div className="flex justify-end pt-1">
-                  <Button
-                    size="sm"
-                    onClick={handleUploadDocument}
-                    disabled={!selectedFile || !docName.trim() || (docCategory === "KYC" && !docNumber.trim()) || uploadingDoc}
-                    className="gap-1.5"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    <span>{uploadingDoc ? "Uploading to MinIO…" : "Upload Document"}</span>
-                  </Button>
                 </div>
-              </div>
+              )}
 
               {/* Uploaded Documents List */}
               <div className="space-y-2">

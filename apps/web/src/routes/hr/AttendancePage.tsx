@@ -32,6 +32,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "../../components/ui/toast";
 import { exportToCsv } from "../../lib/csv-export";
 import { useMe } from "../../auth/use-me";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 
 interface AttendanceRecord {
   id: string;
@@ -245,7 +246,10 @@ export function AttendancePage() {
       if (!name.includes(q) && !email.includes(q)) return false;
     }
     return true;
-  });
+  }) ?? [];
+
+  // Roster pagination
+  const rosterPagination = usePagination(filteredRoster, 20);
 
   // KPI calculations
   const totalStaff = roster?.length || 0;
@@ -306,7 +310,7 @@ export function AttendancePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
       <PageHeader
         icon={Clock}
         title="Attendance Portal"
@@ -649,6 +653,7 @@ export function AttendancePage() {
                   { label: "All Departments", value: "ALL" },
                   ...(departments?.map((d) => ({ label: d.name, value: d.id })) || []),
                 ]}
+                size="sm"
                 className="w-40"
               />
               <Select
@@ -661,6 +666,7 @@ export function AttendancePage() {
                   { label: "On Leave", value: "ON_LEAVE" },
                   { label: "Absent", value: "ABSENT" },
                 ]}
+                size="sm"
                 className="w-36"
               />
             </div>
@@ -684,14 +690,14 @@ export function AttendancePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredRoster?.length === 0 ? (
+                    {rosterPagination.paginatedItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">
                           No staff found matching the selected filters.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredRoster?.map((item) => (
+                      rosterPagination.paginatedItems.map((item) => (
                         <TableRow key={item.person.id}>
                           <TableCell>
                             <div className="flex items-center gap-2.5">
@@ -807,6 +813,15 @@ export function AttendancePage() {
                   </TableBody>
                 </Table>
               </QueryState>
+              <Pagination
+                currentPage={rosterPagination.currentPage}
+                totalPages={rosterPagination.totalPages}
+                totalItems={rosterPagination.totalItems}
+                pageSize={rosterPagination.pageSize}
+                onPageChange={rosterPagination.setCurrentPage}
+                onPageSizeChange={(size) => { rosterPagination.setPageSize(size); rosterPagination.setCurrentPage(1); }}
+                pageSizeOptions={[10, 20, 50]}
+              />
             </CardContent>
           </Card>
         </div>

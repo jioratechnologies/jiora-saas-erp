@@ -1,3 +1,27 @@
+const path = require("path");
+const fs = require("fs");
+
+// Load .env if present
+const envPath = path.resolve(__dirname, "../.env");
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx > 0) {
+      const key = trimmed.slice(0, eqIdx).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+
 const { PrismaClient } = require("@prisma/client");
 const {
   S3Client,
@@ -9,37 +33,106 @@ const {
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DIRECT_URL || "postgresql://saaserp:saaserp_dev_password@localhost:5433/saaserp?schema=public",
+      url: process.env.DIRECT_URL
     },
   },
 });
 
 async function main() {
   console.log("==========================================================");
-  console.log("Starting Phase 1–3: 18-Month Comprehensive Historical Backfill");
-  console.log("Time Span: April 2025 to September 2026 (18 full months)");
+  console.log("1. Cleaning Up Database (Truncating all operational tables)");
   console.log("==========================================================");
 
-  // Find target tenant
+  await prisma.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      payslips,
+      payroll_runs,
+      salary_advances,
+      expense_claims,
+      salary_revisions,
+      employee_salary_assignments,
+      salary_structures,
+      salary_components,
+      attendances,
+      leave_requests,
+      leave_types,
+      holidays,
+      person_documents,
+      persons,
+      user_roles,
+      role_permissions,
+      roles,
+      users,
+      designations,
+      departments,
+      tenants
+    CASCADE;
+  `);
+  console.log("✓ Database cleaned up successfully.");
+
+  console.log("==========================================================");
+  console.log("2. Initializing Tenant, Roles, and Core Zitadel Users");
+  console.log("==========================================================");
+
   const targetSlug = process.env.SEED_TENANT_SLUG || "jiorasacchisahelitest1";
-  const tenant = await prisma.tenant.findFirst({
-    where: { slug: targetSlug },
-    include: { users: true },
+  const tenant = await prisma.tenant.create({
+    data: {
+      id: "3493aeac-97ac-44f8-9492-18b1a134a134",
+      name: "Jiora Sacchi Saheli",
+      slug: targetSlug,
+      primaryColor: "#1F4E78",
+      showPoweredBy: true,
+    },
+  });
+  const tenantId = tenant.id;
+  console.log(`✓ Target Tenant Created: ${tenant.name} (${tenantId})`);
+
+  // Platform super_admin role
+  const superAdminRole = await prisma.role.create({
+    data: {
+      id: "4f56de0f-f14d-443f-993e-42e6f91b9eb1",
+      name: "super_admin",
+      tenantId: null,
+      isProtected: true,
+    },
   });
 
-  if (!tenant) {
-    console.error(`Target tenant "${targetSlug}" not found.`);
-    return;
+  const platformPermissions = [
+    "platform.tenant.read",
+    "platform.tenant.write",
+    "platform.tenant.suspend",
+    "platform.tenant.impersonate",
+  ];
+  for (const perm of platformPermissions) {
+    await prisma.rolePermission.create({
+      data: { roleId: superAdminRole.id, permissionKey: perm },
+    });
   }
 
-  const tenantId = tenant.id;
-  console.log(`Target Tenant: ${tenant.name} (${tenantId})`);
+  // Platform User: jioratechnologies@gmail.com
+  const platformUser = await prisma.user.create({
+    data: {
+      id: "717f8031-4761-4300-88fc-411878157f5c",
+      tenantId: null,
+      zitadelSubjectId: "392937773176783363",
+      email: "jioratechnologies@gmail.com",
+      displayName: "Jiora Technologies Admin",
+    },
+  });
 
-  // ==========================================
-  // 1. Synchronize RBAC Permissions for Roles
-  // ==========================================
+  await prisma.userRole.create({
+    data: { userId: platformUser.id, roleId: superAdminRole.id },
+  });
+  console.log("✓ Platform super_admin user created: jioratechnologies@gmail.com (sub: 392937773176783363)");
+
+  // Tenant Roles & Permissions
+  const allPermissions = [
     // Admin & Org Structure Metadata
-    "admin.department.read", "admin.designation.read",
+    "admin.org.read", "admin.org.write",
+    "admin.department.read", "admin.department.write", "admin.department.delete",
+    "admin.designation.read", "admin.designation.write", "admin.designation.delete",
+    "admin.role.read", "admin.role.write", "admin.role.delete",
+    "admin.user.read", "admin.user.invite", "admin.user.write", "admin.user.deactivate",
     // HR Core
     "hr.person.read", "hr.person.write", "hr.person.exit",
     "hr.attendance.checkin", "hr.attendance.read", "hr.attendance.manage",
@@ -53,38 +146,89 @@ async function main() {
     "payroll.advance.apply", "payroll.advance.manage",
   ];
 
-  const tenantRoles = await prisma.role.findMany({
-    where: { tenantId },
+  const adminRole = await prisma.role.create({
+    data: {
+      id: "8bb34c4b-0d3d-4b21-b4c4-9a9548effd40",
+      tenantId,
+      name: "admin",
+      isProtected: true,
+    },
   });
 
-  for (const role of tenantRoles) {
-    let permsToAssign = [];
-    if (role.name === "admin" || role.name === "HR") {
-      permsToAssign = allPermissions;
-    } else if (role.name === "Developer") {
-      permsToAssign = [
-        "hr.attendance.checkin", "hr.attendance.read",
-        "hr.leave.apply", "hr.leave.read",
-        "payroll.payslip.read",
-        "payroll.claim.apply", "payroll.claim.read",
-        "payroll.advance.apply",
-      ];
-    }
+  const hrRole = await prisma.role.create({
+    data: { tenantId, name: "HR", isProtected: false },
+  });
 
-    for (const key of permsToAssign) {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO role_permissions (role_id, permission_key)
-         VALUES ($1, $2)
-         ON CONFLICT (role_id, permission_key) DO NOTHING;`,
-        role.id,
-        key
-      );
+  const devRole = await prisma.role.create({
+    data: { tenantId, name: "Developer", isProtected: false },
+  });
+
+  const empRole = await prisma.role.create({
+    data: { tenantId, name: "Employee", isProtected: false },
+  });
+
+  for (const perm of allPermissions) {
+    await prisma.rolePermission.create({
+      data: { roleId: adminRole.id, permissionKey: perm },
+    });
+  }
+
+  for (const perm of allPermissions) {
+    if (perm.startsWith("hr.") || perm.startsWith("payroll.") || perm.includes(".read")) {
+      await prisma.rolePermission.create({
+        data: { roleId: hrRole.id, permissionKey: perm },
+      });
     }
   }
-  console.log("✓ Roles and permissions aligned across admin and HR roles");
+
+  const selfServicePerms = [
+    "admin.department.read", "admin.designation.read",
+    "hr.attendance.checkin", "hr.attendance.read",
+    "hr.leave.apply", "hr.leave.read", "hr.holiday.read",
+    "payroll.payslip.read",
+    "payroll.claim.apply", "payroll.claim.read",
+    "payroll.advance.apply",
+  ];
+  for (const perm of selfServicePerms) {
+    await prisma.rolePermission.create({
+      data: { roleId: devRole.id, permissionKey: perm },
+    });
+    await prisma.rolePermission.create({
+      data: { roleId: empRole.id, permissionKey: perm },
+    });
+  }
+  console.log("✓ Tenant roles (admin, HR, Developer, Employee) and permissions configured");
+
+  // Tenant Users
+  const gauravUser = await prisma.user.create({
+    data: {
+      tenantId,
+      email: "gaurav.12bhindwar@gmail.com",
+      displayName: "Gaurav Bhindwar",
+      phone: "+91 9988776655",
+      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+    },
+  });
+  await prisma.userRole.create({
+    data: { userId: gauravUser.id, roleId: adminRole.id },
+  });
+
+  const hrUser = await prisma.user.create({
+    data: {
+      tenantId,
+      email: "hr@saas-erp.local",
+      displayName: "HR Administrator",
+      phone: "+91 9876543210",
+      avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
+    },
+  });
+  await prisma.userRole.create({
+    data: { userId: hrUser.id, roleId: hrRole.id },
+  });
+  console.log("✓ Tenant users seeded: gaurav.12bhindwar@gmail.com (admin) & hr@saas-erp.local (HR)");
 
   // ==========================================
-  // 2. Departments Master
+  // 3. Departments Master
   // ==========================================
   const depts = [
     "Executive Leadership",
@@ -97,17 +241,15 @@ async function main() {
 
   const deptMap = {};
   for (const name of depts) {
-    const d = await prisma.department.upsert({
-      where: { tenantId_name: { tenantId, name } },
-      update: {},
-      create: { tenantId, name },
+    const d = await prisma.department.create({
+      data: { tenantId, name },
     });
     deptMap[name] = d.id;
   }
   console.log("✓ Departments seeded:", Object.keys(deptMap).length);
 
   // ==========================================
-  // 3. Designations Master
+  // 4. Designations Master
   // ==========================================
   const desigs = [
     "Executive Director",
@@ -122,158 +264,97 @@ async function main() {
 
   const desigMap = {};
   for (const name of desigs) {
-    const d = await prisma.designation.upsert({
-      where: { tenantId_name: { tenantId, name } },
-      update: {},
-      create: { tenantId, name },
+    const d = await prisma.designation.create({
+      data: { tenantId, name },
     });
     desigMap[name] = d.id;
   }
   console.log("✓ Designations seeded:", Object.keys(desigMap).length);
 
-  // ==========================================
-  // 4. Update Existing User Profiles (HR & Gaurav)
-  // ==========================================
-  const hrUser = tenant.users.find((u) => u.email === "hr@saas-erp.local");
-  const gauravUser = tenant.users.find((u) => u.email === "gaurav@saas-erp.local");
+  // Update user department & designation assignments
+  await prisma.user.update({
+    where: { id: gauravUser.id },
+    data: {
+      departmentId: deptMap["Technology & Engineering"],
+      designationId: desigMap["Lead Developer"],
+    },
+  });
 
-  if (hrUser) {
-    await prisma.user.update({
-      where: { id: hrUser.id },
-      data: {
-        phone: "+91 9876543210",
-        departmentId: deptMap["Human Resources"],
-        designationId: desigMap["HR Executive"],
-        avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
-      },
-    });
-  }
-
-  if (gauravUser) {
-    await prisma.user.update({
-      where: { id: gauravUser.id },
-      data: {
-        phone: "+91 9988776655",
-        departmentId: deptMap["Technology & Engineering"],
-        designationId: desigMap["Lead Developer"],
-        avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-      },
-    });
-  }
+  await prisma.user.update({
+    where: { id: hrUser.id },
+    data: {
+      departmentId: deptMap["Human Resources"],
+      designationId: desigMap["HR Executive"],
+    },
+  });
 
   // ==========================================
   // 5. Person Master & Organizational Hierarchy
   // ==========================================
   // Director
-  let directorPerson = await prisma.person.findFirst({
-    where: { tenantId, email: "director@saas-erp.local" },
+  let directorPerson = await prisma.person.create({
+    data: {
+      tenantId,
+      firstName: "Dr. Surbhi",
+      lastName: "Singh",
+      email: "director@saas-erp.local",
+      phone: "+91 9911223344",
+      gender: "Female",
+      dob: new Date("1980-04-12"),
+      address: "Golf Links, Central Delhi, 110003",
+      emergencyContact: "+91 9911223300 (Spouse: Rajeev Singh)",
+      departmentId: deptMap["Executive Leadership"],
+      designationId: desigMap["Executive Director"],
+      managerId: null,
+      status: "ACTIVE",
+      personType: "EMPLOYEE",
+      avatarUrl: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80",
+    },
   });
-  if (!directorPerson) {
-    directorPerson = await prisma.person.create({
-      data: {
-        tenantId,
-        firstName: "Dr. Surbhi",
-        lastName: "Singh",
-        email: "director@saas-erp.local",
-        phone: "+91 9911223344",
-        gender: "Female",
-        dob: new Date("1980-04-12"),
-        address: "Golf Links, Central Delhi, 110003",
-        emergencyContact: "+91 9911223300 (Spouse: Rajeev Singh)",
-        departmentId: deptMap["Executive Leadership"],
-        designationId: desigMap["Executive Director"],
-        managerId: null,
-        status: "ACTIVE",
-        personType: "EMPLOYEE",
-        avatarUrl: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80",
-      },
-    });
-  } else {
-    directorPerson = await prisma.person.update({
-      where: { id: directorPerson.id },
-      data: {
-        departmentId: deptMap["Executive Leadership"],
-        designationId: desigMap["Executive Director"],
-        managerId: null,
-      },
-    });
-  }
 
   // HR Person (reports to Director)
-  let hrPerson = await prisma.person.findFirst({
-    where: { tenantId, email: "hr@saas-erp.local" },
+  let hrPerson = await prisma.person.create({
+    data: {
+      tenantId,
+      userId: hrUser.id,
+      firstName: "HR",
+      lastName: "Administrator",
+      email: "hr@saas-erp.local",
+      phone: "+91 9876543210",
+      gender: "Female",
+      dob: new Date("1992-06-14"),
+      address: "Connaught Place, Central Delhi, 110001",
+      emergencyContact: "+91 9876543299 (Spouse)",
+      departmentId: deptMap["Human Resources"],
+      designationId: desigMap["HR Executive"],
+      managerId: directorPerson.id,
+      status: "ACTIVE",
+      personType: "EMPLOYEE",
+      avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
+    },
   });
-  if (!hrPerson) {
-    hrPerson = await prisma.person.create({
-      data: {
-        tenantId,
-        userId: hrUser?.id,
-        firstName: "HR",
-        lastName: "Administrator",
-        email: "hr@saas-erp.local",
-        phone: "+91 9876543210",
-        gender: "Female",
-        dob: new Date("1992-06-14"),
-        address: "Connaught Place, Central Delhi, 110001",
-        emergencyContact: "+91 9876543299 (Spouse)",
-        departmentId: deptMap["Human Resources"],
-        designationId: desigMap["HR Executive"],
-        managerId: directorPerson.id,
-        status: "ACTIVE",
-        personType: "EMPLOYEE",
-        avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
-      },
-    });
-  } else {
-    hrPerson = await prisma.person.update({
-      where: { id: hrPerson.id },
-      data: {
-        userId: hrUser?.id,
-        departmentId: deptMap["Human Resources"],
-        designationId: desigMap["HR Executive"],
-        managerId: directorPerson.id,
-        phone: "+91 9876543210",
-        avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
-      },
-    });
-  }
 
   // Gaurav Person (reports to Director)
-  let gauravPerson = await prisma.person.findFirst({
-    where: { tenantId, email: "gaurav@saas-erp.local" },
+  let gauravPerson = await prisma.person.create({
+    data: {
+      tenantId,
+      userId: gauravUser.id,
+      firstName: "Gaurav",
+      lastName: "Bhindwar",
+      email: "gaurav.12bhindwar@gmail.com",
+      phone: "+91 9988776655",
+      gender: "Male",
+      dob: new Date("1994-08-22"),
+      address: "Vasant Kunj, South Delhi, 110070",
+      emergencyContact: "+91 9988776600 (Father)",
+      departmentId: deptMap["Technology & Engineering"],
+      designationId: desigMap["Lead Developer"],
+      managerId: directorPerson.id,
+      status: "ACTIVE",
+      personType: "EMPLOYEE",
+      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+    },
   });
-  if (!gauravPerson) {
-    gauravPerson = await prisma.person.create({
-      data: {
-        tenantId,
-        userId: gauravUser?.id,
-        firstName: "Gaurav",
-        lastName: "Sharma",
-        email: "gaurav@saas-erp.local",
-        phone: "+91 9988776655",
-        gender: "Male",
-        dob: new Date("1994-08-22"),
-        address: "Vasant Kunj, South Delhi, 110070",
-        emergencyContact: "+91 9988776600 (Father)",
-        departmentId: deptMap["Technology & Engineering"],
-        designationId: desigMap["Lead Developer"],
-        managerId: directorPerson.id,
-        status: "ACTIVE",
-        personType: "EMPLOYEE",
-        avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-      },
-    });
-  } else {
-    gauravPerson = await prisma.person.update({
-      where: { id: gauravPerson.id },
-      data: {
-        userId: gauravUser?.id,
-        departmentId: deptMap["Technology & Engineering"],
-        designationId: desigMap["Lead Developer"],
-        managerId: directorPerson.id,
-      },
-    });
-  }
 
   // Additional Employees & Volunteers
   const additionalPeople = [
@@ -428,7 +509,7 @@ async function main() {
   } catch {
     try {
       await s3.send(new CreateBucketCommand({ Bucket: bucket }));
-    } catch {}
+    } catch { }
   }
 
   const samplePdfBytes = Buffer.from(
@@ -529,7 +610,7 @@ async function main() {
           ContentType: doc.mimeType || "application/pdf",
         })
       );
-    } catch {}
+    } catch { }
 
     const exists = await prisma.personDocument.findFirst({
       where: { tenantId, personId: doc.personId, name: doc.name },
@@ -684,7 +765,7 @@ async function main() {
       decisionNotes: "Approved under emergency medical welfare.",
       decidedAt: new Date("2025-11-10T09:00:00Z"),
     },
-    // Gaurav Sharma (Lead Dev)
+    // Gaurav Bhindwar (Lead Dev)
     {
       personId: gauravPerson.id,
       leaveTypeId: leaveTypeMap["PL"],
@@ -870,7 +951,7 @@ async function main() {
       paymentMode: "BANK_TRANSFER",
       bankAccount: "045601512345",
       bankIfsc: "ICIC0000456",
-      panNumber: "GVRSH1994M",
+      panNumber: "GVRBH1994M",
     },
     {
       personId: hrPerson.id,
@@ -1125,7 +1206,7 @@ async function main() {
       decisionNotes: "Auditing travel receipts verified and approved.",
       decidedAt: new Date("2026-09-10T14:30:00Z"),
     },
-    // Gaurav Sharma (Lead Dev)
+    // Gaurav Bhindwar (Lead Dev)
     {
       personId: gauravPerson.id,
       title: "Dev Cloud Hardware & Biometric Readers",
@@ -1183,7 +1264,7 @@ async function main() {
               ContentType: "application/pdf",
             })
           );
-        } catch {}
+        } catch { }
       }
       await prisma.expenseClaim.create({
         data: { tenantId, ...claim },
