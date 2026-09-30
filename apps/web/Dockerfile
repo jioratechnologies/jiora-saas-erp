@@ -2,7 +2,7 @@
 # served by nginx — there's no server-side runtime for this app. Built with
 # the monorepo root as context, same reasoning as apps/api/Dockerfile.
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 RUN corepack enable
 WORKDIR /repo
 

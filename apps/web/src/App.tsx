@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./auth/auth-store";
+import { ApiError } from "./api/client";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { ConfirmProvider } from "./hooks/use-confirm";
 import { ToastProvider, ToastBridge } from "./components/ui/toast";
@@ -24,7 +25,19 @@ import { ClaimsPage } from "./routes/payroll/ClaimsPage";
 import { MyPayslipsPage } from "./routes/payroll/MyPayslipsPage";
 import { DepartmentTeamsPage } from "./routes/hr/DepartmentTeamsPage";
 
-const queryClient = new QueryClient();
+// Client errors (401/403/404...) won't fix themselves on retry, so fail fast
+// instead of hammering the API; only transient failures get a couple of retries.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export function App() {
   const loadUser = useAuthStore((s) => s.loadUser);
