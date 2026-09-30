@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { PageHeader } from "../../components/page-header";
 import { QueryState } from "../../components/query-state";
 import { Modal } from "../../components/ui/modal";
+import { HeaderActionPortal } from "../../components/header-action-portal";
 import { useConfirm } from "../../hooks/use-confirm";
 import { toast } from "../../components/ui/toast";
 import { useMe } from "../../auth/use-me";
@@ -85,6 +86,20 @@ export function HolidaysPage() {
 
   return (
     <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
+      {canWrite && (
+        <HeaderActionPortal>
+          <Button
+            size="sm"
+            onClick={() => setCreateModalOpen(true)}
+            className="h-9 gap-1.5 font-medium shadow-xs"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Add Holiday</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        </HeaderActionPortal>
+      )}
+
       <PageHeader
         icon={CalendarDays}
         title="Holiday Calendar"
@@ -139,90 +154,148 @@ export function HolidaysPage() {
         }
       />
 
-      {/* Holidays Table */}
-      <Card>
+      {/* Holidays Table and Cards */}
+      <Card className="rounded-2xl border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs overflow-hidden">
         <CardContent className="p-0">
           <QueryState isLoading={isLoading} error={error}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-40">Date</TableHead>
-                  <TableHead>Holiday</TableHead>
-                  <TableHead>Day of Week</TableHead>
-                  <TableHead>Classification</TableHead>
-                  {canWrite && <TableHead className="w-16 text-right" />}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {holidays?.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
-                      No holidays configured for the year {selectedYear}.
-                    </TableCell>
+            {/* Desktop Table View */}
+            <div className="hidden sm:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-950/40">
+                    <TableHead className="w-44 font-semibold text-xs">Date</TableHead>
+                    <TableHead className="font-semibold text-xs">Holiday Observance</TableHead>
+                    <TableHead className="font-semibold text-xs">Day of Week</TableHead>
+                    <TableHead className="font-semibold text-xs">Classification</TableHead>
+                    {canWrite && <TableHead className="w-16 text-right pr-4 font-semibold text-xs">Action</TableHead>}
                   </TableRow>
-                ) : (
-                  holidays?.map((h) => {
-                    const holidayDate = new Date(h.date);
-                    return (
-                      <TableRow key={h.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2.5">
-                            <div className="flex flex-col items-center justify-center h-10 w-10 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
-                              <span className="text-[10px] font-bold uppercase leading-none">
-                                {holidayDate.toLocaleDateString(undefined, { month: "short" })}
-                              </span>
-                              <span className="text-sm font-extrabold leading-tight">
-                                {holidayDate.getDate()}
+                </TableHeader>
+                <TableBody>
+                  {holidays?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-12 text-sm text-muted-foreground">
+                        No holidays configured for the year {selectedYear}.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    holidays?.map((h) => {
+                      const holidayDate = new Date(h.date);
+                      return (
+                        <TableRow key={h.id} className="border-b border-zinc-100 dark:border-zinc-800/60 hover:bg-zinc-50/70 dark:hover:bg-zinc-800/40 transition-colors">
+                          <TableCell className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex flex-col items-center justify-center h-10 w-10 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+                                <span className="text-[10px] font-bold uppercase leading-none">
+                                  {holidayDate.toLocaleDateString(undefined, { month: "short" })}
+                                </span>
+                                <span className="text-sm font-extrabold leading-tight">
+                                  {holidayDate.getDate()}
+                                </span>
+                              </div>
+                              <span className="text-xs font-semibold text-foreground">
+                                {holidayDate.toLocaleDateString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
                               </span>
                             </div>
-                            <span className="text-xs font-medium text-foreground">
-                              {holidayDate.toLocaleDateString(undefined, {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-semibold text-foreground text-sm">
-                          {h.name}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium">
-                          {holidayDate.toLocaleDateString(undefined, { weekday: "long" })}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={h.isOptional ? "warning" : "success"}
-                            size="sm"
-                            dot
-                          >
-                            {h.isOptional ? "Optional / Restricted" : "Mandatory / Public"}
-                          </Badge>
-                        </TableCell>
-                        {canWrite && (
-                          <TableCell className="text-right">
-                            <button
-                              onClick={async () => {
-                                const ok = await confirm({
-                                  title: `Delete ${h.name}?`,
-                                  description: `Are you sure you want to remove ${h.name} from the ${selectedYear} calendar?`,
-                                  confirmLabel: "Delete",
-                                });
-                                if (ok) deleteHoliday.mutate(h.id);
-                              }}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                              title="Delete holiday"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
                           </TableCell>
+                          <TableCell className="py-3 px-4 font-semibold text-foreground text-sm">
+                            {h.name}
+                          </TableCell>
+                          <TableCell className="py-3 px-4 text-xs text-muted-foreground font-medium">
+                            {holidayDate.toLocaleDateString(undefined, { weekday: "long" })}
+                          </TableCell>
+                          <TableCell className="py-3 px-4">
+                            <Badge
+                              variant={h.isOptional ? "warning" : "success"}
+                              size="sm"
+                              dot
+                            >
+                              {h.isOptional ? "Optional / Restricted" : "Mandatory / Public"}
+                            </Badge>
+                          </TableCell>
+                          {canWrite && (
+                            <TableCell className="py-3 px-4 text-right">
+                              <button
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: `Delete ${h.name}?`,
+                                    description: `Are you sure you want to remove ${h.name} from the ${selectedYear} calendar?`,
+                                    confirmLabel: "Delete",
+                                  });
+                                  if (ok) deleteHoliday.mutate(h.id);
+                                }}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                title="Delete holiday"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+              {holidays?.length === 0 ? (
+                <div className="p-8 text-center text-xs text-muted-foreground">
+                  No holidays configured for {selectedYear}.
+                </div>
+              ) : (
+                holidays?.map((h) => {
+                  const holidayDate = new Date(h.date);
+                  return (
+                    <div key={h.id} className="p-3.5 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex flex-col items-center justify-center h-10 w-10 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+                          <span className="text-[10px] font-bold uppercase leading-none">
+                            {holidayDate.toLocaleDateString(undefined, { month: "short" })}
+                          </span>
+                          <span className="text-sm font-extrabold leading-tight">
+                            {holidayDate.getDate()}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-foreground truncate">{h.name}</h4>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {holidayDate.toLocaleDateString(undefined, { weekday: "long", year: "numeric" })}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant={h.isOptional ? "warning" : "success"} size="sm" dot>
+                          {h.isOptional ? "Optional" : "Public"}
+                        </Badge>
+                        {canWrite && (
+                          <button
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: `Delete ${h.name}?`,
+                                description: `Remove ${h.name} from the ${selectedYear} calendar?`,
+                                confirmLabel: "Delete",
+                              });
+                              if (ok) deleteHoliday.mutate(h.id);
+                            }}
+                            className="p-1 text-muted-foreground hover:text-red-500"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         )}
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </QueryState>
         </CardContent>
       </Card>
