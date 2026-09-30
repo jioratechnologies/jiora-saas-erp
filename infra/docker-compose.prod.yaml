@@ -20,13 +20,21 @@ services:
 
   backend:
     networks:
-      - saas-erp-local-internal
-      - dokploy-network
+      saas-erp-local-internal:
+      dokploy-network:
+        aliases:
+          - backend
+          - api
+          - saas-erp-backend
 
   frontend:
     networks:
-      - saas-erp-local-internal
-      - dokploy-network
+      saas-erp-local-internal:
+      dokploy-network:
+        aliases:
+          - frontend
+          - web
+          - saas-erp-frontend
 
 networks:
   # Dokploy creates this during install — do not docker network create it.
