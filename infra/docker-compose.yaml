@@ -1,7 +1,12 @@
 name: saas-erp-dev
 
-# Local development stack: frontend, backend, and Redis.
-# Cloud services (PostgreSQL DB, MinIO Object Storage, and Zitadel Auth) are accessed via environment variables.
+# Unified stack for both local dev and production.
+# Cloud services (PostgreSQL DB, MinIO Object Storage, and Zitadel Auth) are
+# accessed via environment variables in the .env file.
+#
+# DATABASE_URL in .env always points to pgbouncer:5432 (service below).
+# Pgbouncer then connects to the real Postgres using POSTGRES_HOST/PORT vars.
+# DIRECT_URL is kept for Prisma migrations (bypasses pgbouncer, needs superuser).
 
 services:
   redis:
@@ -18,6 +23,23 @@ services:
         aliases:
           - redis
 
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: saas-erp-pgbouncer
+    restart: unless-stopped
+    environment:
+      # pgbouncer proxies to the real Postgres — can be remote or local
+      DATABASE_URL: postgres://${POSTGRES_APP_USER:-app_runtime}:${APP_RUNTIME_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: scram-sha-256
+      IGNORE_STARTUP_PARAMETERS: "search_path,extra_float_digits"
+    networks:
+      saas-erp-local-internal:
+        aliases:
+          - pgbouncer
+
   backend:
     build:
       context: ..
@@ -26,8 +48,10 @@ services:
     restart: unless-stopped
     depends_on:
       - redis
+      - pgbouncer
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # Always routes through pgbouncer for connection pooling
+      DATABASE_URL: ${DATABASE_URL:-postgres://app_runtime:${APP_RUNTIME_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-saaserp}}
       DIRECT_URL: ${DIRECT_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-saaserpobject.jioratech.com}
@@ -54,7 +78,7 @@ services:
       args:
         VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-https://authsaaserp.jioratech.com}
         VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-392943470081278469}
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: saas-erp-frontend
     restart: unless-stopped
     depends_on:
