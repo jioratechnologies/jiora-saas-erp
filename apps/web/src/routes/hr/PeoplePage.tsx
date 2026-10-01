@@ -208,6 +208,7 @@ export function PeoplePage() {
   const [previewDoc, setPreviewDoc] = useState<PersonDocument | null>(null);
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewDocError, setPreviewDocError] = useState<string | null>(null);
 
   // New Person Form State
   const [newPersonType, setNewPersonType] = useState<"EMPLOYEE" | "VOLUNTEER">("EMPLOYEE");
@@ -366,6 +367,7 @@ export function PeoplePage() {
   const handleDownloadSampleCsv = () => {
     const headers = [
       "firstName",
+      "middleName",
       "lastName",
       "email",
       "phone",
@@ -375,8 +377,8 @@ export function PeoplePage() {
       "joiningDate",
     ];
     const sampleRows = [
-      ["Pooja", "Sharma", "pooja.sharma@example.org", "+91 9876543210", "EMPLOYEE", "Programmes", "Project Coordinator", "2026-02-01"],
-      ["Amit", "Verma", "amit.verma@example.org", "+91 9812345678", "VOLUNTEER", "Field Operations", "Field Volunteer", "2026-03-15"],
+      ["Pooja", "Kumar", "Sharma", "pooja.sharma@example.org", "+91 9876543210", "EMPLOYEE", "Programmes", "Project Coordinator", "2026-02-01"],
+      ["Amit", "", "Verma", "amit.verma@example.org", "+91 9812345678", "VOLUNTEER", "Field Operations", "Field Volunteer", "2026-03-15"],
     ];
     exportToCsv("sample_staff_import", headers, sampleRows);
     toast.success("Template downloaded", "Fill in your staff details and upload.");
@@ -396,9 +398,14 @@ export function PeoplePage() {
       headers.forEach((h, i) => {
         rowObj[h] = values[i] || "";
       });
+      const rawFirst = rowObj.firstname || rowObj["first name"] || "";
+      const rawMiddle = rowObj.middlename || rowObj.midname || rowObj["middle name"] || rowObj["mid name"] || "";
+      const rawLast = rowObj.lastname || rowObj["last name"] || "";
+      const combinedFirst = rawMiddle ? `${rawFirst} ${rawMiddle}`.trim() : rawFirst.trim();
+
       return {
-        firstName: rowObj.firstname || rowObj["first name"] || "",
-        lastName: rowObj.lastname || rowObj["last name"] || "",
+        firstName: combinedFirst,
+        lastName: rawLast,
         email: rowObj.email || "",
         phone: rowObj.phone || "",
         personType: (rowObj.persontype || rowObj["person type"] || "EMPLOYEE").toUpperCase() === "VOLUNTEER" ? "VOLUNTEER" : "EMPLOYEE",
@@ -584,15 +591,22 @@ export function PeoplePage() {
   const handleOpenDocViewer = async (doc: PersonDocument) => {
     setPreviewDoc(doc);
     setPreviewDocUrl(null);
+    setPreviewDocError(null);
     setLoadingPreview(true);
     setViewDocModalOpen(true);
     try {
       const data = await api.get<{ downloadUrl?: string; url?: string }>(
         `/hr/persons/${selectedPersonId}/documents/${doc.id}/url`
       );
-      setPreviewDocUrl(data.downloadUrl || data.url || null);
+      const targetUrl = data.downloadUrl || data.url || null;
+      if (!targetUrl) {
+        setPreviewDocError("Document link is not available in storage.");
+      } else {
+        setPreviewDocUrl(targetUrl);
+      }
     } catch (err: any) {
-      toast.error("Preview failed", err.message || "Could not generate preview link.");
+      setPreviewDocError("Could not retrieve document from object storage. Please re-upload if needed.");
+      toast.error("Preview failed", "Could not generate preview link.");
     } finally {
       setLoadingPreview(false);
     }
@@ -1316,71 +1330,70 @@ export function PeoplePage() {
                   </Button>
                 )}
               </div>
-
-              {/* Sticky Meta Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
-                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
-                    <Building className="h-3 w-3 text-primary shrink-0" /> Dept
-                  </span>
-                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
-                    {selectedPerson.department?.name || "Not assigned"}
-                  </p>
-                </div>
-
-                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
-                    <UserCheck className="h-3 w-3 text-emerald-500 shrink-0" /> Manager
-                  </span>
-                  {selectedPerson.manager ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPersonId(selectedPerson.manager!.id)}
-                      className="font-semibold text-primary hover:underline truncate mt-0.5 text-xs block text-left w-full group cursor-pointer"
-                      title="Click to view supervisor profile"
-                    >
-                      <span className="truncate block">
-                        {selectedPerson.manager.firstName} {selectedPerson.manager.lastName}
-                      </span>
-                      {selectedPerson.manager.designation?.name && (
-                        <span className="text-[10px] text-muted-foreground font-normal truncate block">
-                          {selectedPerson.manager.designation.name}
-                        </span>
-                      )}
-                    </button>
-                  ) : (
-                    <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
-                      None (Top Level)
-                    </p>
-                  )}
-                </div>
-
-                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
-                    <Phone className="h-3 w-3 text-muted-foreground shrink-0" /> Contact
-                  </span>
-                  <p className="font-semibold text-foreground truncate font-mono mt-0.5 text-xs">
-                    {selectedPerson.phone || "Not recorded"}
-                  </p>
-                </div>
-
-                <div className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
-                    <Calendar className="h-3 w-3 text-muted-foreground shrink-0" /> Joined
-                  </span>
-                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
-                    {selectedPerson.joiningDate
-                      ? new Date(selectedPerson.joiningDate).toLocaleDateString()
-                      : "Not recorded"}
-                  </p>
-                </div>
-              </div>
             </div>
           ) : undefined
         }
       >
         {selectedPerson && (
-          <div className="space-y-6">
+          <div className="space-y-4">
+            {/* Meta Grid (Scrolls naturally on mobile) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                  <Building className="h-3 w-3 text-primary shrink-0" /> Dept
+                </span>
+                <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                  {selectedPerson.department?.name || "Not assigned"}
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                  <UserCheck className="h-3 w-3 text-emerald-500 shrink-0" /> Manager
+                </span>
+                {selectedPerson.manager ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPersonId(selectedPerson.manager!.id)}
+                    className="font-semibold text-primary hover:underline truncate mt-0.5 text-xs block text-left w-full group cursor-pointer"
+                    title="Click to view supervisor profile"
+                  >
+                    <span className="truncate block">
+                      {selectedPerson.manager.firstName} {selectedPerson.manager.lastName}
+                    </span>
+                    {selectedPerson.manager.designation?.name && (
+                      <span className="text-[10px] text-muted-foreground font-normal truncate block">
+                        {selectedPerson.manager.designation.name}
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                    None (Top Level)
+                  </p>
+                )}
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                  <Phone className="h-3 w-3 text-muted-foreground shrink-0" /> Contact
+                </span>
+                <p className="font-semibold text-foreground truncate font-mono mt-0.5 text-xs">
+                  {selectedPerson.phone || "Not recorded"}
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                  <Calendar className="h-3 w-3 text-muted-foreground shrink-0" /> Joined
+                </span>
+                <p className="font-semibold text-foreground truncate mt-0.5 text-xs">
+                  {selectedPerson.joiningDate
+                    ? new Date(selectedPerson.joiningDate).toLocaleDateString()
+                    : "Not recorded"}
+                </p>
+              </div>
+            </div>
             {/* Address, WhatsApp & Emergency Contact Summary */}
             {(selectedPerson.currentAddress || selectedPerson.permanentAddress || selectedPerson.address || selectedPerson.whatsapp || selectedPerson.emergencyContact) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -1585,36 +1598,36 @@ export function PeoplePage() {
                           isPending && "border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900",
                         )}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5">
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
                             <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="font-semibold text-foreground truncate">{doc.name}</p>
+                                <p className="font-semibold text-foreground text-xs sm:text-sm">{doc.name}</p>
                                 {isApproved && (
-                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
                                     <CheckCircle className="h-3 w-3" /> Verified
                                   </span>
                                 )}
                                 {isPending && (
-                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
                                     <Clock className="h-3 w-3" /> Pending Review
                                   </span>
                                 )}
                                 {isRejected && (
-                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full text-[10px] font-bold bg-red-500/15 text-red-700 dark:text-red-300">
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-700 dark:text-red-300">
                                     <XCircle className="h-3 w-3" /> Rejected
                                   </span>
                                 )}
                               </div>
 
                               {doc.documentNumber && (
-                                <p className="text-[11px] font-mono text-foreground font-semibold mt-0.5">
+                                <p className="text-[11px] font-mono text-foreground font-semibold mt-1">
                                   ID: <span className="text-primary">{doc.documentNumber}</span>
                                 </p>
                               )}
 
-                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1 flex-wrap">
                                 <Badge size="sm" variant="secondary">
                                   {doc.category}
                                 </Badge>
@@ -1624,21 +1637,21 @@ export function PeoplePage() {
                               </div>
 
                               {isRejected && doc.rejectionReason && (
-                                <div className="mt-1.5 p-1.5 rounded-lg bg-red-500/10 text-[10px] text-red-600 dark:text-red-400 font-medium">
+                                <div className="mt-2 p-2 rounded-lg bg-red-500/10 text-[10px] text-red-600 dark:text-red-400 font-medium leading-relaxed">
                                   <strong>HR Note:</strong> {doc.rejectionReason}
                                 </div>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center justify-end gap-1.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800/80 shrink-0 flex-wrap">
                             {/* In-App View Document Button */}
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
                               onClick={() => handleOpenDocViewer(doc)}
-                              className="h-8 px-2 gap-1 text-xs text-primary hover:bg-primary/10 border-primary/20"
+                              className="h-7 sm:h-8 px-2.5 gap-1 text-xs text-primary hover:bg-primary/10 border-primary/20"
                               title="View document inside app"
                             >
                               <Eye className="h-3.5 w-3.5" />
@@ -1662,7 +1675,7 @@ export function PeoplePage() {
                                     type="button"
                                     onClick={() => reviewDoc.mutate({ docId: doc.id, status: "APPROVED" })}
                                     disabled={reviewDoc.isPending}
-                                    className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition-colors text-[11px] font-semibold"
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition-colors text-[11px] font-semibold"
                                     title="Approve document"
                                   >
                                     Approve
@@ -1676,7 +1689,7 @@ export function PeoplePage() {
                                       setRejectModalOpen(true);
                                     }}
                                     disabled={reviewDoc.isPending}
-                                    className="px-2 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[11px] font-semibold"
+                                    className="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[11px] font-semibold"
                                     title="Reject document with reason"
                                   >
                                     Reject
@@ -2241,6 +2254,7 @@ export function PeoplePage() {
           setViewDocModalOpen(false);
           setPreviewDoc(null);
           setPreviewDocUrl(null);
+          setPreviewDocError(null);
         }}
         title={previewDoc ? previewDoc.name : "Document Viewer"}
         description={
@@ -2315,6 +2329,14 @@ export function PeoplePage() {
               <div className="p-8 text-center space-y-2">
                 <div className="h-8 w-8 mx-auto animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 <p className="text-xs text-muted-foreground">Streaming secure document preview from MinIO…</p>
+              </div>
+            ) : previewDocError ? (
+              <div className="p-8 text-center space-y-3 max-w-sm mx-auto">
+                <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto" />
+                <div>
+                  <h6 className="font-bold text-foreground text-sm">Preview Unavailable</h6>
+                  <p className="text-xs text-muted-foreground mt-1">{previewDocError}</p>
+                </div>
               </div>
             ) : previewDocUrl ? (
               previewDoc?.mimeType?.includes("image") ||
@@ -2547,7 +2569,7 @@ export function PeoplePage() {
               rows={6}
               value={bulkCsvText}
               onChange={(e) => handleParseCsv(e.target.value)}
-              placeholder={`firstName,lastName,email,phone,personType,departmentName,designationName,joiningDate\nPooja,Sharma,pooja@example.org,+91 9876543210,EMPLOYEE,Programmes,Project Coordinator,2026-02-01`}
+              placeholder={`firstName,middleName,lastName,email,phone,personType,departmentName,designationName,joiningDate\nPooja,Kumar,Sharma,pooja@example.org,+91 9876543210,EMPLOYEE,Programmes,Project Coordinator,2026-02-01`}
               className="w-full p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-mono focus:ring-2 focus:ring-primary focus:outline-none"
             />
           </div>

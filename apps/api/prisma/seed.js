@@ -493,8 +493,13 @@ async function main() {
   // 6. MinIO S3 Verification & KYC Documents
   // ==========================================
   const objectStorageUseSsl = process.env.OBJECT_STORAGE_USE_SSL === "true";
+  const port = process.env.OBJECT_STORAGE_PORT;
+  const endpointHost = process.env.OBJECT_STORAGE_ENDPOINT || "localhost";
+  const portSuffix = port && !((objectStorageUseSsl && (port === "443" || port === 443)) || (!objectStorageUseSsl && (port === "80" || port === 80))) ? `:${port}` : "";
+  const s3Endpoint = `${objectStorageUseSsl ? "https" : "http"}://${endpointHost}${portSuffix}`;
+
   const s3 = new S3Client({
-    endpoint: `${objectStorageUseSsl ? "https" : "http"}://${process.env.OBJECT_STORAGE_ENDPOINT || "localhost"}:${process.env.OBJECT_STORAGE_PORT || "9010"}`,
+    endpoint: s3Endpoint,
     region: "us-east-1",
     credentials: {
       accessKeyId: process.env.OBJECT_STORAGE_ACCESS_KEY || "saaserp",
@@ -509,7 +514,9 @@ async function main() {
   } catch {
     try {
       await s3.send(new CreateBucketCommand({ Bucket: bucket }));
-    } catch { }
+    } catch (err) {
+      console.warn("Could not create bucket:", err?.message || err);
+    }
   }
 
   const samplePdfBytes = Buffer.from(

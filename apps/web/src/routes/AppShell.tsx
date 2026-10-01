@@ -289,7 +289,7 @@ export function AppShell() {
           "hidden md:sticky md:top-0 md:flex md:z-40",
           collapsed ? "md:w-[72px]" : "md:w-64",
           // Mobile drawer styles
-          mobileOpen && "!flex fixed inset-y-0 left-0 z-50 w-64 shadow-2xl",
+          mobileOpen && "!flex fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] shadow-2xl h-[100dvh] max-h-[100dvh]",
         )}
       >
         {/* Floating border toggle button (prominent, easy to identify & click) */}
@@ -500,7 +500,7 @@ export function AppShell() {
         </nav>
 
         {/* Theme Mode Switcher */}
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-2 shrink-0">
           {!collapsed ? (
             <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-900 p-1 border border-zinc-200/50 dark:border-zinc-800/50">
               <button
@@ -564,7 +564,7 @@ export function AppShell() {
 
         {/* User Profile Footer */}
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 border-t border-zinc-100 dark:border-zinc-900 px-3 py-3">
+          <div className="flex items-center gap-2.5 border-t border-zinc-100 dark:border-zinc-900 px-3 py-3 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button
               type="button"
               onClick={() => setEditProfileOpen(true)}
@@ -600,7 +600,7 @@ export function AppShell() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 border-t border-zinc-100 dark:border-zinc-900 py-3">
+          <div className="flex flex-col items-center gap-2 border-t border-zinc-100 dark:border-zinc-900 py-3 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button
               onClick={() => setEditProfileOpen(true)}
               title="My Account & KYC Profile"

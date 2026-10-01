@@ -301,33 +301,38 @@ export function MyPayslipsPage() {
       >
         <QueryState isLoading={loadingDetail} error={null}>
           {detailedPayslip && (
-            <div className="space-y-4 pt-2 printable-area">
-              {/* Action Bar for printing */}
-              <div className="flex justify-end gap-2 print:hidden pb-1">
-                <Button size="sm" variant="outline" onClick={handlePrint} className="h-8 text-xs gap-1.5">
-                  <Printer className="h-3.5 w-3.5" />
-                  Print / Download PDF
-                </Button>
+            <div className="space-y-4 pt-1 printable-area">
+              {/* Top Quick Actions Bar (hidden in print) */}
+              <div className="flex items-center justify-between pb-1 print:hidden">
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  Computer-generated official payslip
+                </span>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <Button size="sm" variant="outline" onClick={handlePrint} className="h-8 text-xs gap-1.5 w-full sm:w-auto justify-center font-medium">
+                    <Printer className="h-3.5 w-3.5" />
+                    Print / Download PDF
+                  </Button>
+                </div>
               </div>
 
               {/* Voucher Sheet */}
-              <div className="border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 bg-white dark:bg-zinc-950 space-y-5 text-xs shadow-sm">
-                {/* Org & Voucher Title */}
-                <div className="flex items-start justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4">
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl sm:rounded-2xl p-3.5 sm:p-6 bg-white dark:bg-zinc-950 space-y-4 text-xs shadow-sm">
+                {/* Voucher Status Bar */}
+                <div className="flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800 pb-3">
                   <div>
-                    <h2 className="text-base font-bold text-foreground uppercase tracking-wide">
-                      Salary Voucher
-                    </h2>
+                    <span className="text-xs font-bold text-foreground tracking-wide uppercase">
+                      Statement of Earnings
+                    </span>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Pay Period: {MONTH_NAMES[detailedPayslip.month - 1]} {detailedPayslip.year}
+                      Period: {MONTH_NAMES[detailedPayslip.month - 1]} {detailedPayslip.year}
                     </p>
                   </div>
                   <div className="text-right">
-                    <Badge variant={detailedPayslip.paymentStatus === "PAID" ? "success" : "secondary"}>
+                    <Badge variant={detailedPayslip.paymentStatus === "PAID" ? "success" : "secondary"} size="sm">
                       {detailedPayslip.paymentStatus}
                     </Badge>
                     {detailedPayslip.paymentReference && (
-                      <div className="text-[10px] text-muted-foreground font-mono mt-1">
+                      <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
                         Ref: {detailedPayslip.paymentReference}
                       </div>
                     )}
@@ -335,123 +340,123 @@ export function MyPayslipsPage() {
                 </div>
 
                 {/* Employee & Bank Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 p-3 sm:p-3.5 rounded-xl border border-zinc-200/70 dark:border-zinc-800/80">
                   <div>
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold">Employee</div>
-                    <div className="font-bold text-foreground mt-0.5">
+                    <div className="font-bold text-foreground mt-0.5 truncate">
                       {detailedPayslip.person.firstName} {detailedPayslip.person.lastName}
                     </div>
                     <div className="text-[10px] text-muted-foreground truncate">{detailedPayslip.person.email}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold">Department</div>
-                    <div className="font-medium text-foreground mt-0.5">
+                    <div className="font-medium text-foreground mt-0.5 truncate">
                       {detailedPayslip.person.department?.name || "General"}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-[10px] text-muted-foreground truncate">
                       {detailedPayslip.person.designation?.name || "Staff"}
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold">Attendance</div>
                     <div className="font-medium text-foreground mt-0.5">
-                      {detailedPayslip.presentDays} of {detailedPayslip.totalWorkingDays} Days
+                      {detailedPayslip.presentDays} / {detailedPayslip.totalWorkingDays} Days
                     </div>
                     <div className="text-[10px] text-muted-foreground">
-                      LOP Days: <span className="font-bold text-rose-600">{detailedPayslip.lopDays}</span>
+                      LOP: <span className="font-semibold text-rose-600">{detailedPayslip.lopDays}d</span>
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold">Bank / PAN</div>
-                    <div className="font-medium text-foreground mt-0.5">
+                    <div className="font-medium text-foreground mt-0.5 truncate">
                       {(detailedPayslip.person as any).salaryAssignment?.bankAccount || detailedPayslip.person.bankAccount
                         ? `A/c: ****${((detailedPayslip.person as any).salaryAssignment?.bankAccount || detailedPayslip.person.bankAccount).slice(-4)}`
                         : "—"}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-[10px] text-muted-foreground truncate">
                       PAN: {(detailedPayslip.person as any).salaryAssignment?.panNumber || detailedPayslip.person.panNumber || "—"}
                     </div>
                   </div>
                 </div>
 
                 {/* Two Column Itemized Table: Earnings vs Deductions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Earnings */}
-                <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                  <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 font-bold text-foreground flex justify-between">
-                    <span>Earnings</span>
-                    <span>Amount (INR)</span>
-                  </div>
-                  <div className="p-3 space-y-2">
-                    {detailedPayslip.earnings.map((e, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-muted-foreground">
-                        <span>{e.name}</span>
-                        <span className="font-medium text-foreground">₹{e.amount.toLocaleString("en-IN")}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                  {/* Earnings */}
+                  <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+                    <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 font-bold text-foreground flex justify-between text-xs">
+                      <span>Earnings</span>
+                      <span>Amount (INR)</span>
+                    </div>
+                    <div className="p-3 space-y-2 text-xs">
+                      {detailedPayslip.earnings.map((e, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-muted-foreground">
+                          <span className="truncate pr-2">{e.name}</span>
+                          <span className="font-medium text-foreground shrink-0">₹{e.amount.toLocaleString("en-IN")}</span>
+                        </div>
+                      ))}
+                      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 flex justify-between font-bold text-foreground">
+                        <span>Total Gross Pay</span>
+                        <span>₹{detailedPayslip.grossPay.toLocaleString("en-IN")}</span>
                       </div>
-                    ))}
-                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 flex justify-between font-bold text-foreground">
-                      <span>Total Gross Pay</span>
-                      <span>₹{detailedPayslip.grossPay.toLocaleString("en-IN")}</span>
                     </div>
                   </div>
-                </div>
 
-                {/* Deductions */}
-                <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                  <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 font-bold text-foreground flex justify-between">
-                    <span>Deductions</span>
-                    <span>Amount (INR)</span>
-                  </div>
-                  <div className="p-3 space-y-2">
-                    {detailedPayslip.deductions.map((d, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-muted-foreground">
-                        <span>{d.name}</span>
-                        <span className="font-medium text-rose-600 dark:text-rose-400">
-                          -₹{d.amount.toLocaleString("en-IN")}
+                  {/* Deductions */}
+                  <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+                    <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 font-bold text-foreground flex justify-between text-xs">
+                      <span>Deductions</span>
+                      <span>Amount (INR)</span>
+                    </div>
+                    <div className="p-3 space-y-2 text-xs">
+                      {detailedPayslip.deductions.map((d, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-muted-foreground">
+                          <span className="truncate pr-2">{d.name}</span>
+                          <span className="font-medium text-rose-600 dark:text-rose-400 shrink-0">
+                            -₹{d.amount.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 flex justify-between font-bold text-foreground">
+                        <span>Total Deductions</span>
+                        <span className="text-rose-600 dark:text-rose-400">
+                          -₹{detailedPayslip.totalDeductions.toLocaleString("en-IN")}
                         </span>
                       </div>
-                    ))}
-                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 flex justify-between font-bold text-foreground">
-                      <span>Total Deductions</span>
-                      <span className="text-rose-600 dark:text-rose-400">
-                        -₹{detailedPayslip.totalDeductions.toLocaleString("en-IN")}
-                      </span>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Net Pay Callout */}
-              <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                    Net Take-Home Salary
+                {/* Net Pay Callout */}
+                <div className="p-3 sm:p-4 rounded-xl bg-primary/10 border border-primary/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                      Net Take-Home Salary
+                    </div>
+                    <div className="text-lg sm:text-xl font-extrabold text-foreground mt-0.5">
+                      ₹{detailedPayslip.netPay.toLocaleString("en-IN")}
+                    </div>
                   </div>
-                  <div className="text-xl font-extrabold text-foreground mt-0.5">
-                    ₹{detailedPayslip.netPay.toLocaleString("en-IN")}
+                  <div className="text-xs text-muted-foreground sm:text-right italic">
+                    Amount in words: <br className="hidden sm:inline" />
+                    <span className="font-medium text-foreground not-italic">
+                      {numberToWordsINR(detailedPayslip.netPay)}
+                    </span>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground sm:text-right italic">
-                  Amount in words: <br className="hidden sm:inline" />
-                  <span className="font-medium text-foreground not-italic">
-                    {numberToWordsINR(detailedPayslip.netPay)}
-                  </span>
+
+                {/* Disclaimer */}
+                <div className="text-[10px] text-muted-foreground text-center border-t border-zinc-200 dark:border-zinc-800 pt-2.5">
+                  This is a computer-generated salary voucher and does not require a physical signature.
                 </div>
               </div>
 
-              {/* Disclaimer */}
-              <div className="text-[10px] text-muted-foreground text-center border-t border-zinc-200 dark:border-zinc-800 pt-3">
-                This is a computer-generated salary voucher and does not require a physical signature.
+              <div className="flex justify-end gap-2 pt-1 print:hidden">
+                <Button variant="outline" size="sm" onClick={() => setSelectedPayslipId(null)} className="h-8 px-4 text-xs font-medium">
+                  Close
+                </Button>
               </div>
             </div>
-
-            <div className="flex justify-end gap-2 pt-2 print:hidden">
-              <Button variant="outline" size="sm" onClick={() => setSelectedPayslipId(null)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        )}
+          )}
         </QueryState>
       </Modal>
     </div>

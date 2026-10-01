@@ -335,30 +335,13 @@ export function AttendancePage() {
             <span>Export {activeTab === "team" ? "Register" : "Logs"} (CSV)</span>
           </Button>
         }
-        stats={
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Total Roster</span>
-              <span className="text-base font-bold text-foreground">{totalStaff}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Present / Active</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{presentCount}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Remote & Field</span>
-              <span className="text-base font-bold text-primary">{remoteFieldCount}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">On Leave</span>
-              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{onLeaveCount}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Unchecked / Absent</span>
-              <span className="text-base font-bold text-rose-600 dark:text-rose-400">{absentCount}</span>
-            </div>
-          </div>
-        }
+        stats={[
+          { label: "Total", value: totalStaff },
+          { label: "Present", value: presentCount, color: "text-emerald-500" },
+          { label: "Remote", value: remoteFieldCount, color: "text-primary" },
+          { label: "On Leave", value: onLeaveCount, color: "text-amber-500" },
+          { label: "Absent", value: absentCount, color: "text-rose-500" },
+        ]}
       />
 
       {/* Realtime Hero Attendance Widget */}

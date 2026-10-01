@@ -136,22 +136,11 @@ export function HolidaysPage() {
             )}
           </div>
         }
-        stats={
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Total Holidays ({selectedYear})</span>
-              <span className="text-base font-bold text-foreground">{holidays?.length || 0} Days</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Mandatory / Public Observances</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{mandatoryCount} Days</span>
-            </div>
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800">
-              <span className="text-[10px] text-muted-foreground block font-medium">Optional / Restricted Holidays</span>
-              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{optionalCount} Days</span>
-            </div>
-          </div>
-        }
+        stats={[
+          { label: `Total (${selectedYear})`, value: `${holidays?.length || 0} Days` },
+          { label: "Mandatory", value: `${mandatoryCount} Days`, color: "text-emerald-500" },
+          { label: "Optional", value: `${optionalCount} Days`, color: "text-amber-500" },
+        ]}
       />
 
       {/* Holidays Table and Cards */}

@@ -330,7 +330,7 @@ export function LeavePage() {
       />
 
       {/* Quota Balance Cards (Dynamic Real-Time Ledger) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
+      <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3.5">
         {(leaveBalances || leaveTypes)?.map((item: any) => {
           const remaining = item.remainingBalance ?? item.annualQuota;
           const quota = item.annualQuota;
@@ -338,22 +338,22 @@ export function LeavePage() {
           const pending = item.pendingDays ?? 0;
 
           return (
-            <Card key={item.id} className="p-4 border-zinc-200/80 dark:border-zinc-800 bg-linear-to-b from-white to-zinc-50/50 dark:from-zinc-900 dark:to-zinc-900/50">
+            <Card key={item.id} className="p-2.5 sm:p-4 border-zinc-200/80 dark:border-zinc-800 bg-linear-to-b from-white to-zinc-50/50 dark:from-zinc-900 dark:to-zinc-900/50">
               <div className="flex items-center justify-between">
-                <Badge variant="default" size="sm">
+                <Badge variant="default" size="sm" className="text-[10px] sm:text-xs px-1.5 py-0 sm:px-2 sm:py-0.5">
                   {item.code}
                 </Badge>
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               </div>
-              <div className="mt-2 space-y-1">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-bold tracking-tight text-foreground font-mono">{remaining}</span>
-                  <span className="text-xs text-muted-foreground font-medium">/ {quota} days left</span>
+              <div className="mt-1.5 sm:mt-2 space-y-0.5 sm:space-y-1">
+                <div className="flex items-baseline gap-1 sm:gap-1.5">
+                  <span className="text-lg sm:text-2xl font-bold tracking-tight text-foreground font-mono">{remaining}</span>
+                  <span className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">/ {quota}d left</span>
                 </div>
-                <p className="text-xs text-muted-foreground truncate">{item.name}</p>
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground">
+                <p className="text-[11px] sm:text-xs text-muted-foreground truncate">{item.name}</p>
+                <div className="flex items-center gap-1.5 pt-0.5 text-[10px] sm:text-[11px] text-muted-foreground flex-wrap">
                   <span>Used: <strong className="text-foreground">{approved}d</strong></span>
-                  {pending > 0 && <span className="text-amber-600 dark:text-amber-400">· Pending: <strong>{pending}d</strong></span>}
+                  {pending > 0 && <span className="text-amber-600 dark:text-amber-400">· Pend: <strong>{pending}d</strong></span>}
                 </div>
               </div>
             </Card>
@@ -399,59 +399,20 @@ export function LeavePage() {
         <Card>
           <CardContent className="p-0">
             <QueryState isLoading={myRequestsLoading} error={myRequestsError}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Leave Type</TableHead>
-                    <TableHead>Dates</TableHead>
-                    <TableHead>Days</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Approver Remarks</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {myRequestsPagination.paginatedItems.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
-                        You have not submitted any leave requests yet.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    myRequestsPagination.paginatedItems.map((req) => (
-                      <TableRow key={req.id}>
-                        <TableCell className="font-semibold text-foreground">
-                          <Badge variant="outline" size="sm">
+              {myRequestsPagination.paginatedItems.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  You have not submitted any leave requests yet.
+                </div>
+              ) : (
+                <>
+                  {/* Mobile Card List (sm:hidden) */}
+                  <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {myRequestsPagination.paginatedItems.map((req) => (
+                      <div key={req.id} className="p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge variant="outline" size="sm" className="font-semibold text-xs">
                             {req.leaveType.code} - {req.leaveType.name}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {new Date(req.startDate).toLocaleDateString()} – {new Date(req.endDate).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="font-bold text-xs">
-                          {req.daysCount} day{req.daysCount > 1 ? "s" : ""}
-                        </TableCell>
-                        <TableCell className="text-xs max-w-xs text-muted-foreground">
-                          <p className="truncate">{req.reason}</p>
-                          {req.supportingDocuments && req.supportingDocuments.length > 0 && (
-                            <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                              {req.supportingDocuments.map((doc, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => handleDownloadDoc(doc.fileKey)}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-foreground transition-colors cursor-pointer"
-                                  title={`Download ${doc.name}`}
-                                >
-                                  <Paperclip className="h-3 w-3 text-primary shrink-0" />
-                                  <span className="truncate max-w-[120px] font-medium">{doc.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
                           <Badge
                             variant={
                               req.status === "APPROVED"
@@ -465,12 +426,51 @@ export function LeavePage() {
                           >
                             {req.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground italic">
-                          {req.decisionNotes || "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {req.status === "PENDING" && (
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-foreground">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <CalendarDays className="h-3.5 w-3.5 text-primary shrink-0" />
+                            <span>
+                              {new Date(req.startDate).toLocaleDateString()} – {new Date(req.endDate).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <span className="font-bold text-xs px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800">
+                            {req.daysCount} day{req.daysCount > 1 ? "s" : ""}
+                          </span>
+                        </div>
+
+                        {req.reason && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 italic">
+                            "{req.reason}"
+                          </p>
+                        )}
+
+                        {req.supportingDocuments && req.supportingDocuments.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                            {req.supportingDocuments.map((doc, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleDownloadDoc(doc.fileKey)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-foreground transition-colors cursor-pointer"
+                                title={`Download ${doc.name}`}
+                              >
+                                <Paperclip className="h-3 w-3 text-primary shrink-0" />
+                                <span className="truncate max-w-[140px] font-medium">{doc.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {req.decisionNotes && (
+                          <div className="p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 text-[11px] text-muted-foreground">
+                            <strong>Approver Remarks:</strong> {req.decisionNotes}
+                          </div>
+                        )}
+
+                        {req.status === "PENDING" && (
+                          <div className="flex justify-end pt-1">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -478,15 +478,99 @@ export function LeavePage() {
                               disabled={cancelRequest.isPending}
                               className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-medium"
                             >
-                              Cancel
+                              Cancel Request
                             </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table (hidden sm:block) */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Leave Type</TableHead>
+                          <TableHead>Dates</TableHead>
+                          <TableHead>Days</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Approver Remarks</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {myRequestsPagination.paginatedItems.map((req) => (
+                          <TableRow key={req.id}>
+                            <TableCell className="font-semibold text-foreground">
+                              <Badge variant="outline" size="sm">
+                                {req.leaveType.code} - {req.leaveType.name}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {new Date(req.startDate).toLocaleDateString()} – {new Date(req.endDate).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="font-bold text-xs">
+                              {req.daysCount} day{req.daysCount > 1 ? "s" : ""}
+                            </TableCell>
+                            <TableCell className="text-xs max-w-xs text-muted-foreground">
+                              <p className="truncate">{req.reason}</p>
+                              {req.supportingDocuments && req.supportingDocuments.length > 0 && (
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  {req.supportingDocuments.map((doc, idx) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => handleDownloadDoc(doc.fileKey)}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-foreground transition-colors cursor-pointer"
+                                      title={`Download ${doc.name}`}
+                                    >
+                                      <Paperclip className="h-3 w-3 text-primary shrink-0" />
+                                      <span className="truncate max-w-[120px] font-medium">{doc.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  req.status === "APPROVED"
+                                    ? "success"
+                                    : req.status === "REJECTED"
+                                    ? "destructive"
+                                    : "warning"
+                                }
+                                dot
+                                size="sm"
+                              >
+                                {req.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground italic">
+                              {req.decisionNotes || "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {req.status === "PENDING" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => cancelRequest.mutate(req.id)}
+                                  disabled={cancelRequest.isPending}
+                                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-medium"
+                                >
+                                  Cancel
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
             </QueryState>
             <Pagination
               currentPage={myRequestsPagination.currentPage}
@@ -505,62 +589,22 @@ export function LeavePage() {
         <Card>
           <CardContent className="p-0">
             <QueryState isLoading={approvalsLoading} error={approvalsError}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Subordinate</TableHead>
-                    <TableHead>Leave Type</TableHead>
-                    <TableHead>Period</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-36 text-right">Decision</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {approvalsPagination.paginatedItems.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
-                        No team leave requests pending your review.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    approvalsPagination.paginatedItems.map((req) => (
-                      <TableRow key={req.id}>
-                        <TableCell>
+              {approvalsPagination.paginatedItems.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  No team leave requests pending your review.
+                </div>
+              ) : (
+                <>
+                  {/* Mobile Card View */}
+                  <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {approvalsPagination.paginatedItems.map((req) => (
+                      <div key={req.id} className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
                           <User
                             name={`${req.person.firstName} ${req.person.lastName}`}
                             description={req.person.department?.name || req.person.email}
                             avatarProps={{ size: "sm", isBordered: true }}
                           />
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" size="sm">
-                            {req.leaveType.code}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {new Date(req.startDate).toLocaleDateString()} to {new Date(req.endDate).toLocaleDateString()} ({req.daysCount}d)
-                        </TableCell>
-                        <TableCell className="text-xs max-w-xs text-muted-foreground">
-                          <p className="truncate">{req.reason}</p>
-                          {req.supportingDocuments && req.supportingDocuments.length > 0 && (
-                            <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                              {req.supportingDocuments.map((doc, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => handleDownloadDoc(doc.fileKey)}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer font-medium"
-                                  title={`Download ${doc.name}`}
-                                >
-                                  <Paperclip className="h-3 w-3 shrink-0" />
-                                  <span className="truncate max-w-[120px]">{doc.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
                           <Badge
                             variant={
                               req.status === "APPROVED"
@@ -574,52 +618,195 @@ export function LeavePage() {
                           >
                             {req.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {req.status === "PENDING" ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setDecisionTarget({
-                                    id: req.id,
-                                    action: "approve",
-                                    personName: `${req.person.firstName} ${req.person.lastName}`,
-                                  });
-                                  setDecisionModalOpen(true);
-                                }}
-                                className="h-7 px-2 text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-100/60 dark:border-zinc-800/60">
+                          <Badge variant="outline" size="sm">
+                            {req.leaveType.code}
+                          </Badge>
+                          <span className="text-muted-foreground font-medium">
+                            {new Date(req.startDate).toLocaleDateString()} – {new Date(req.endDate).toLocaleDateString()} ({req.daysCount}d)
+                          </span>
+                        </div>
+
+                        {req.reason && (
+                          <div className="text-xs text-muted-foreground bg-zinc-50 dark:bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-200/50 dark:border-zinc-800/50">
+                            <span className="font-semibold text-foreground">Reason: </span>
+                            {req.reason}
+                          </div>
+                        )}
+
+                        {req.supportingDocuments && req.supportingDocuments.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {req.supportingDocuments.map((doc, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleDownloadDoc(doc.fileKey)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer font-medium"
+                                title={`Download ${doc.name}`}
                               >
-                                <Check className="h-3.5 w-3.5 mr-1" />
-                                Approve
-                              </Button>
-                              <Button
+                                <Paperclip className="h-3 w-3 shrink-0" />
+                                <span className="truncate max-w-[140px]">{doc.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {req.status === "PENDING" ? (
+                          <div className="grid grid-cols-2 gap-2 pt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setDecisionTarget({
+                                  id: req.id,
+                                  action: "approve",
+                                  personName: `${req.person.firstName} ${req.person.lastName}`,
+                                });
+                                setDecisionModalOpen(true);
+                              }}
+                              className="h-8 text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 justify-center"
+                            >
+                              <Check className="h-3.5 w-3.5 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setDecisionTarget({
+                                  id: req.id,
+                                  action: "reject",
+                                  personName: `${req.person.firstName} ${req.person.lastName}`,
+                                });
+                                setDecisionModalOpen(true);
+                              }}
+                              className="h-8 text-xs border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 justify-center"
+                            >
+                              <X className="h-3.5 w-3.5 mr-1" />
+                              Reject
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-right text-xs text-muted-foreground italic">Processed</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table View */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Subordinate</TableHead>
+                          <TableHead>Leave Type</TableHead>
+                          <TableHead>Period</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="w-36 text-right">Decision</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {approvalsPagination.paginatedItems.map((req) => (
+                          <TableRow key={req.id}>
+                            <TableCell>
+                              <User
+                                name={`${req.person.firstName} ${req.person.lastName}`}
+                                description={req.person.department?.name || req.person.email}
+                                avatarProps={{ size: "sm", isBordered: true }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" size="sm">
+                                {req.leaveType.code}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {new Date(req.startDate).toLocaleDateString()} to {new Date(req.endDate).toLocaleDateString()} ({req.daysCount}d)
+                            </TableCell>
+                            <TableCell className="text-xs max-w-xs text-muted-foreground">
+                              <p className="truncate">{req.reason}</p>
+                              {req.supportingDocuments && req.supportingDocuments.length > 0 && (
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  {req.supportingDocuments.map((doc, idx) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => handleDownloadDoc(doc.fileKey)}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer font-medium"
+                                      title={`Download ${doc.name}`}
+                                    >
+                                      <Paperclip className="h-3 w-3 shrink-0" />
+                                      <span className="truncate max-w-[120px]">{doc.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  req.status === "APPROVED"
+                                    ? "success"
+                                    : req.status === "REJECTED"
+                                    ? "destructive"
+                                    : "warning"
+                                }
+                                dot
                                 size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setDecisionTarget({
-                                    id: req.id,
-                                    action: "reject",
-                                    personName: `${req.person.firstName} ${req.person.lastName}`,
-                                  });
-                                  setDecisionModalOpen(true);
-                                }}
-                                className="h-7 px-2 text-xs border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10"
                               >
-                                <X className="h-3.5 w-3.5 mr-1" />
-                                Reject
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Processed</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                                {req.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {req.status === "PENDING" ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setDecisionTarget({
+                                        id: req.id,
+                                        action: "approve",
+                                        personName: `${req.person.firstName} ${req.person.lastName}`,
+                                      });
+                                      setDecisionModalOpen(true);
+                                    }}
+                                    className="h-7 px-2 text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                  >
+                                    <Check className="h-3.5 w-3.5 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setDecisionTarget({
+                                        id: req.id,
+                                        action: "reject",
+                                        personName: `${req.person.firstName} ${req.person.lastName}`,
+                                      });
+                                      setDecisionModalOpen(true);
+                                    }}
+                                    className="h-7 px-2 text-xs border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                                  >
+                                    <X className="h-3.5 w-3.5 mr-1" />
+                                    Reject
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">Processed</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
             </QueryState>
             <Pagination
               currentPage={approvalsPagination.currentPage}

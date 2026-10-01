@@ -77,6 +77,7 @@ export function DepartmentTeamsPage() {
   const [selectedPersonId, setSelectedPersonId] = useState<string>("");
   const [selectedManagerId, setSelectedManagerId] = useState<string>("");
   const [isAssigningHead, setIsAssigningHead] = useState(false);
+  const [onlyUnassigned, setOnlyUnassigned] = useState(true);
 
   // Queries
   const { data: departments, isLoading, error, refetch } = useQuery({
@@ -174,6 +175,7 @@ export function DepartmentTeamsPage() {
     setIsAssigningHead(forHead);
     setSelectedPersonId("");
     setSelectedManagerId("");
+    setOnlyUnassigned(true);
     setAssignModalOpen(true);
   };
 
@@ -182,6 +184,7 @@ export function DepartmentTeamsPage() {
     setSelectedPersonId(person.id);
     setSelectedManagerId(person.managerId || "");
     setIsAssigningHead(false);
+    setOnlyUnassigned(false);
     setAssignModalOpen(true);
   };
 
@@ -494,9 +497,21 @@ export function DepartmentTeamsPage() {
         <div className="space-y-4 pt-2">
           {/* Staff Member Selector */}
           <div>
-            <label className="text-xs font-semibold text-foreground block mb-1.5">
-              Staff Member / Person *
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Staff Member / Person *
+              </label>
+              {!isAssigningHead && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyUnassigned(!onlyUnassigned)}
+                  className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>{onlyUnassigned ? "Showing non-assigned only" : "Showing all staff"}</span>
+                  <span className="text-muted-foreground">({onlyUnassigned ? "Show all" : "Non-assigned only"})</span>
+                </button>
+              )}
+            </div>
             <Select
               value={selectedPersonId}
               onChange={(e) => {
@@ -506,11 +521,28 @@ export function DepartmentTeamsPage() {
                 if (found?.managerId) setSelectedManagerId(found.managerId);
               }}
               options={[
-                { label: "-- Select a staff member --", value: "" },
-                ...(allPeople || []).map((p) => ({
-                  label: `${p.firstName} ${p.lastName} (${p.designation?.name || "Staff"} • ${p.department?.name || "No Dept"})`,
-                  value: p.id,
-                })),
+                {
+                  label: (allPeople || []).filter((p) => {
+                    if (isAssigningHead) return true;
+                    if (selectedPersonId && p.id === selectedPersonId) return true;
+                    if (onlyUnassigned) return !p.departmentId && !p.department;
+                    return true;
+                  }).length === 0
+                    ? "-- No non-assigned staff found (Click 'Show all' above) --"
+                    : "-- Select a staff member --",
+                  value: "",
+                },
+                ...(allPeople || [])
+                  .filter((p) => {
+                    if (isAssigningHead) return true;
+                    if (selectedPersonId && p.id === selectedPersonId) return true;
+                    if (onlyUnassigned) return !p.departmentId && !p.department;
+                    return true;
+                  })
+                  .map((p) => ({
+                    label: `${p.firstName} ${p.lastName} (${p.designation?.name || "Staff"} • ${p.department?.name || "No Dept"})`,
+                    value: p.id,
+                  })),
               ]}
               className="w-full rounded-xl"
             />

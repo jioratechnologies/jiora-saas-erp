@@ -58,11 +58,13 @@ export function PageHeader({
     if (Array.isArray(stats)) {
       const items = stats as HeaderStatItem[];
       const gridCols =
-        items.length === 4
-          ? "grid-cols-4"
-          : items.length === 3
-            ? "grid-cols-3"
-            : "grid-cols-2 sm:grid-cols-4";
+        items.length === 5
+          ? "grid-cols-5"
+          : items.length === 4
+            ? "grid-cols-4"
+            : items.length === 3
+              ? "grid-cols-3"
+              : "grid-cols-2 sm:grid-cols-4";
 
       return (
         <div className={cn("grid gap-1 sm:gap-2.5", gridCols)}>
@@ -100,7 +102,7 @@ export function PageHeader({
       <div
         className={cn(
           "rounded-xl sm:rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-xs transition-all",
-          sticky && "sticky top-0 md:top-14 z-20 shadow-sm",
+          sticky && "relative md:sticky md:top-14 md:z-20 shadow-xs md:shadow-sm",
           className
         )}
       >
