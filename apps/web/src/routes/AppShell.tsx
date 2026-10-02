@@ -176,12 +176,21 @@ export function AppShell() {
     return (
       <div className="flex h-screen w-screen items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
         <div className="max-w-md w-full text-center space-y-4 p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl">
-          <UserX className="mx-auto h-10 w-10 text-muted-foreground" />
+          <div className="h-12 w-12 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <UserX className="h-6 w-6" />
+          </div>
           <h3 className="text-lg font-bold text-foreground">No Account Found</h3>
+          
+          {user?.profile?.email && (
+            <div className="rounded-xl bg-zinc-100 dark:bg-zinc-800/80 p-2.5 text-xs text-muted-foreground border border-zinc-200/80 dark:border-zinc-700/60">
+              Authenticated identity: <span className="font-semibold text-foreground">{user.profile.email}</span>
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground leading-relaxed">
-            You are signed in with Zitadel, but your account has not been provisioned in SaaS ERP yet. Please contact your organization administrator.
+            You are signed in with Zitadel, but this email has not been provisioned as an active user in SaaS ERP. Please switch to an authorized workspace account or ask your administrator to invite you.
           </p>
-          <Button variant="outline" onClick={signOut} className="gap-2 rounded-xl">
+          <Button variant="outline" onClick={signOut} className="gap-2 rounded-xl w-full justify-center">
             <LogOut className="h-4 w-4" />
             <span>Sign Out / Switch Account</span>
           </Button>

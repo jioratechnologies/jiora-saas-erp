@@ -12,6 +12,7 @@ import { Button } from "../components/ui/button";
 export function LandingRedirect() {
   const { data: me, isLoading, isFetching, notProvisioned, error, refetch, failureCount } = useMe();
   const signOut = useAuthStore((s) => s.signOut);
+  const user = useAuthStore((s) => s.user);
 
   if (isLoading || isFetching) {
     return (
@@ -36,18 +37,23 @@ export function LandingRedirect() {
   if (notProvisioned) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center p-6">
-        <div className="max-w-md text-center space-y-5 p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl">
-          <div className="h-14 w-14 mx-auto rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-            <UserX className="h-7 w-7 text-muted-foreground" />
+        <div className="max-w-md text-center space-y-4 p-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl">
+          <div className="h-14 w-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <UserX className="h-7 w-7" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-foreground">No account found</h3>
-            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+            <h3 className="text-base font-bold text-foreground">No Account Found</h3>
+            {user?.profile?.email && (
+              <div className="mt-3 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 p-2.5 text-xs text-muted-foreground border border-zinc-200/80 dark:border-zinc-700/60">
+                Authenticated as: <span className="font-semibold text-foreground">{user.profile.email}</span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
               You're authenticated with Zitadel, but there's no matching user in this workspace yet.
-              Ask your administrator to invite you, or try a different account.
+              Ask your administrator to invite you, or switch to an authorized workspace account.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
             <Button size="sm" onClick={() => refetch()} className="gap-2 rounded-xl w-full sm:w-auto">
               <RefreshCw className="h-3.5 w-3.5" />
               Retry
