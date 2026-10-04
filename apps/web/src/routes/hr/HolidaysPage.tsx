@@ -16,6 +16,7 @@ import { HeaderActionPortal } from "../../components/header-action-portal";
 import { useConfirm } from "../../hooks/use-confirm";
 import { toast } from "../../components/ui/toast";
 import { useMe } from "../../auth/use-me";
+import { formatErrorMessage } from "../../lib/error-formatter";
 
 interface Holiday {
   id: string;
@@ -24,7 +25,7 @@ interface Holiday {
   isOptional: boolean;
 }
 
-export function HolidaysPage() {
+export function HolidaysPage({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { data: me } = useMe();
@@ -64,7 +65,7 @@ export function HolidaysPage() {
       toast.success("Holiday added", `"${h.name}" added to the ${selectedYear} calendar.`);
     },
     onError: (err) => {
-      toast.error("Failed to add holiday", (err as Error).message);
+      toast.error("Failed to add holiday", formatErrorMessage(err));
     },
   });
 
@@ -75,7 +76,7 @@ export function HolidaysPage() {
       toast.success("Holiday deleted", "Removed from annual calendar.");
     },
     onError: (err) => {
-      toast.error("Failed to delete holiday", (err as Error).message);
+      toast.error("Failed to delete holiday", formatErrorMessage(err));
     },
   });
 
@@ -86,7 +87,7 @@ export function HolidaysPage() {
 
   return (
     <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
-      {canWrite && (
+      {canWrite && !embedded && (
         <HeaderActionPortal>
           <Button
             size="sm"
@@ -100,6 +101,46 @@ export function HolidaysPage() {
         </HeaderActionPortal>
       )}
 
+      {embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-bold text-foreground">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              Holiday Calendar
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {holidays?.length || 0} holidays in {selectedYear} ({mandatoryCount} mandatory, {optionalCount} optional)
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            {/* Year Selector */}
+            <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1 border border-zinc-200/80 dark:border-zinc-800">
+              {[2025, 2026, 2027].map((yr) => (
+                <button
+                  key={yr}
+                  onClick={() => setSelectedYear(yr)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    selectedYear === yr
+                      ? "bg-white dark:bg-zinc-900 text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
+
+            {canWrite && (
+              <Button onClick={() => setCreateModalOpen(true)} className="gap-2 shrink-0 rounded-xl text-xs font-bold shadow-sm">
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Holiday</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!embedded && (
       <PageHeader
         icon={CalendarDays}
         title="Holiday Calendar"
@@ -142,6 +183,7 @@ export function HolidaysPage() {
           { label: "Optional", value: `${optionalCount} Days`, color: "text-amber-500" },
         ]}
       />
+      )}
 
       {/* Holidays Table and Cards */}
       <Card className="rounded-2xl border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs overflow-hidden">

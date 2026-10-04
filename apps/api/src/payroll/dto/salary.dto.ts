@@ -98,25 +98,16 @@ export class AssignSalaryDto {
   @IsString()
   personId!: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  salaryStructureId?: string;
-
-  @ApiProperty({ example: 45000 })
+  @ApiProperty({ example: 45000, description: "Monthly gross" })
   @IsNumber()
   @Min(0)
   baseGross!: number;
 
-  @ApiPropertyOptional({ example: 540000 })
+  @ApiPropertyOptional({ example: 540000, description: "Annual CTC; defaults to baseGross x 12" })
   @IsOptional()
   @IsNumber()
+  @Min(0)
   ctc?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsArray()
-  customItems?: any[];
 
   @ApiPropertyOptional({ example: "2026-09-01" })
   @IsOptional()
@@ -149,10 +140,16 @@ export class RecordSalaryRevisionDto {
   @IsString()
   personId!: string;
 
-  @ApiProperty({ example: 55000 })
+  @ApiPropertyOptional({ example: 5000, description: "Amount added to monthly gross (may be negative)" })
+  @IsOptional()
+  @IsNumber()
+  incrementAmount?: number;
+
+  @ApiPropertyOptional({ example: 55000, description: "Legacy: absolute new monthly gross" })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  newGross!: number;
+  newGross?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

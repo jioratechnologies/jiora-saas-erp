@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { LeaveStatus, Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { LeaveApplicability, LeaveStatus, PersonType, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CacheService } from "../../cache/cache.service";
-import type { CreateLeaveTypeDto, SubmitLeaveRequestDto } from "../dto/leave.dto";
+import { cachedRef, invalidateRef } from "../../cache/ref-cache";
+import type { CreateLeaveTypeDto, SubmitLeaveRequestDto, UpdateLeaveTypeDto } from "../dto/leave.dto";
 
 @Injectable()
 export class LeaveService {
@@ -15,26 +16,21 @@ export class LeaveService {
   // Leave Types & Quotas
   // ==========================================
 
-  async listTypes(tenantId: string) {
-    const cacheKey = `tenant:${tenantId}:leave_types`;
-    const cached = await this.cache.get<any[]>(cacheKey);
-    if (cached) return cached;
-
-    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
-      const types = await tx.leaveType.findMany({
-        where: { tenantId, isActive: true },
-        orderBy: { name: "asc" },
-      });
-
-      await this.cache.set(cacheKey, types, 3600); // 1 hour TTL
-      return types;
-    });
+  async listTypes(tenantId: string, includeInactive = false) {
+    return cachedRef(this.cache, tenantId, includeInactive ? "leave_types_all" : "leave_types", () =>
+      this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
+        tx.leaveType.findMany({
+          where: includeInactive ? { tenantId } : { tenantId, isActive: true },
+          orderBy: { name: "asc" },
+        }),
+      ),
+    );
   }
 
   async createType(tenantId: string, dto: CreateLeaveTypeDto) {
-    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+    const type = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       try {
-        const type = await tx.leaveType.create({
+        return await tx.leaveType.create({
           data: {
             tenantId,
             name: dto.name.trim(),
@@ -43,9 +39,6 @@ export class LeaveService {
             applicableTo: dto.applicableTo,
           },
         });
-
-        await this.cache.del(`tenant:${tenantId}:leave_types`);
-        return type;
       } catch (err: any) {
         if (err?.code === "P2002") {
           throw new ConflictException(`Leave type with code "${dto.code}" already exists.`);
@@ -53,102 +46,172 @@ export class LeaveService {
         throw err;
       }
     });
+    await invalidateRef(this.cache, tenantId, "leave_types", "leave_types_all");
+    return type;
+  }
+
+  async updateType(tenantId: string, id: string, dto: UpdateLeaveTypeDto) {
+    const type = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      const existing = await tx.leaveType.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new NotFoundException("The requested item could not be found.");
+      try {
+        return await tx.leaveType.update({
+          where: { id },
+          data: {
+            name: dto.name?.trim(),
+            code: dto.code?.trim().toUpperCase(),
+            annualQuota: dto.annualQuota,
+            applicableTo: dto.applicableTo,
+            isActive: dto.isActive,
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === "P2002") {
+          throw new ConflictException("A record with this code already exists. Please choose a different one.");
+        }
+        if (err?.code === "P2025") {
+          throw new NotFoundException("The requested item could not be found.");
+        }
+        throw err;
+      }
+    });
+    await invalidateRef(this.cache, tenantId, "leave_types", "leave_types_all");
+    return type;
   }
 
   // ==========================================
   // Leave Requests & Approvals
   // ==========================================
 
-  async submit(tenantId: string, personId: string, dto: SubmitLeaveRequestDto) {
-    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
-      const person = await tx.person.findFirst({
-        where: { id: personId, tenantId },
-        include: { manager: true },
-      });
-      if (!person) throw new NotFoundException("Person record not found");
-
-      const startDate = new Date(dto.startDate);
-      const endDate = new Date(dto.endDate);
-      if (startDate > endDate) {
-        throw new BadRequestException("Start date cannot be after end date.");
+  async submit(tenantId: string, personId: string, dto: SubmitLeaveRequestDto, isHrAdmin = false) {
+    const toUtcDay = (v: string) => {
+      const d = new Date(v);
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    };
+    const startDate = toUtcDay(dto.startDate);
+    const endDate = toUtcDay(dto.endDate);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      throw new BadRequestException("Please check the highlighted fields and try again.");
+    }
+    if (endDate < startDate) {
+      throw new BadRequestException("The end date cannot be before the start date.");
+    }
+    if (startDate.getUTCFullYear() !== endDate.getUTCFullYear()) {
+      throw new BadRequestException("A leave request cannot span two calendar years. Please submit a separate request for each year.");
+    }
+    if (!isHrAdmin) {
+      const now = new Date();
+      const earliest = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 30));
+      if (startDate < earliest) {
+        throw new BadRequestException("Leave cannot be requested for dates more than 30 days in the past.");
       }
+    }
+    const docPrefix = `tenants/${tenantId}/leave-docs/`;
+    if ((dto.supportingDocuments || []).some((d) => !d.fileKey.startsWith(docPrefix) || d.fileKey.includes(".."))) {
+      throw new BadRequestException("Please check the highlighted fields and try again.");
+    }
 
-      // Calculate calendar days
-      const diffMs = endDate.getTime() - startDate.getTime();
-      const daysCount = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    try {
+      return await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+        // Serialize concurrent submissions for the same person for the duration of this transaction.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${personId}))`;
 
-      // Check for overlapping active requests
-      const overlap = await tx.leaveRequest.findFirst({
-        where: {
-          tenantId,
-          personId,
-          status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
-          OR: [
-            { startDate: { lte: endDate }, endDate: { gte: startDate } },
-          ],
-        },
-      });
+        const person = await tx.person.findFirst({
+          where: { id: personId, tenantId },
+          include: { manager: true },
+        });
+        if (!person) throw new NotFoundException("The requested item could not be found.");
 
-      if (overlap) {
-        throw new ConflictException("You already have a pending or approved leave request during these dates.");
-      }
+        const leaveType = await tx.leaveType.findFirst({
+          where: { id: dto.leaveTypeId, tenantId },
+        });
+        if (!leaveType || !leaveType.isActive) {
+          throw new NotFoundException("Selected leave type does not exist or is no longer available.");
+        }
+        if (leaveType.applicableTo === LeaveApplicability.EMPLOYEE_ONLY && person.personType !== PersonType.EMPLOYEE) {
+          throw new BadRequestException("This leave type is available to employees only.");
+        }
 
-      // Check leave quota balance
-      const leaveType = await tx.leaveType.findFirst({
-        where: { id: dto.leaveTypeId, tenantId },
-      });
-      if (!leaveType) throw new NotFoundException("Selected leave type does not exist.");
+        // Working days: Mon-Fri, excluding tenant holidays in range.
+        const holidays = await tx.holiday.findMany({
+          where: { tenantId, date: { gte: startDate, lte: endDate } },
+          select: { date: true },
+        });
+        const holidaySet = new Set(holidays.map((h) => h.date.toISOString().slice(0, 10)));
+        let daysCount = 0;
+        for (let d = new Date(startDate); d <= endDate; d = new Date(d.getTime() + 86400000)) {
+          const dow = d.getUTCDay();
+          if (dow === 0 || dow === 6) continue;
+          if (holidaySet.has(d.toISOString().slice(0, 10))) continue;
+          daysCount++;
+        }
+        if (daysCount < 1) {
+          throw new BadRequestException("The selected dates contain no working days. Please choose different dates.");
+        }
 
-      const currentYear = new Date().getFullYear();
-      const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
-      const existingApproved = await tx.leaveRequest.aggregate({
-        where: {
-          tenantId,
-          personId,
-          leaveTypeId: dto.leaveTypeId,
-          status: LeaveStatus.APPROVED,
-          startDate: { gte: startOfYear },
-        },
-        _sum: { daysCount: true },
-      });
-      const approvedDays = existingApproved._sum.daysCount || 0;
-      const remainingBalance = Math.max(0, leaveType.annualQuota - approvedDays);
-
-      if (daysCount > remainingBalance) {
-        throw new BadRequestException(
-          `Insufficient leave balance. You only have ${remainingBalance} day(s) remaining for ${leaveType.name} (annual quota: ${leaveType.annualQuota}).`,
-        );
-      }
-
-      return tx.leaveRequest.create({
-        data: {
-          tenantId,
-          personId,
-          leaveTypeId: dto.leaveTypeId,
-          startDate,
-          endDate,
-          daysCount,
-          reason: dto.reason.trim(),
-          supportingDocuments: (dto.supportingDocuments || []) as any,
-          status: LeaveStatus.PENDING,
-          approverId: person.managerId || null,
-        },
-        include: {
-          leaveType: true,
-          approver: {
-            select: { id: true, firstName: true, lastName: true },
+        const overlap = await tx.leaveRequest.findFirst({
+          where: {
+            tenantId,
+            personId,
+            status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
+            startDate: { lte: endDate },
+            endDate: { gte: startDate },
           },
-        },
+        });
+        if (overlap) {
+          throw new ConflictException("You already have a pending or approved leave request during these dates.");
+        }
+
+        const year = startDate.getUTCFullYear();
+        const used = await tx.leaveRequest.aggregate({
+          where: {
+            tenantId,
+            personId,
+            leaveTypeId: dto.leaveTypeId,
+            status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
+            startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+          },
+          _sum: { daysCount: true },
+        });
+        const remainingBalance = Math.max(0, leaveType.annualQuota - (used._sum.daysCount || 0));
+        if (daysCount > remainingBalance) {
+          throw new BadRequestException(
+            `Insufficient leave balance. You only have ${remainingBalance} day(s) remaining for ${leaveType.name} in ${year} (annual quota: ${leaveType.annualQuota}).`,
+          );
+        }
+
+        return tx.leaveRequest.create({
+          data: {
+            tenantId,
+            personId,
+            leaveTypeId: dto.leaveTypeId,
+            startDate,
+            endDate,
+            daysCount,
+            reason: dto.reason.trim(),
+            supportingDocuments: (dto.supportingDocuments || []) as any,
+            status: LeaveStatus.PENDING,
+            approverId: person.managerId || null,
+          },
+          include: {
+            leaveType: true,
+            approver: {
+              select: { id: true, firstName: true, middleName: true, lastName: true },
+            },
+          },
+        });
       });
-    });
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        throw new ConflictException("A leave request for these dates already exists.");
+      }
+      throw err;
+    }
   }
 
   async getBalances(tenantId: string, personId: string) {
+    const types = await this.listTypes(tenantId);
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
-      const types = await tx.leaveType.findMany({
-        where: { tenantId, isActive: true },
-        orderBy: { name: "asc" },
-      });
 
       const currentYear = new Date().getFullYear();
       const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
@@ -157,7 +220,7 @@ export class LeaveService {
         where: {
           tenantId,
           personId,
-          startDate: { gte: startOfYear },
+          startDate: { gte: startOfYear, lt: new Date(Date.UTC(currentYear + 1, 0, 1)) },
           status: { in: [LeaveStatus.APPROVED, LeaveStatus.PENDING] },
         },
       });
@@ -176,7 +239,7 @@ export class LeaveService {
       return types.map((t) => {
         const approvedDays = approvedMap.get(t.id) || 0;
         const pendingDays = pendingMap.get(t.id) || 0;
-        const remaining = Math.max(0, t.annualQuota - approvedDays);
+        const remaining = Math.max(0, t.annualQuota - approvedDays - pendingDays);
         return {
           id: t.id,
           name: t.name,
@@ -226,7 +289,7 @@ export class LeaveService {
           person: {
             select: {
               id: true,
-              firstName: true,
+              firstName: true, middleName: true,
               lastName: true,
               personType: true,
               department: { select: { id: true, name: true } },
@@ -235,7 +298,7 @@ export class LeaveService {
           },
           leaveType: true,
           approver: {
-            select: { id: true, firstName: true, lastName: true },
+            select: { id: true, firstName: true, middleName: true, lastName: true },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -243,11 +306,30 @@ export class LeaveService {
     });
   }
 
+  /** True if key is attached to a leave request the caller owns, approves, or (HR admin) any in tenant. */
+  async canAccessDocument(tenantId: string, key: string, personId: string | undefined, isHrAdmin: boolean) {
+    if (!personId && !isHrAdmin) return false;
+    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      const scope: Prisma.LeaveRequestWhereInput[] = [];
+      if (personId) scope.push({ personId }, { approverId: personId });
+      const found = await tx.leaveRequest.findFirst({
+        where: {
+          tenantId,
+          supportingDocuments: { array_contains: [{ fileKey: key }] },
+          ...(isHrAdmin ? {} : { OR: scope }),
+        },
+        select: { id: true },
+      });
+      return !!found;
+    });
+  }
+
   async decide(
     tenantId: string,
     requestId: string,
     status: "APPROVED" | "REJECTED",
-    decisionNotes?: string,
+    decisionNotes: string | undefined,
+    actor: { personId?: string; isHrAdmin: boolean },
   ) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const request = await tx.leaveRequest.findFirst({
@@ -255,6 +337,11 @@ export class LeaveService {
       });
 
       if (!request) throw new NotFoundException("Leave request not found");
+      const isApprover = !!actor.personId && request.approverId === actor.personId;
+      const isRequester = !!actor.personId && request.personId === actor.personId;
+      if (isRequester || !(isApprover || actor.isHrAdmin)) {
+        throw new ForbiddenException("You do not have permission to perform this action.");
+      }
       if (request.status !== LeaveStatus.PENDING) {
         throw new ConflictException(`This leave request has already been ${request.status.toLowerCase()}.`);
       }

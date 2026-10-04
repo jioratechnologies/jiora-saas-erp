@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { SearchInput } from "../components/ui/search-input";
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,7 +22,6 @@ import { Badge } from "../components/ui/badge";
 import { PageHeader } from "../components/page-header";
 import { QueryState } from "../components/query-state";
 import { Modal } from "../components/ui/modal";
-import { HeaderActionPortal } from "../components/header-action-portal";
 import { useConfirm } from "../hooks/use-confirm";
 import { toast } from "../components/ui/toast";
 import { formatErrorMessage } from "../lib/error-formatter";
@@ -29,11 +30,8 @@ import { cn } from "../lib/utils";
 interface NamedRecord {
   id: string;
   name: string;
-}
-
-interface Person {
-  id: string;
-  designationId?: string | null;
+  role?: { id: string; _count: { permissions: number } } | null;
+  _count?: { persons: number };
 }
 
 /** Suggested common titles for quick 1-tap addition */
@@ -62,28 +60,14 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
     error,
   } = useQuery({ queryKey, queryFn: () => api.get<NamedRecord[]>(apiPath) });
 
-  // Optional person count cross-reference to show how many employees hold this designation
-  const { data: persons = [] } = useQuery({
-    queryKey: ["hr", "persons"],
-    queryFn: () => api.get<Person[]>("/hr/persons"),
-    staleTime: 60_000,
-  });
+  const isDesignations = apiPath === "/admin/designations";
 
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
 
-  // Map of counts per record ID
-  const memberCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of persons) {
-      if (p.designationId) {
-        map.set(p.designationId, (map.get(p.designationId) ?? 0) + 1);
-      }
-    }
-    return map;
-  }, [persons]);
+  const countOf = (r: NamedRecord) => r._count?.persons ?? 0;
 
   // Filtered records
   const filteredRecords = useMemo(() => {
@@ -120,7 +104,7 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
   });
 
   const handleDelete = async (row: NamedRecord) => {
-    const assignedCount = memberCounts.get(row.id) ?? 0;
+    const assignedCount = countOf(row);
     const ok = await confirm({
       title: `Delete ${singular} "${row.name}"?`,
       description:
@@ -136,29 +120,19 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
 
   const stats = useMemo(() => {
     const total = records.length;
-    let assignedTotal = 0;
-    for (const count of memberCounts.values()) {
-      assignedTotal += count;
-    }
+    const assignedTotal = records.reduce((sum, r) => sum + countOf(r), 0);
+    const withAccess = records.filter((r) => (r.role?._count.permissions ?? 0) > 0).length;
 
     return [
       { label: `Total ${title}`, value: total },
       { label: "Assigned Staff", value: assignedTotal },
-      { label: "Active Roles", value: total },
+      { label: isDesignations ? "With extra access" : "Active Roles", value: isDesignations ? withAccess : total },
     ];
-  }, [records, memberCounts, title]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, title, isDesignations]);
 
   return (
     <div className="max-w-[1720px] mx-auto space-y-5 px-3 sm:px-6 py-4">
-      {/* Top Header Portal Button */}
-      <HeaderActionPortal>
-        <Button onClick={() => setModalOpen(true)} size="sm" className="h-9 gap-1.5 font-medium shadow-xs">
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Add {singular}</span>
-          <span className="sm:hidden">Add</span>
-        </Button>
-      </HeaderActionPortal>
-
       {/* Modern Page Header */}
       <PageHeader
         title={title}
@@ -177,23 +151,12 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
       <Card className="rounded-2xl border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
         <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={`Search ${title.toLowerCase()}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 pl-9 text-xs bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 rounded-xl"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
+            <SearchInput
+ placeholder={`Search ${title.toLowerCase()}...`}
+ value={searchQuery}
+ onChange={(e) => setSearchQuery(e.target.value)}
+ className="flex-1 max-w-md"
+ />
 
             <Badge variant="secondary" className="text-xs px-2.5 py-1 font-medium self-start sm:self-auto">
               {filteredRecords.length} {filteredRecords.length === 1 ? singular : title}
@@ -207,7 +170,8 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
         {filteredRecords.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
             {filteredRecords.map((row) => {
-              const assignedCount = memberCounts.get(row.id) ?? 0;
+              const assignedCount = countOf(row);
+              const extraPerms = row.role?._count.permissions ?? 0;
 
               return (
                 <div
@@ -249,6 +213,16 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
                       {assignedCount} {assignedCount === 1 ? "member" : "members"}
                     </Badge>
                   </div>
+                  {isDesignations && (
+                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>
+                        {extraPerms} extra permission{extraPerms === 1 ? "" : "s"}
+                      </span>
+                      <Link to="/admin/roles" className="font-medium text-primary hover:underline">
+                        Manage access
+                      </Link>
+                    </div>
+                  )}
                 </div>
               );
             })}

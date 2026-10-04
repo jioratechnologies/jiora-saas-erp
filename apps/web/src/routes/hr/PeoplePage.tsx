@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { SearchInput } from "../../components/ui/search-input";
+import { memo, useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   UserPlus,
   Search,
@@ -9,14 +11,11 @@ import {
   FileText,
   UserCheck,
   Building,
-  Briefcase,
   Calendar,
   Phone,
   Mail,
   LogOut,
   AlertTriangle,
-  MoreVertical,
-  Copy,
   ExternalLink,
   CheckCircle,
   XCircle,
@@ -31,7 +30,6 @@ import {
   Network,
   Users,
   ChevronRight,
-  ArrowRight,
   Plus,
   X,
 } from "lucide-react";
@@ -41,18 +39,18 @@ import { ButtonGroup } from "../../components/ui/button-group";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
-import { DatePicker } from "../../components/ui/date-picker";
 import { DateInput } from "../../components/ui/date-input";
-import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "../../components/ui/dropdown";
 import { FileDropzone } from "../../components/ui/file-dropzone";
 import { Badge } from "../../components/ui/badge";
 import { User, Avatar } from "../../components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Pagination, usePagination } from "../../components/ui/pagination";
+import { Pagination } from "../../components/ui/pagination";
+import { Skeleton } from "../../components/ui/skeleton";
+import { usePagedQuery } from "../../lib/use-paged-query";
 import { PageHeader } from "../../components/page-header";
 import { QueryState } from "../../components/query-state";
 import { Modal, Drawer } from "../../components/ui/modal";
-import { PhoneInput } from "../../components/ui/phone-input";
+import { PersonForm } from "../../components/hr/PersonForm";
 import { useConfirm } from "../../hooks/use-confirm";
 import { toast } from "../../components/ui/toast";
 import { useAuthStore } from "../../auth/auth-store";
@@ -60,13 +58,12 @@ import { useMe } from "../../auth/use-me";
 import { formatErrorMessage } from "../../lib/error-formatter";
 import {
   INPUT_LIMITS,
-  EMERGENCY_RELATIONS,
-  parseEmergencyContact,
-  formatEmergencyContact,
-  type EmergencyRelation,
+  fullName,
+  normalizeGender,
+  PHONE_REGEX,
 } from "../../lib/input-constraints";
 import { cn } from "../../lib/utils";
-import { exportToCsv } from "../../lib/csv-export";
+import { exportToExcel } from "../../lib/excel-export";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -102,10 +99,11 @@ interface Person {
   personType: "EMPLOYEE" | "VOLUNTEER";
   status: "JOINED" | "PROBATION" | "ACTIVE" | "NOTICE_PERIOD" | "EXITED";
   firstName: string;
+  middleName?: string | null;
   lastName: string;
   email: string;
   phone?: string | null;
-  whatsapp?: string | null;
+  altPhone?: string | null;
   gender?: string | null;
   dob?: string | null;
   address?: string | null;
@@ -132,15 +130,17 @@ interface Person {
   manager?: {
     id: string;
     firstName: string;
+    middleName?: string | null;
     lastName: string;
     email: string;
     department?: DepartmentOption | null;
     designation?: DesignationOption | null;
-    manager?: { id: string; firstName: string; lastName: string } | null;
+    manager?: { id: string; firstName: string; middleName?: string | null; lastName: string } | null;
   } | null;
   directReports?: {
     id: string;
     firstName: string;
+    middleName?: string | null;
     lastName: string;
     email: string;
     personType?: string;
@@ -149,6 +149,239 @@ interface Person {
     status?: string;
   }[];
   documents?: PersonDocument[];
+}
+
+const PersonCard = memo(function PersonCard({ p, onSelect }: { p: Person; onSelect: (id: string) => void }) {
+  return (
+                  <div
+                                        onClick={() => onSelect(p.id)}
+                    className="p-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar
+                          name={fullName(p)}
+                          src={p.avatarUrl || undefined}
+                          size="md"
+                          isBordered
+                          status={p.status === "ACTIVE" ? "online" : undefined}
+                          className="shrink-0 h-10 w-10 text-xs"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-sm text-foreground truncate">
+                              {fullName(p)}
+                            </p>
+                            <Badge
+                              variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
+                              className="text-[9px] px-1.5 py-0"
+                            >
+                              {p.personType === "EMPLOYEE" ? "Emp" : "Vol"}
+                            </Badge>
+                            <Badge
+                              variant={
+                                p.status === "ACTIVE"
+                                  ? "success"
+                                  : p.status === "NOTICE_PERIOD"
+                                    ? "warning"
+                                    : "secondary"
+                              }
+                              dot
+                              className="text-[9px] px-1.5 py-0"
+                            >
+                              {p.status === "NOTICE_PERIOD" ? "Notice" : p.status.toLowerCase()}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground font-medium truncate mt-0.5">
+                            {p.designation?.name || "Staff Member"} • {p.department?.name || "No Dept"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-2" />
+                    </div>
+
+                    {/* Mobile Card Footer: Contact & Manager */}
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-zinc-100/60 dark:border-zinc-800/60">
+                      <span className="truncate max-w-[170px]">{p.email}</span>
+                      {p.manager ? (
+                        <span className="text-[10px] text-primary font-medium truncate">
+                          Lead: {p.manager.firstName} {p.manager.lastName[0]}.
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">Top Executive</span>
+                      )}
+                    </div>
+                  </div>
+  );
+});
+
+const PersonRow = memo(function PersonRow({ p, onSelect }: { p: Person; onSelect: (id: string) => void }) {
+  return (
+                      <TableRow
+                                                className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
+                        onClick={() => onSelect(p.id)}
+                      >
+                        <TableCell>
+                          <User
+                            name={fullName(p)}
+                            description={p.email}
+                            avatarProps={{
+                              src: p.avatarUrl || undefined,
+                              size: "sm",
+                              isBordered: true,
+                              status: p.status === "ACTIVE" ? "online" : undefined,
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
+                            size="sm"
+                          >
+                            {p.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-semibold text-foreground">
+                              {p.designation?.name || "No designation"}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {p.department?.name || "No department"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {p.manager ? (
+                            <span className="text-xs text-foreground font-medium">
+                              {fullName(p.manager)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">None (Top-level)</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              p.status === "ACTIVE"
+                                ? "success"
+                                : p.status === "NOTICE_PERIOD"
+                                  ? "warning"
+                                  : "secondary"
+                            }
+                            dot
+                            size="sm"
+                          >
+                            {p.status === "ACTIVE"
+                              ? "Active"
+                              : p.status === "NOTICE_PERIOD"
+                                ? "Notice Period"
+                                : p.status === "JOINED"
+                                  ? "Joined"
+                                  : p.status === "PROBATION"
+                                    ? "Probation"
+                                    : "Exited"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onSelect(p.id)}
+                              className="text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 h-8 px-2.5"
+                            >
+                              View
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+  );
+});
+
+function PeopleSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <TableRow key={i}>
+          {Array.from({ length: 6 }).map((__, j) => (
+            <TableCell key={j}>
+              <Skeleton className="h-4 w-full max-w-[140px]" />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+function MobileSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="p-3 space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+interface FinalSettlement {
+  exitDate?: string | null;
+  lastWorkingMonth?: string | null;
+  expectedDays: number;
+  paidDays: number;
+  perDayRate: number;
+  earnedGross: number;
+  adjustmentsTotal: number;
+  outstandingAdvanceBalance: number;
+  approvedUnsettledClaimsTotal: number;
+  estimatedNet: number;
+}
+
+/** Final settlement preview for leavers. Hidden silently on 403/404 or any load failure. */
+function FinalSettlementCard({ personId }: { personId: string }) {
+  const { data } = useQuery({
+    queryKey: ["payroll", "final-settlement", personId],
+    queryFn: () => api.get<FinalSettlement>(`/payroll/runs/final-settlement/${personId}`),
+    retry: false,
+  });
+  if (!data) return null;
+  const money = (n: number) => `₹${(n ?? 0).toLocaleString("en-IN")}`;
+  const rows: [string, string][] = [
+    ["Last working month", data.lastWorkingMonth ?? "-"],
+    ["Paid days", `${data.paidDays} / ${data.expectedDays}`],
+    ["Earned gross", money(data.earnedGross)],
+    ["Adjustments", money(data.adjustmentsTotal)],
+    ["Advance outstanding", money(data.outstandingAdvanceBalance)],
+    ["Unsettled claims", money(data.approvedUnsettledClaimsTotal)],
+  ];
+  return (
+    <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/40 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-foreground">Final settlement</span>
+        <Link to="/payroll/runs" className="text-[11px] text-primary hover:underline">
+          Payroll runs
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <span className="block text-[10px] text-muted-foreground">{k}</span>
+            <span className="font-medium text-foreground">{v}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between border-t border-zinc-200 dark:border-zinc-700 pt-2 text-xs">
+        <span className="font-semibold">Estimated net</span>
+        <span className="font-bold text-foreground">{money(data.estimatedNet)}</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">Final salary is paid in the exit month's payroll run.</p>
+    </div>
+  );
 }
 
 export function PeoplePage() {
@@ -173,8 +406,12 @@ export function PeoplePage() {
 
   // Bulk Import State
   const [bulkImportModalOpen, setBulkImportModalOpen] = useState(false);
-  const [bulkCsvText, setBulkCsvText] = useState("");
+  const [bulkFileName, setBulkFileName] = useState("");
   const [bulkParsedRows, setBulkParsedRows] = useState<any[]>([]);
+  const [bulkRowErrors, setBulkRowErrors] = useState<{ row: number; reason: string }[]>([]);
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkSendInvites, setBulkSendInvites] = useState(true);
+  const canSetSalary = Boolean(me?.permissionKeys?.includes("payroll.salary.manage"));
 
   // Exit Checklist Drawer State
   const [assetReturn, setAssetReturn] = useState(false);
@@ -182,26 +419,12 @@ export function PeoplePage() {
   const [knowledgeHandover, setKnowledgeHandover] = useState(false);
   const [financeClearance, setFinanceClearance] = useState(false);
   const [exitClearanceNotes, setExitClearanceNotes] = useState("");
+  const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  const [finalizeExitDate, setFinalizeExitDate] = useState("");
+  const [finalizeReason, setFinalizeReason] = useState("");
+  const [finalizeReassignTo, setFinalizeReassignTo] = useState("");
 
-  // Edit Person & Reporting State
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editFirstName, setEditFirstName] = useState("");
-  const [editLastName, setEditLastName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editWhatsapp, setEditWhatsapp] = useState("");
-  const [editSameAsPhone, setEditSameAsPhone] = useState(true);
-  const [editDepartmentId, setEditDepartmentId] = useState("");
-  const [editDesignationId, setEditDesignationId] = useState("");
-  const [editManagerId, setEditManagerId] = useState("");
-  const [editStatus, setEditStatus] = useState<Person["status"]>("ACTIVE");
-  const [editPersonType, setEditPersonType] = useState<"EMPLOYEE" | "VOLUNTEER">("EMPLOYEE");
-  const [editAddress, setEditAddress] = useState("");
-  const [editCurrentAddress, setEditCurrentAddress] = useState("");
-  const [editPermanentAddress, setEditPermanentAddress] = useState("");
-  const [editSameAsCurrentAddress, setEditSameAsCurrentAddress] = useState(true);
-  const [editEmergencyPhone, setEditEmergencyPhone] = useState("");
-  const [editEmergencyRelation, setEditEmergencyRelation] = useState<EmergencyRelation>("Spouse");
-  const [editEmergencyName, setEditEmergencyName] = useState("");
 
   // In-App Document Viewer State
   const [viewDocModalOpen, setViewDocModalOpen] = useState(false);
@@ -209,17 +432,6 @@ export function PeoplePage() {
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewDocError, setPreviewDocError] = useState<string | null>(null);
-
-  // New Person Form State
-  const [newPersonType, setNewPersonType] = useState<"EMPLOYEE" | "VOLUNTEER">("EMPLOYEE");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [designationId, setDesignationId] = useState("");
-  const [managerId, setManagerId] = useState("");
-  const [joiningDate, setJoiningDate] = useState("");
 
   // Document Upload State
   const [docName, setDocName] = useState("");
@@ -234,20 +446,44 @@ export function PeoplePage() {
   const [exitReason, setExitReason] = useState("");
 
   // Queries
-  const {
-    data: people,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ["hr", "people", personTypeFilter, statusFilter, departmentFilter, search],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (personTypeFilter !== "ALL") params.set("personType", personTypeFilter);
-      if (statusFilter !== "ALL") params.set("status", statusFilter);
-      if (departmentFilter !== "ALL") params.set("departmentId", departmentFilter);
-      if (search.trim()) params.set("search", search.trim());
-      return api.get<Person[]>(`/hr/persons?${params.toString()}`);
+  const peopleQuery = usePagedQuery<
+    Person,
+    { items: Person[]; total: number; counts?: { employees: number; volunteers: number; active: number } }
+  >({
+    key: ["hr", "people", "list"],
+    path: "/hr/persons",
+    params: {
+      personType: personTypeFilter !== "ALL" ? personTypeFilter : undefined,
+      status: statusFilter !== "ALL" ? statusFilter : undefined,
+      departmentId: departmentFilter !== "ALL" ? departmentFilter : undefined,
+      search,
     },
+    pageSize: 10,
+  });
+  const paginatedPeople = peopleQuery.items;
+  const isLoading = peopleQuery.isLoading;
+  const error = peopleQuery.error;
+  // Header stats ignore the list filters: separate unfiltered query, cached 60s.
+  const { data: headerStats } = useQuery({
+    queryKey: ["hr", "people", "header-counts"],
+    queryFn: () =>
+      api.get<{ total: number; counts?: { employees: number; volunteers: number; active: number } }>(
+        "/hr/persons?page=1&pageSize=1",
+      ),
+    staleTime: 60_000,
+  });
+  const counts = headerStats?.counts;
+  const totalAllStaff = headerStats?.total ?? 0;
+  const totalPeople = peopleQuery.total;
+  const isFetchingFirst = isLoading;
+
+  // Full unpaged list: only for manager pickers (create/edit/finalize modals).
+  const needsAllPeople = createModalOpen || editModalOpen || finalizeModalOpen;
+  const { data: people } = useQuery({
+    queryKey: ["hr", "people", "all"],
+    queryFn: () => api.get<Person[]>("/hr/persons"),
+    enabled: needsAllPeople,
+    staleTime: 60_000,
   });
 
   const { data: departments } = useQuery({
@@ -268,19 +504,13 @@ export function PeoplePage() {
     (d) => d.name === myProfile?.user?.department || d.name === myProfile?.person?.department
   )?.id;
 
-  // Client-side pagination & DOM virtualization for high performance
-  const {
-    currentPage,
-    setCurrentPage,
-    pageSize,
-    setPageSize,
-    totalPages,
-    totalItems,
-    paginatedItems: paginatedPeople,
-  } = usePagination(people || [], 10);
-
   // Selected person detail query for Drawer
-  const { data: selectedPerson, refetch: refetchSelectedPerson } = useQuery({
+  const {
+    data: selectedPerson,
+    refetch: refetchSelectedPerson,
+    isLoading: selectedPersonLoading,
+    error: selectedPersonError,
+  } = useQuery({
     queryKey: ["hr", "people", selectedPersonId],
     queryFn: () => api.get<Person>(`/hr/persons/${selectedPersonId}`),
     enabled: !!selectedPersonId,
@@ -298,45 +528,98 @@ export function PeoplePage() {
   }, [selectedPerson]);
 
   const updateExitChecklist = useMutation({
-    mutationFn: ({ personId, checklist, isFinalized }: { personId: string; checklist: any; isFinalized?: boolean }) =>
-      api.patch(`/hr/persons/${personId}/exit-checklist`, { ...checklist, isFinalized }),
-    onSuccess: () => {
+    mutationFn: ({
+      personId,
+      checklist,
+      isFinalized,
+      exitDate: finalExitDate,
+      exitReason: finalExitReason,
+      reassignReportsTo,
+    }: {
+      personId: string;
+      checklist: any;
+      isFinalized?: boolean;
+      exitDate?: string;
+      exitReason?: string;
+      reassignReportsTo?: string;
+    }) =>
+      api.patch(`/hr/persons/${personId}/exit-checklist`, {
+        ...checklist,
+        isFinalized,
+        ...(isFinalized ? { exitDate: finalExitDate, exitReason: finalExitReason, reassignReportsTo: reassignReportsTo || undefined } : {}),
+      }),
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
-      toast.success("Exit checklist updated", "Offboarding clearance record saved.");
+      if (vars.isFinalized) {
+        setFinalizeModalOpen(false);
+        setFinalizeReason("");
+        setFinalizeReassignTo("");
+        refetchSelectedPerson();
+        toast.success("Exit finalized", "The record is now marked as exited.");
+      } else {
+        toast.success("Exit checklist updated", "Offboarding clearance record saved.");
+      }
     },
     onError: (err) => {
-      toast.error("Failed to update exit checklist", (err as Error).message);
+      toast.error("Failed to update exit checklist", formatErrorMessage(err));
     },
   });
 
   const bulkImport = useMutation({
     mutationFn: (records: any[]) =>
-      api.post<{ total: number; importedCount: number; failedCount: number; errors: any[] }>(
-        "/hr/persons/bulk-import",
-        { records }
-      ),
+      api.post<{
+        total: number;
+        importedCount: number;
+        failedCount: number;
+        invitedCount?: number;
+        failed?: { row: number; email?: string; reason: string }[];
+      }>("/hr/persons/bulk-import", { records, sendInvites: bulkSendInvites }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
-      toast.success("Bulk import completed", `Imported ${res.importedCount} of ${res.total} staff members.`);
+      if (res.failedCount > 0) {
+        setBulkParsedRows([]);
+        setBulkRowErrors((res.failed ?? []).map((f) => ({ row: f.row, reason: `${f.email ? `${f.email}: ` : ""}${f.reason}` })));
+        toast.error(
+          "Some rows were not imported",
+          `Imported ${res.importedCount} of ${res.total}. Fix the listed rows and upload again.`,
+        );
+        return;
+      }
+      toast.success(
+        "Bulk import completed",
+        `Imported ${res.importedCount} of ${res.total} staff members.${
+          typeof res.invitedCount === "number" ? ` ${res.invitedCount} login invitation${res.invitedCount === 1 ? "" : "s"} sent.` : ""
+        }`,
+      );
       setBulkImportModalOpen(false);
-      setBulkCsvText("");
-      setBulkParsedRows([]);
+      resetBulkImport();
     },
     onError: (err) => {
-      toast.error("Bulk import failed", (err as Error).message);
+      toast.error("Bulk import failed", formatErrorMessage(err));
     },
   });
 
-  const handleExportStaffDirectory = () => {
-    if (!people || people.length === 0) {
+  const handleExportStaffDirectory = async () => {
+    let all: Person[];
+    try {
+      all = await peopleQuery.fetchAll();
+    } catch (e) {
+      toast.error("Export failed", formatErrorMessage(e));
+      return;
+    }
+    if (all.length === 0) {
       toast.error("No staff to export", "No records found matching current filters.");
       return;
     }
     const headers = [
       "First Name",
+      "Middle Name",
       "Last Name",
       "Email",
       "Phone",
+      "Alternate Mobile",
+      "Gender",
+      "Date of Birth",
       "Person Type",
       "Status",
       "Department",
@@ -346,104 +629,178 @@ export function PeoplePage() {
       "Exit Date",
       "Exit Reason",
     ];
-    const rows = people.map((p) => [
+    const rows = all.map((p) => [
       p.firstName,
+      p.middleName || "",
       p.lastName,
       p.email,
       p.phone || "",
+      p.altPhone || "",
+      p.gender || "",
+      p.dob ? new Date(p.dob).toISOString().split("T")[0] : "",
       p.personType,
       p.status,
       p.department?.name || "",
       p.designation?.name || "",
-      p.manager ? `${p.manager.firstName} ${p.manager.lastName}` : "",
+      p.manager ? fullName(p.manager) : "",
       p.joiningDate ? new Date(p.joiningDate).toLocaleDateString() : "",
       p.exitDate ? new Date(p.exitDate).toLocaleDateString() : "",
       p.exitReason || "",
     ]);
-    exportToCsv("Staff_Directory_Export", headers, rows);
+    exportToExcel("Staff_Directory_Export", headers, rows);
     toast.success("Staff directory exported", `${rows.length} records downloaded.`);
   };
 
-  const handleDownloadSampleCsv = () => {
-    const headers = [
-      "firstName",
-      "middleName",
-      "lastName",
-      "email",
-      "phone",
-      "personType",
-      "departmentName",
-      "designationName",
-      "joiningDate",
-    ];
-    const sampleRows = [
-      ["Pooja", "Kumar", "Sharma", "pooja.sharma@example.org", "+91 9876543210", "EMPLOYEE", "Programmes", "Project Coordinator", "2026-02-01"],
-      ["Amit", "", "Verma", "amit.verma@example.org", "+91 9812345678", "VOLUNTEER", "Field Operations", "Field Volunteer", "2026-03-15"],
-    ];
-    exportToCsv("sample_staff_import", headers, sampleRows);
-    toast.success("Template downloaded", "Fill in your staff details and upload.");
+  const resetBulkImport = () => {
+    setBulkFileName("");
+    setBulkParsedRows([]);
+    setBulkRowErrors([]);
   };
 
-  const handleParseCsv = (rawText: string) => {
-    setBulkCsvText(rawText);
-    const lines = rawText.trim().split("\n").filter((l) => l.trim().length > 0);
-    if (lines.length <= 1) {
-      setBulkParsedRows([]);
-      return;
+  const BULK_HEADERS = [
+    "firstName",
+    "middleName",
+    "lastName",
+    "email",
+    "phone",
+    "altPhone",
+    "gender",
+    "dob",
+    "personType",
+    "departmentName",
+    "designationName",
+    "joiningDate",
+    ...(canSetSalary ? ["monthlyGross"] : []),
+  ];
+
+  const handleDownloadTemplate = () => {
+    const sampleRows = [
+      ["Pooja", "Kumar", "Sharma", "pooja.sharma@example.org", "+91 9876543210", "", "FEMALE", "1992-05-14", "EMPLOYEE", "Programmes", "Project Coordinator", "2026-02-01", ...(canSetSalary ? [45000] : [])],
+      ["Amit", "", "Verma", "amit.verma@example.org", "+91 9812345678", "+91 9812345679", "MALE", "1995-11-02", "VOLUNTEER", "Field Operations", "Field Volunteer", "2026-03-15", ...(canSetSalary ? [""] : [])],
+    ];
+    exportToExcel("staff_import_template", BULK_HEADERS, sampleRows, "Staff")
+      .then(() => toast.success("Template downloaded", "Fill in your staff details and upload the file."))
+      .catch((err) => toast.error("Download failed", formatErrorMessage(err)));
+  };
+
+  const cellToText = (value: unknown): string => {
+    if (value === null || value === undefined) return "";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    if (typeof value === "object") {
+      const v = value as { text?: string; result?: unknown; richText?: { text: string }[] };
+      if (v.richText) return v.richText.map((r) => r.text).join("").trim();
+      if (v.text !== undefined) return String(v.text).trim();
+      if (v.result !== undefined) return cellToText(v.result);
     }
-    const headers = lines[0].split(",").map((h) => h.replace(/["\r]/g, "").trim().toLowerCase());
-    const rows = lines.slice(1).map((line) => {
-      const values = line.split(",").map((v) => v.replace(/["\r]/g, "").trim());
-      const rowObj: any = {};
-      headers.forEach((h, i) => {
-        rowObj[h] = values[i] || "";
+    return String(value).trim();
+  };
+
+  const handleParseExcel = async (file: File) => {
+    resetBulkImport();
+    setBulkFileName(file.name);
+    setBulkParsing(true);
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await file.arrayBuffer());
+      const sheet = workbook.worksheets[0];
+      if (!sheet) throw new Error("empty");
+
+      const headers: string[] = [];
+      sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {
+        headers[col] = cellToText(cell.value).toLowerCase().replace(/[\s_]/g, "");
       });
-      const rawFirst = rowObj.firstname || rowObj["first name"] || "";
-      const rawMiddle = rowObj.middlename || rowObj.midname || rowObj["middle name"] || rowObj["mid name"] || "";
-      const rawLast = rowObj.lastname || rowObj["last name"] || "";
-      const combinedFirst = rawMiddle ? `${rawFirst} ${rawMiddle}`.trim() : rawFirst.trim();
 
-      return {
-        firstName: combinedFirst,
-        lastName: rawLast,
-        email: rowObj.email || "",
-        phone: rowObj.phone || "",
-        personType: (rowObj.persontype || rowObj["person type"] || "EMPLOYEE").toUpperCase() === "VOLUNTEER" ? "VOLUNTEER" : "EMPLOYEE",
-        departmentName: rowObj.departmentname || rowObj.department || "",
-        designationName: rowObj.designationname || rowObj.designation || "",
-        joiningDate: rowObj.joiningdate || rowObj["joining date"] || new Date().toISOString().split("T")[0],
-      };
-    }).filter((r) => r.email && r.firstName);
+      const valid: any[] = [];
+      const errors: { row: number; reason: string }[] = [];
+      const seenEmails = new Set<string>();
 
-    setBulkParsedRows(rows);
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        const r: Record<string, string> = {};
+        row.eachCell({ includeEmpty: true }, (cell, col) => {
+          if (headers[col]) r[headers[col]] = cellToText(cell.value);
+        });
+        if (Object.values(r).every((v) => !v)) return;
+
+        const record = {
+          firstName: r.firstname || "",
+          middleName: r.middlename || undefined,
+          lastName: r.lastname || "",
+          email: (r.email || "").toLowerCase(),
+          phone: r.phone || "",
+          altPhone: r.altphone || undefined,
+          gender: normalizeGender(r.gender),
+          dob: r.dob || r.dateofbirth || "",
+          personType: (r.persontype || "EMPLOYEE").toUpperCase() === "VOLUNTEER" ? "VOLUNTEER" : "EMPLOYEE",
+          departmentName: r.departmentname || r.department || "",
+          designationName: r.designationname || r.designation || "",
+          joiningDate: r.joiningdate || new Date().toISOString().split("T")[0],
+        };
+
+        const problems: string[] = [];
+        const salaryRaw = canSetSalary
+          ? (r.monthlygross || r.monthlysalary || r.salary || "").replace(/[₹,\s]/g, "")
+          : "";
+        let monthlyGross: number | undefined;
+        if (salaryRaw) {
+          monthlyGross = Number(salaryRaw);
+          if (!Number.isFinite(monthlyGross) || monthlyGross < 0.01) {
+            problems.push("monthly salary is invalid");
+            monthlyGross = undefined;
+          }
+        }
+        if (!record.firstName) problems.push("first name is required");
+        if (!record.lastName) problems.push("last name is required");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email)) problems.push("email is invalid");
+        else if (seenEmails.has(record.email)) problems.push("email appears twice in the file");
+        if (!PHONE_REGEX.test(record.phone)) problems.push("phone is missing or invalid");
+        if (record.altPhone && !PHONE_REGEX.test(record.altPhone)) problems.push("alternate mobile is invalid");
+        if (!record.gender) problems.push("gender must be MALE, FEMALE or OTHER");
+        if (!record.dob || Number.isNaN(Date.parse(record.dob))) problems.push("date of birth is missing or invalid");
+        else if (new Date(record.dob) > new Date()) problems.push("date of birth cannot be in the future");
+
+        if (problems.length > 0) {
+          errors.push({ row: rowNumber, reason: problems.join(", ") });
+        } else {
+          seenEmails.add(record.email);
+          valid.push(monthlyGross !== undefined ? { ...record, monthlyGross } : record);
+        }
+      });
+
+      if (valid.length > 500) {
+        toast.error("Too many rows", "Please import at most 500 staff members per file.");
+        return;
+      }
+      setBulkParsedRows(valid);
+      setBulkRowErrors(errors);
+      if (valid.length === 0 && errors.length === 0) {
+        toast.error("No staff found", "The file has no data rows. Use the Excel template.");
+      }
+    } catch {
+      toast.error("Could not read file", "Please upload a valid Excel (.xlsx) file based on the template.");
+    } finally {
+      setBulkParsing(false);
+    }
   };
 
   // Mutations
   const createPerson = useMutation({
-    mutationFn: () =>
-      api.post<Person>("/hr/persons", {
-        personType: newPersonType,
-        firstName,
-        lastName,
-        email,
-        phone: phone || undefined,
-        departmentId: departmentId || undefined,
-        designationId: designationId || undefined,
-        managerId: managerId || undefined,
-        joiningDate: joiningDate ? new Date(joiningDate).toISOString() : undefined,
-      }),
+    mutationFn: (payload: Record<string, unknown>) =>
+      api.post<Person & { inviteSent?: boolean; message?: string; salaryNote?: string }>("/hr/persons", payload),
     onSuccess: (p) => {
       setCreateModalOpen(false);
-      resetCreateForm();
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "departments"] });
       toast.success(
-        `${newPersonType === "EMPLOYEE" ? "Employee" : "Volunteer"} onboarded`,
-        `${p.firstName} ${p.lastName} added successfully.`,
+        `${p.personType === "VOLUNTEER" ? "Volunteer" : "Employee"} onboarded`,
+        `${fullName(p)} added successfully.`,
       );
+      if (p.inviteSent === false && p.message) toast.info("Invitation not sent", p.message);
+      if (p.salaryNote) toast.info("Salary not set", p.salaryNote);
     },
     onError: (err) => {
-      toast.error("Failed to add person", (err as Error).message);
+      toast.error("Failed to add person", formatErrorMessage(err));
     },
   });
 
@@ -459,10 +816,10 @@ export function PeoplePage() {
       setExitReason("");
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
       refetchSelectedPerson();
-      toast.success("Exit recorded", "Person status updated to Exited.");
+      toast.success("Resignation recorded", "Status set to Notice Period. Complete the exit checklist to close the record.");
     },
     onError: (err) => {
-      toast.error("Failed to process exit", (err as Error).message);
+      toast.error("Failed to process exit", formatErrorMessage(err));
     },
   });
 
@@ -477,18 +834,6 @@ export function PeoplePage() {
       toast.error("Failed to delete document", (err as Error).message);
     },
   });
-
-  const resetCreateForm = () => {
-    setNewPersonType("EMPLOYEE");
-    setFirstName("");
-    setLastName("");
-    setEmail("");
-    setPhone("");
-    setDepartmentId("");
-    setDesignationId("");
-    setManagerId("");
-    setJoiningDate("");
-  };
 
   const reviewDoc = useMutation({
     mutationFn: ({ docId, status, rejectionReason }: { docId: string; status: "APPROVED" | "REJECTED"; rejectionReason?: string }) =>
@@ -507,86 +852,24 @@ export function PeoplePage() {
     },
   });
 
-  const handleOpenEditModal = (p: Person) => {
-    setEditFirstName(p.firstName || "");
-    setEditLastName(p.lastName || "");
-    setEditPhone(p.phone || "");
-    setEditWhatsapp(p.whatsapp || p.phone || "");
-    setEditSameAsPhone(!p.whatsapp || p.whatsapp === p.phone);
-    setEditDepartmentId(p.departmentId || "");
-    setEditDesignationId(p.designationId || "");
-    setEditManagerId(p.managerId || "");
-    setEditStatus(p.status || "ACTIVE");
-    setEditPersonType(p.personType || "EMPLOYEE");
-    
-    const currAddr = p.currentAddress || p.address || "";
-    const permAddr = p.permanentAddress || currAddr;
-    setEditCurrentAddress(currAddr);
-    setEditPermanentAddress(permAddr);
-    setEditSameAsCurrentAddress(!p.permanentAddress || p.permanentAddress === currAddr);
-    setEditAddress(currAddr);
-
-    const parsed = parseEmergencyContact(p.emergencyContact);
-    setEditEmergencyPhone(parsed.phone);
-    setEditEmergencyRelation((parsed.relation as EmergencyRelation) || "Spouse");
-    setEditEmergencyName(parsed.name);
-
+  const handleOpenEditModal = (_p: Person) => {
     setEditModalOpen(true);
   };
 
-  const handleEditManagerChange = (mId: string) => {
-    setEditManagerId(mId);
-    if (mId) {
-      const mgr = people?.find((p) => p.id === mId);
-      if (mgr?.departmentId && !editDepartmentId) {
-        setEditDepartmentId(mgr.departmentId);
-        toast.info("Department Synced", `Connected department to ${mgr.department?.name || "manager's department"}.`);
-      }
-    }
-  };
-
-  const handleCreateManagerChange = (mId: string) => {
-    setManagerId(mId);
-    if (mId) {
-      const mgr = people?.find((p) => p.id === mId);
-      if (mgr?.departmentId && !departmentId) {
-        setDepartmentId(mgr.departmentId);
-      }
-    }
-  };
-
   const updatePersonMutation = useMutation({
-    mutationFn: () => {
-      const emergencyContact = formatEmergencyContact(editEmergencyPhone, editEmergencyRelation, editEmergencyName);
-      const finalWhatsapp = editSameAsPhone ? editPhone.trim() : editWhatsapp.trim();
-      const finalPermAddr = editSameAsCurrentAddress ? editCurrentAddress.trim() : editPermanentAddress.trim();
-      return api.patch(`/hr/persons/${selectedPersonId}`, {
-        firstName: editFirstName.trim(),
-        lastName: editLastName.trim(),
-        phone: editPhone.trim(),
-        whatsapp: finalWhatsapp,
-        departmentId: editDepartmentId || null,
-        designationId: editDesignationId || null,
-        managerId: editManagerId || null,
-        status: editStatus,
-        personType: editPersonType,
-        currentAddress: editCurrentAddress.trim(),
-        permanentAddress: finalPermAddr,
-        address: editCurrentAddress.trim(),
-        emergencyContact,
-      });
-    },
+    mutationFn: (payload: Record<string, unknown>) => api.patch(`/hr/persons/${selectedPersonId}`, payload),
     onSuccess: () => {
       setEditModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["hr", "people"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "departments"] });
       refetchSelectedPerson();
-      toast.success("Profile updated", "Reporting manager, department, and profile details saved.");
+      toast.success("Profile updated", "The profile details were saved.");
     },
     onError: (err: any) => {
-      toast.error("Update failed", err.message || "Failed to update person.");
+      toast.error("Update failed", formatErrorMessage(err));
     },
   });
+
 
   const handleOpenDocViewer = async (doc: PersonDocument) => {
     setPreviewDoc(doc);
@@ -598,7 +881,7 @@ export function PeoplePage() {
       const data = await api.get<{ downloadUrl?: string; url?: string }>(
         `/hr/persons/${selectedPersonId}/documents/${doc.id}/url`
       );
-      const targetUrl = data.downloadUrl || data.url || null;
+      const targetUrl = data.url || data.downloadUrl || null;
       if (!targetUrl) {
         setPreviewDocError("Document link is not available in storage.");
       } else {
@@ -681,7 +964,7 @@ export function PeoplePage() {
         icon={Users}
         title="Person Master"
         description="Manage employee and volunteer profiles, reporting hierarchies, and records."
-        badge={{ label: `${people?.length || 0} Staff`, variant: "secondary" }}
+        badge={{ label: `${totalPeople} Staff`, variant: "secondary" }}
         actions={
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Button
@@ -689,7 +972,7 @@ export function PeoplePage() {
               size="sm"
               onClick={handleExportStaffDirectory}
               className="gap-1 font-semibold rounded-xl text-xs h-8 px-2 sm:px-3"
-              title="Export Staff Directory (CSV)"
+              title="Export Staff Directory (Excel)"
             >
               <Download className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Export</span>
@@ -699,12 +982,12 @@ export function PeoplePage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setBulkCsvText("");
+                  resetBulkImport();
                   setBulkParsedRows([]);
                   setBulkImportModalOpen(true);
                 }}
                 className="gap-1 font-semibold rounded-xl text-xs h-8 px-2 sm:px-3"
-                title="Bulk Import Staff (CSV/Excel)"
+                title="Bulk Import Staff (Excel)"
               >
                 <Upload className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Bulk Import</span>
@@ -721,20 +1004,20 @@ export function PeoplePage() {
           </div>
         }
         stats={[
-          { label: "All Staff", value: people?.length || 0 },
+          { label: "All Staff", value: totalAllStaff },
           {
             label: "Employees",
-            value: people?.filter((p) => p.personType === "EMPLOYEE").length || 0,
+            value: counts?.employees ?? 0,
             color: "text-primary",
           },
           {
             label: "Volunteers",
-            value: people?.filter((p) => p.personType === "VOLUNTEER").length || 0,
+            value: counts?.volunteers ?? 0,
             color: "text-amber-500",
           },
           {
             label: "Active",
-            value: people?.filter((p) => p.status === "ACTIVE").length || 0,
+            value: counts?.active ?? 0,
             color: "text-emerald-500",
           },
         ]}
@@ -744,15 +1027,12 @@ export function PeoplePage() {
       <Card className="rounded-xl sm:rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
         <CardContent className="p-2.5 sm:p-4 space-y-2.5 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
           {/* Mobile: Search first for instant query */}
-          <div className="relative w-full sm:hidden">
-            <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-8 text-xs rounded-xl"
-            />
-          </div>
+          <SearchInput
+            placeholder="Search by name or email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full sm:hidden"
+          />
 
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 w-full sm:w-auto">
             <div className="flex items-center gap-1 shrink-0">
@@ -813,15 +1093,12 @@ export function PeoplePage() {
           </div>
 
           {/* Desktop Search Box */}
-          <div className="relative sm:w-64 hidden sm:block shrink-0">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 text-xs"
-            />
-          </div>
+          <SearchInput
+            placeholder="Search by name or email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="sm:w-64 hidden sm:flex shrink-0"
+          />
         </CardContent>
       </Card>
 
@@ -835,7 +1112,7 @@ export function PeoplePage() {
               {departments?.find((d) => d.id === departmentFilter)?.name || "Selected Department"}
             </span>
             <span className="text-muted-foreground hidden sm:inline">
-              • Focused scope for task escalation, attendance, and approvals ({people?.length ?? 0} members)
+              • Focused scope for task escalation, attendance, and approvals ({totalPeople} members)
             </span>
           </div>
           <button
@@ -850,77 +1127,17 @@ export function PeoplePage() {
       {/* People Table & Mobile Cards */}
       <Card className="rounded-xl sm:rounded-2xl border border-zinc-200/80 dark:border-zinc-800 overflow-hidden">
         <CardContent className="p-0">
-          <QueryState isLoading={isLoading} error={error}>
+          <QueryState isLoading={false} error={error}>
             {/* Mobile Native Card View (Phones < 640px) */}
             <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800/80">
-              {people?.length === 0 ? (
+              {isFetchingFirst ? (
+                <MobileSkeleton />
+              ) : paginatedPeople.length === 0 ? (
                 <div className="text-center py-8 text-xs text-muted-foreground">
                   No staff records found matching your filters.
                 </div>
               ) : (
-                paginatedPeople.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedPersonId(p.id)}
-                    className="p-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2.5">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Avatar
-                          name={`${p.firstName} ${p.lastName}`}
-                          src={p.avatarUrl || undefined}
-                          size="md"
-                          isBordered
-                          status={p.status === "ACTIVE" ? "online" : undefined}
-                          className="shrink-0 h-10 w-10 text-xs"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-bold text-sm text-foreground truncate">
-                              {p.firstName} {p.lastName}
-                            </p>
-                            <Badge
-                              variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
-                              className="text-[9px] px-1.5 py-0"
-                            >
-                              {p.personType === "EMPLOYEE" ? "Emp" : "Vol"}
-                            </Badge>
-                            <Badge
-                              variant={
-                                p.status === "ACTIVE"
-                                  ? "success"
-                                  : p.status === "NOTICE_PERIOD"
-                                    ? "warning"
-                                    : "secondary"
-                              }
-                              dot
-                              className="text-[9px] px-1.5 py-0"
-                            >
-                              {p.status === "NOTICE_PERIOD" ? "Notice" : p.status.toLowerCase()}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground font-medium truncate mt-0.5">
-                            {p.designation?.name || "Staff Member"} • {p.department?.name || "No Dept"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-2" />
-                    </div>
-
-                    {/* Mobile Card Footer: Contact & Manager */}
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-zinc-100/60 dark:border-zinc-800/60">
-                      <span className="truncate max-w-[170px]">{p.email}</span>
-                      {p.manager ? (
-                        <span className="text-[10px] text-primary font-medium truncate">
-                          Lead: {p.manager.firstName} {p.manager.lastName[0]}.
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-muted-foreground">Top Executive</span>
-                      )}
-                    </div>
-                  </div>
-                ))
+                paginatedPeople.map((p) => <PersonCard key={p.id} p={p} onSelect={setSelectedPersonId} />)
               )}
             </div>
 
@@ -938,119 +1155,16 @@ export function PeoplePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {people?.length === 0 ? (
+                  {isFetchingFirst ? (
+                    <PeopleSkeletonRows />
+                  ) : paginatedPeople.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
                         No records found matching your filters.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    paginatedPeople.map((p) => (
-                      <TableRow
-                        key={p.id}
-                        className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
-                        onClick={() => setSelectedPersonId(p.id)}
-                      >
-                        <TableCell>
-                          <User
-                            name={`${p.firstName} ${p.lastName}`}
-                            description={p.email}
-                            avatarProps={{
-                              src: p.avatarUrl || undefined,
-                              size: "sm",
-                              isBordered: true,
-                              status: p.status === "ACTIVE" ? "online" : undefined,
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={p.personType === "EMPLOYEE" ? "default" : "secondary"}
-                            size="sm"
-                          >
-                            {p.personType === "EMPLOYEE" ? "Employee" : "Volunteer"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-xs font-semibold text-foreground">
-                              {p.designation?.name || "No designation"}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {p.department?.name || "No department"}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {p.manager ? (
-                            <span className="text-xs text-foreground font-medium">
-                              {p.manager.firstName} {p.manager.lastName}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">None (Top-level)</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              p.status === "ACTIVE"
-                                ? "success"
-                                : p.status === "NOTICE_PERIOD"
-                                  ? "warning"
-                                  : "secondary"
-                            }
-                            dot
-                            size="sm"
-                          >
-                            {p.status === "ACTIVE"
-                              ? "Active"
-                              : p.status === "NOTICE_PERIOD"
-                                ? "Notice Period"
-                                : p.status === "JOINED"
-                                  ? "Joined"
-                                  : p.status === "PROBATION"
-                                    ? "Probation"
-                                    : "Exited"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedPersonId(p.id)}
-                              className="text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 h-8 px-2.5"
-                            >
-                              View
-                            </Button>
-                            <Dropdown>
-                              <DropdownTrigger>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownTrigger>
-                              <DropdownMenu align="end">
-                                <DropdownItem
-                                  icon={<ExternalLink className="h-3.5 w-3.5" />}
-                                  onClick={() => setSelectedPersonId(p.id)}
-                                >
-                                  View Profile
-                                </DropdownItem>
-                                <DropdownItem
-                                  icon={<Copy className="h-3.5 w-3.5" />}
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(p.email);
-                                    toast.success("Email copied", p.email);
-                                  }}
-                                >
-                                  Copy Email
-                                </DropdownItem>
-                              </DropdownMenu>
-                            </Dropdown>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    paginatedPeople.map((p) => <PersonRow key={p.id} p={p} onSelect={setSelectedPersonId} />)
                   )}
                 </TableBody>
               </Table>
@@ -1058,12 +1172,12 @@ export function PeoplePage() {
 
             {/* Pagination Controls */}
             <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              totalItems={totalItems}
-              pageSize={pageSize}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={setPageSize}
+              currentPage={peopleQuery.page}
+              totalPages={peopleQuery.totalPages}
+              totalItems={peopleQuery.total}
+              pageSize={peopleQuery.pageSize}
+              onPageChange={peopleQuery.setPage}
+              onPageSizeChange={peopleQuery.setPageSize}
             />
           </QueryState>
         </CardContent>
@@ -1075,195 +1189,20 @@ export function PeoplePage() {
         onClose={() => setCreateModalOpen(false)}
         title="Onboard New Person"
         description="Add a staff member or volunteer to your organisation."
-        maxWidth="lg"
+        maxWidth="4xl"
       >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            createPerson.mutate();
-          }}
-          className="space-y-4"
-        >
-          {/* Person Type Selector */}
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1.5">
-              Person Classification
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setNewPersonType("EMPLOYEE")}
-                className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-sm font-semibold transition-all ${newPersonType === "EMPLOYEE"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                <Briefcase className="h-4 w-4" />
-                Employee
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewPersonType("VOLUNTEER")}
-                className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-sm font-semibold transition-all ${newPersonType === "VOLUNTEER"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                <UserCheck className="h-4 w-4" />
-                Volunteer
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">First Name *</label>
-              <Input
-                placeholder="Ramesh"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Last Name *</label>
-              <Input
-                placeholder="Kumar"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-foreground block mb-1">Email Address *</label>
-            <Input
-              type="email"
-              placeholder="ramesh@example.org"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              maxLength={INPUT_LIMITS.EMAIL_MAX}
-              required
-            />
-          </div>
-
-          <PhoneInput
-            label="Phone Number"
-            value={phone}
-            onChange={setPhone}
-            placeholder="Mobile number"
+        {createModalOpen && (
+          <PersonForm
+            mode="create"
+            departments={departments}
+            designations={designations}
+            managers={people}
+            isSubmitting={createPerson.isPending}
+            submitLabel="Onboard person"
+            onCancel={() => setCreateModalOpen(false)}
+            onSubmit={(payload) => createPerson.mutate(payload)}
           />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Department"
-              value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
-            >
-              <option value="">Select Department</option>
-              {departments?.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </Select>
-            <Select
-              label="Designation / Role"
-              value={designationId}
-              onChange={(e) => setDesignationId(e.target.value)}
-            >
-              <option value="">Select Designation</option>
-              {designations?.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Reporting Manager (Hierarchy)"
-              value={managerId}
-              onChange={(e) => handleCreateManagerChange(e.target.value)}
-            >
-              <option value="">None (Top-Level Executive)</option>
-              {departmentId && people?.some((p) => p.status === "ACTIVE" && p.departmentId === departmentId) && (
-                <optgroup label={`Team Leads in ${departments?.find((d) => d.id === departmentId)?.name || "Selected Dept"}`}>
-                  {people
-                    ?.filter((p) => p.status === "ACTIVE" && p.departmentId === departmentId)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.firstName} {p.lastName} — {p.designation?.name || p.email}
-                      </option>
-                    ))}
-                </optgroup>
-              )}
-              <optgroup label={departmentId ? "Executive Leadership & Other Departments" : "All Available Managers"}>
-                {people
-                  ?.filter((p) => p.status === "ACTIVE" && (!departmentId || p.departmentId !== departmentId))
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} — {p.designation?.name || p.email} ({p.department?.name || "No Dept"})
-                    </option>
-                  ))}
-              </optgroup>
-            </Select>
-            <DatePicker
-              label="Joining Date"
-              value={joiningDate}
-              onChange={(val) => setJoiningDate(val)}
-            />
-          </div>
-
-          {/* Connected Placement Preview */}
-          {(departmentId || designationId || managerId) && (
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 text-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                  <Network className="h-3.5 w-3.5 text-primary" />
-                  Organizational Placement & Hierarchy
-                </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 font-medium">
-                  {managerId ? "Manager Linked" : "Top Executive"}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-[11px] pt-1">
-                <div>
-                  <span className="text-muted-foreground block text-[10px]">Department</span>
-                  <span className="font-semibold text-foreground truncate block">
-                    {departments?.find((d) => d.id === departmentId)?.name || "(Unassigned)"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px]">Role</span>
-                  <span className="font-semibold text-foreground truncate block">
-                    {designations?.find((d) => d.id === designationId)?.name || "(Unassigned)"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px]">Supervisor</span>
-                  <span className="font-semibold text-foreground truncate block">
-                    {people?.find((p) => p.id === managerId)
-                      ? `${people.find((p) => p.id === managerId)!.firstName} ${people.find((p) => p.id === managerId)!.lastName}`
-                      : "None (Direct to Board)"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-            <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!firstName || !lastName || !email || createPerson.isPending}
-            >
-              {createPerson.isPending ? "Onboarding…" : "Onboard Person"}
-            </Button>
-          </div>
-        </form>
+        )}
       </Modal>
 
       {/* Person Detail Drawer with Sticky Rich Header */}
@@ -1277,7 +1216,7 @@ export function PeoplePage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <Avatar
-                    name={`${selectedPerson.firstName} ${selectedPerson.lastName}`}
+                    name={fullName(selectedPerson)}
                     src={selectedPerson.avatarUrl || undefined}
                     size="lg"
                     isBordered
@@ -1287,7 +1226,7 @@ export function PeoplePage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-bold text-foreground text-base truncate">
-                        {selectedPerson.firstName} {selectedPerson.lastName}
+                        {fullName(selectedPerson)}
                       </h4>
                       <Badge
                         variant={selectedPerson.personType === "EMPLOYEE" ? "default" : "secondary"}
@@ -1334,6 +1273,28 @@ export function PeoplePage() {
           ) : undefined
         }
       >
+        {!selectedPerson && selectedPersonLoading && (
+          <div className="space-y-3 animate-pulse" aria-busy="true" aria-label="Loading profile">
+            <div className="h-16 rounded-xl bg-zinc-100 dark:bg-zinc-800" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-14 rounded-xl bg-zinc-100 dark:bg-zinc-800" />
+              ))}
+            </div>
+            <div className="h-24 rounded-xl bg-zinc-100 dark:bg-zinc-800" />
+            <div className="h-32 rounded-xl bg-zinc-100 dark:bg-zinc-800" />
+          </div>
+        )}
+        {!selectedPerson && !selectedPersonLoading && (
+          <div className="py-10 text-center space-y-3">
+            <p className="text-sm font-medium text-foreground">
+              {selectedPersonError ? formatErrorMessage(selectedPersonError) : "The requested item could not be found."}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetchSelectedPerson()}>
+              Try again
+            </Button>
+          </div>
+        )}
         {selectedPerson && (
           <div className="space-y-4">
             {/* Meta Grid (Scrolls naturally on mobile) */}
@@ -1359,7 +1320,7 @@ export function PeoplePage() {
                     title="Click to view supervisor profile"
                   >
                     <span className="truncate block">
-                      {selectedPerson.manager.firstName} {selectedPerson.manager.lastName}
+                      {fullName(selectedPerson.manager)}
                     </span>
                     {selectedPerson.manager.designation?.name && (
                       <span className="text-[10px] text-muted-foreground font-normal truncate block">
@@ -1381,6 +1342,11 @@ export function PeoplePage() {
                 <p className="font-semibold text-foreground truncate font-mono mt-0.5 text-xs">
                   {selectedPerson.phone || "Not recorded"}
                 </p>
+                {selectedPerson.altPhone && (
+                  <p className="text-[11px] text-muted-foreground truncate font-mono" title="Alternate mobile number">
+                    Alt: {selectedPerson.altPhone}
+                  </p>
+                )}
               </div>
 
               <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800 min-w-0">
@@ -1394,8 +1360,15 @@ export function PeoplePage() {
                 </p>
               </div>
             </div>
-            {/* Address, WhatsApp & Emergency Contact Summary */}
-            {(selectedPerson.currentAddress || selectedPerson.permanentAddress || selectedPerson.address || selectedPerson.whatsapp || selectedPerson.emergencyContact) && (
+            {canManage && (!selectedPerson.phone || !selectedPerson.gender || !selectedPerson.dob) && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-xs text-amber-700 dark:text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>Phone number, gender or date of birth is missing. Use Edit to complete this profile.</span>
+              </div>
+            )}
+
+            {/* Address & Emergency Contact Summary */}
+            {(selectedPerson.currentAddress || selectedPerson.permanentAddress || selectedPerson.address || selectedPerson.emergencyContact) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 {(selectedPerson.currentAddress || selectedPerson.address) && (
                   <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
@@ -1407,14 +1380,6 @@ export function PeoplePage() {
                   <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
                     <span className="text-muted-foreground font-medium block mb-1">Permanent Address</span>
                     <p className="text-foreground">{selectedPerson.permanentAddress}</p>
-                  </div>
-                )}
-                {selectedPerson.whatsapp && (
-                  <div className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                    <span className="text-muted-foreground font-medium flex items-center gap-1 mb-1">
-                      <Phone className="h-3 w-3 text-emerald-500" /> WhatsApp Number
-                    </span>
-                    <p className="text-foreground font-mono font-semibold">{selectedPerson.whatsapp}</p>
                   </div>
                 )}
                 {selectedPerson.emergencyContact && (
@@ -1449,7 +1414,7 @@ export function PeoplePage() {
                     >
                       <div className="min-w-0">
                         <span className="font-semibold text-foreground group-hover:text-primary transition-colors block truncate">
-                          {dr.firstName} {dr.lastName}
+                          {fullName(dr)}
                         </span>
                         {dr.designation?.name && (
                           <span className="text-[10px] text-muted-foreground truncate block">
@@ -1744,6 +1709,9 @@ export function PeoplePage() {
                 )}
               </div>
 
+              {(selectedPerson.status === "NOTICE_PERIOD" || selectedPerson.status === "EXITED") &&
+                me?.permissionKeys?.includes("payroll.run.read") && <FinalSettlementCard personId={selectedPerson.id} />}
+
               {(selectedPerson.status === "NOTICE_PERIOD" || selectedPerson.status === "EXITED" || selectedPerson.exitChecklist) && (
                 <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/40 space-y-3">
                   <div className="flex items-center justify-between">
@@ -1834,25 +1802,11 @@ export function PeoplePage() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={async () => {
-                            const ok = await confirm({
-                              title: `Finalize exit for ${selectedPerson.firstName}?`,
-                              description: "This will mark the record as EXITED and complete offboarding.",
-                              confirmLabel: "Finalize & Close",
-                            });
-                            if (ok) {
-                              updateExitChecklist.mutate({
-                                personId: selectedPerson.id,
-                                checklist: {
-                                  assetReturn,
-                                  idCardReturn,
-                                  knowledgeHandover,
-                                  financeClearance,
-                                  notes: exitClearanceNotes,
-                                },
-                                isFinalized: true,
-                              });
-                            }
+                          onClick={() => {
+                            setFinalizeExitDate(new Date().toISOString().slice(0, 10));
+                            setFinalizeReason(selectedPerson.exitReason || "");
+                            setFinalizeReassignTo("");
+                            setFinalizeModalOpen(true);
                           }}
                           disabled={updateExitChecklist.isPending}
                           className="text-xs h-8 font-bold"
@@ -1869,383 +1823,29 @@ export function PeoplePage() {
         )}
       </Drawer>
 
-      {/* Edit Profile & Reporting Hierarchy Modal */}
+      {/* Edit Profile Modal */}
       <Modal
         isOpen={editModalOpen}
         onClose={() => setEditModalOpen(false)}
-        title="Edit Profile & Reporting Hierarchy"
-        description="Update departmental placement, reporting manager, status, and contact details."
-        maxWidth="lg"
+        title="Edit profile"
+        description="Update personal details, work placement and who this person reports to."
+        maxWidth="4xl"
       >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            updatePersonMutation.mutate();
-          }}
-          className="space-y-4"
-        >
-          {/* Person Type & Status */}
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Person Type"
-              value={editPersonType}
-              onChange={(e) => setEditPersonType(e.target.value as any)}
-            >
-              <option value="EMPLOYEE">Employee</option>
-              <option value="VOLUNTEER">Volunteer</option>
-            </Select>
-
-            <Select
-              label="Employment Status"
-              value={editStatus}
-              onChange={(e) => setEditStatus(e.target.value as any)}
-            >
-              <option value="ACTIVE">Active</option>
-              <option value="PROBATION">Probation</option>
-              <option value="NOTICE_PERIOD">Notice Period</option>
-              <option value="JOINED">Joined</option>
-            </Select>
-          </div>
-
-          {/* Names */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">First Name *</label>
-              <Input
-                value={editFirstName}
-                onChange={(e) => setEditFirstName(e.target.value)}
-                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Last Name *</label>
-              <Input
-                value={editLastName}
-                onChange={(e) => setEditLastName(e.target.value)}
-                maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
-                required
-              />
-            </div>
-          </div>
-
-          {/* Phone & WhatsApp */}
-          <div className="space-y-3">
-            <PhoneInput
-              label="Contact Mobile Number"
-              value={editPhone}
-              onChange={(val) => {
-                setEditPhone(val);
-                if (editSameAsPhone) setEditWhatsapp(val);
-              }}
-              placeholder="Mobile number"
-            />
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground block">WhatsApp Number</label>
-                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
-                  <input
-                    type="checkbox"
-                    checked={editSameAsPhone}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setEditSameAsPhone(checked);
-                      if (checked) setEditWhatsapp(editPhone);
-                    }}
-                    className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
-                  />
-                  <span>Same as Phone number</span>
-                </label>
-              </div>
-              {!editSameAsPhone ? (
-                <PhoneInput
-                  value={editWhatsapp}
-                  onChange={setEditWhatsapp}
-                  placeholder="Enter WhatsApp mobile number"
-                />
-              ) : (
-                <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs font-mono text-muted-foreground flex items-center justify-between">
-                  <span>{editPhone || "Same as primary phone number"}</span>
-                  <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                    Synced with Phone
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Department & Designation */}
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Department"
-              value={editDepartmentId}
-              onChange={(e) => setEditDepartmentId(e.target.value)}
-            >
-              <option value="">(None / Unassigned)</option>
-              {departments?.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </Select>
-
-            <Select
-              label="Designation / Role"
-              value={editDesignationId}
-              onChange={(e) => setEditDesignationId(e.target.value)}
-            >
-              <option value="">(None / Unassigned)</option>
-              {designations?.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </Select>
-          </div>
-
-          {/* Reporting Manager (Hierarchy) */}
-          <div className="space-y-1.5">
-            <Select
-              label="Reporting Manager (Hierarchy)"
-              value={editManagerId}
-              onChange={(e) => handleEditManagerChange(e.target.value)}
-            >
-              <option value="">None (Top-Level Executive / Board Director)</option>
-              {editDepartmentId && people?.some((p) =>
-                p.status === "ACTIVE" &&
-                p.id !== selectedPersonId &&
-                p.departmentId === editDepartmentId &&
-                !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
-              ) && (
-                <optgroup label={`Team Leads & Managers in ${departments?.find((d) => d.id === editDepartmentId)?.name || "Selected Dept"}`}>
-                  {people
-                    ?.filter(
-                      (p) =>
-                        p.status === "ACTIVE" &&
-                        p.id !== selectedPersonId &&
-                        p.departmentId === editDepartmentId &&
-                        !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
-                    )
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.firstName} {p.lastName} — {p.designation?.name || p.email}
-                      </option>
-                    ))}
-                </optgroup>
-              )}
-              <optgroup label={editDepartmentId ? "Executive Leadership & Other Departments" : "All Available Managers"}>
-                {people
-                  ?.filter(
-                    (p) =>
-                      p.status === "ACTIVE" &&
-                      p.id !== selectedPersonId &&
-                      (!editDepartmentId || p.departmentId !== editDepartmentId) &&
-                      !selectedPerson?.directReports?.some((dr) => dr.id === p.id),
-                  )
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} — {p.designation?.name || p.email} ({p.department?.name || "No Dept"})
-                    </option>
-                  ))}
-              </optgroup>
-            </Select>
-
-            {/* Sync Department Prompt if mismatch */}
-            {selectedPersonId && (() => {
-              const selectedMgr = people?.find((p) => p.id === editManagerId);
-              if (selectedMgr?.departmentId && selectedMgr.departmentId !== editDepartmentId) {
-                return (
-                  <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 text-[11px] text-muted-foreground border border-zinc-200/60 dark:border-zinc-700/60">
-                    <span>
-                      Manager is in <strong className="text-foreground">{selectedMgr.department?.name || "another dept"}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditDepartmentId(selectedMgr.departmentId!);
-                        toast.info("Department Synced", `Set department to ${selectedMgr.department?.name}.`);
-                      }}
-                      className="text-primary hover:underline font-medium flex items-center gap-1 cursor-pointer"
-                    >
-                      <Building className="h-3 w-3" /> Sync to {selectedMgr.department?.name}
-                    </button>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            {/* Organizational Placement & Hierarchy Card */}
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                  <Network className="h-3.5 w-3.5 text-primary" />
-                  Organizational Hierarchy & Placement
-                </span>
-                {editManagerId ? (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 font-medium">
-                    Supervisor Linked
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 font-medium">
-                    Top-Level Executive
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
-                <div className="p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200/50 dark:border-zinc-700/60">
-                  <span className="text-muted-foreground block text-[10px]">Department</span>
-                  <span className="font-semibold text-foreground truncate block">
-                    {departments?.find((d) => d.id === editDepartmentId)?.name || "(Unassigned)"}
-                  </span>
-                </div>
-                <div className="p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200/50 dark:border-zinc-700/60">
-                  <span className="text-muted-foreground block text-[10px]">Role / Designation</span>
-                  <span className="font-semibold text-foreground truncate block">
-                    {designations?.find((d) => d.id === editDesignationId)?.name || "(Unassigned)"}
-                  </span>
-                </div>
-                <div className="p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200/50 dark:border-zinc-700/60">
-                  <span className="text-muted-foreground block text-[10px]">Reports To</span>
-                  <span className="font-semibold text-foreground truncate block">
-                    {people?.find((p) => p.id === editManagerId)
-                      ? `${people.find((p) => p.id === editManagerId)!.firstName} ${people.find((p) => p.id === editManagerId)!.lastName}`
-                      : "None (Direct to Board)"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Reporting Chain */}
-              <div className="text-[11px] text-muted-foreground pt-1 border-t border-zinc-200/50 dark:border-zinc-800 flex items-center gap-1.5 flex-wrap">
-                <span className="font-medium text-foreground">Chain:</span>
-                <span className="text-foreground font-medium">{editFirstName || "Person"} {editLastName || ""}</span>
-                <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                {people?.find((p) => p.id === editManagerId) ? (
-                  <>
-                    <span className="text-foreground font-medium">
-                      {people.find((p) => p.id === editManagerId)!.firstName} {people.find((p) => p.id === editManagerId)!.lastName}
-                      {people.find((p) => p.id === editManagerId)!.designation?.name
-                        ? ` (${people.find((p) => p.id === editManagerId)!.designation?.name})`
-                        : ""}
-                    </span>
-                    {people.find((p) => p.id === editManagerId)!.manager && (
-                      <>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="text-foreground font-medium">
-                          {people.find((p) => p.id === editManagerId)!.manager!.firstName} {people.find((p) => p.id === editManagerId)!.manager!.lastName}
-                        </span>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-amber-500 font-medium">Direct to Board / Executive Director</span>
-                )}
-              </div>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Top executives have no manager. Self and direct reports are filtered out to prevent circular reporting cycles.
-            </p>
-          </div>
-
-          {/* Addresses: Current & Permanent */}
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground block">Current Residential Address</label>
-              <Input
-                value={editCurrentAddress}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setEditCurrentAddress(val);
-                  if (editSameAsCurrentAddress) setEditPermanentAddress(val);
-                }}
-                placeholder="Current address: Flat/House, Street, City, State, Pincode"
-                maxLength={INPUT_LIMITS.ADDRESS_MAX}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground block">Permanent Address</label>
-                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
-                  <input
-                    type="checkbox"
-                    checked={editSameAsCurrentAddress}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setEditSameAsCurrentAddress(checked);
-                      if (checked) setEditPermanentAddress(editCurrentAddress);
-                    }}
-                    className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
-                  />
-                  <span>Same as Current address</span>
-                </label>
-              </div>
-              {!editSameAsCurrentAddress ? (
-                <Input
-                  value={editPermanentAddress}
-                  onChange={(e) => setEditPermanentAddress(e.target.value)}
-                  placeholder="Permanent address: Hometown / Official permanent address"
-                  maxLength={INPUT_LIMITS.ADDRESS_MAX}
-                />
-              ) : (
-                <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs text-muted-foreground flex items-center justify-between">
-                  <span className="truncate">{editCurrentAddress || "Same as current residential address"}</span>
-                  <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
-                    Synced with Current
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Emergency Contact */}
-          <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 space-y-2.5">
-            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <HeartHandshake className="h-3.5 w-3.5 text-primary" /> Emergency Contact
-            </span>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div className="sm:col-span-3">
-                <PhoneInput
-                  label="Emergency Phone"
-                  value={editEmergencyPhone}
-                  onChange={setEditEmergencyPhone}
-                  placeholder="Emergency contact phone"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-foreground block mb-1">Relation</label>
-                <Select
-                  value={editEmergencyRelation}
-                  onChange={(e) => setEditEmergencyRelation(e.target.value as EmergencyRelation)}
-                >
-                  {EMERGENCY_RELATIONS.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="text-xs font-medium text-foreground block mb-1">Contact Person Name</label>
-                <Input
-                  value={editEmergencyName}
-                  onChange={(e) => setEditEmergencyName(e.target.value)}
-                  placeholder="e.g. Ramesh Sharma"
-                  maxLength={INPUT_LIMITS.EMERGENCY_NAME_MAX}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-            <Button type="button" variant="outline" onClick={() => setEditModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!editFirstName.trim() || !editLastName.trim() || updatePersonMutation.isPending}>
-              {updatePersonMutation.isPending ? "Saving changes…" : "Save Changes"}
-            </Button>
-          </div>
-        </form>
+        {editModalOpen && selectedPerson && (
+          <PersonForm
+            key={selectedPerson.id}
+            mode="edit"
+            person={selectedPerson}
+            departments={departments}
+            designations={designations}
+            managers={people}
+            isSubmitting={updatePersonMutation.isPending}
+            onCancel={() => setEditModalOpen(false)}
+            onSubmit={(payload) => updatePersonMutation.mutate(payload)}
+          />
+        )}
       </Modal>
+
 
       {/* In-App Document Viewer & Review Modal */}
       <Modal
@@ -2454,6 +2054,74 @@ export function PeoplePage() {
         </form>
       </Modal>
 
+      {/* Finalize Exit Closure Modal */}
+      <Modal
+        isOpen={finalizeModalOpen}
+        onClose={() => setFinalizeModalOpen(false)}
+        title="Finalize Exit Closure"
+        description="This marks the record as exited, cancels pending leave and deactivates the login. All four checklist items must be complete."
+        maxWidth="md"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!selectedPerson) return;
+            updateExitChecklist.mutate({
+              personId: selectedPerson.id,
+              checklist: { assetReturn, idCardReturn, knowledgeHandover, financeClearance, notes: exitClearanceNotes },
+              isFinalized: true,
+              exitDate: finalizeExitDate,
+              exitReason: finalizeReason.trim(),
+              reassignReportsTo: finalizeReassignTo,
+            });
+          }}
+          className="space-y-3.5"
+        >
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Effective Exit Date *</label>
+            <Input type="date" value={finalizeExitDate} onChange={(e) => setFinalizeExitDate(e.target.value)} required />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Reason for Leaving *</label>
+            <Input
+              placeholder="e.g. Relocated / Better opportunity / Contract completed"
+              value={finalizeReason}
+              onChange={(e) => setFinalizeReason(e.target.value)}
+              required
+            />
+          </div>
+
+          <Select
+            label="Hand over direct reports to (optional)"
+            value={finalizeReassignTo}
+            onChange={(e) => setFinalizeReassignTo(e.target.value)}
+          >
+            <option value="">No one (reports will have no manager)</option>
+            {(people || [])
+              .filter((p) => p.id !== selectedPerson?.id && p.status !== "EXITED")
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {fullName(p)}
+                </option>
+              ))}
+          </Select>
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+            <Button type="button" variant="outline" onClick={() => setFinalizeModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={!finalizeExitDate || !finalizeReason.trim() || updateExitChecklist.isPending}
+            >
+              {updateExitChecklist.isPending ? "Processing…" : "Finalize & Close"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Reject KYC Document Modal */}
       <Modal
         isOpen={rejectModalOpen}
@@ -2516,89 +2184,104 @@ export function PeoplePage() {
         isOpen={bulkImportModalOpen}
         onClose={() => {
           setBulkImportModalOpen(false);
-          setBulkCsvText("");
-          setBulkParsedRows([]);
+          resetBulkImport();
         }}
+        maxWidth="4xl"
         title="Bulk Staff & Volunteer Onboarding"
-        description="Upload a CSV file or paste formatted CSV records to batch-create profiles."
+        description="Upload an Excel file to create many staff and volunteer profiles at once."
       >
         <div className="space-y-4 pt-2">
           {/* Step 1: Download Template */}
-          <div className="flex items-center justify-between p-3 rounded-xl border border-primary/20 bg-primary/5 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-primary/20 bg-primary/5 text-xs">
             <div>
-              <p className="font-semibold text-foreground">Need the standard spreadsheet format?</p>
-              <p className="text-[11px] text-muted-foreground">Includes pre-configured headers and sample rows.</p>
+              <p className="font-semibold text-foreground">Start from the Excel template</p>
+              <p className="text-[11px] text-muted-foreground">
+                Required: first name, last name, email, phone, gender (MALE / FEMALE / OTHER), date of birth (YYYY-MM-DD).
+                {canSetSalary
+                  ? " Optional: monthlyGross (monthly salary, employees only)."
+                  : " Salary columns are ignored: you do not have permission to set salaries."}
+              </p>
             </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={handleDownloadSampleCsv}
-              className="gap-1.5 shrink-0 bg-white dark:bg-zinc-900 border-primary/30 text-primary font-semibold"
+              onClick={handleDownloadTemplate}
+              className="gap-1.5 shrink-0 border-primary/30 text-primary font-semibold"
             >
               <Download className="h-3.5 w-3.5" />
-              <span>Download CSV Template</span>
+              <span>Download Excel Template</span>
             </Button>
           </div>
 
-          {/* Step 2: Upload or Paste CSV */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-foreground">CSV File or Data</label>
-              <label className="text-xs text-primary font-semibold cursor-pointer hover:underline">
-                Upload .csv file
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        const content = event.target?.result as string;
-                        handleParseCsv(content);
-                      };
-                      reader.readAsText(file);
-                    }
-                  }}
-                />
-              </label>
-            </div>
-            <textarea
-              rows={6}
-              value={bulkCsvText}
-              onChange={(e) => handleParseCsv(e.target.value)}
-              placeholder={`firstName,middleName,lastName,email,phone,personType,departmentName,designationName,joiningDate\nPooja,Kumar,Sharma,pooja@example.org,+91 9876543210,EMPLOYEE,Programmes,Project Coordinator,2026-02-01`}
-              className="w-full p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-mono focus:ring-2 focus:ring-primary focus:outline-none"
+          {/* Step 2: Upload Excel */}
+          <label className="flex flex-col items-center justify-center gap-1.5 p-6 rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/60 bg-background cursor-pointer transition-colors text-center">
+            <Upload className="h-5 w-5 text-primary" />
+            <span className="text-sm font-semibold text-foreground">
+              {bulkParsing ? "Reading file…" : bulkFileName || "Choose an Excel file (.xlsx)"}
+            </span>
+            <span className="text-[11px] text-muted-foreground">Up to 500 staff members per file</span>
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleParseExcel(file);
+                e.target.value = "";
+              }}
             />
-          </div>
+          </label>
 
-          {/* Preview of Parsed Rows */}
+          {/* Rows that need fixing */}
+          {bulkRowErrors.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-destructive">
+                {bulkRowErrors.length} row{bulkRowErrors.length === 1 ? "" : "s"} need fixing before import
+              </p>
+              <ul className="max-h-32 overflow-y-auto rounded-xl border border-destructive/30 bg-destructive/5 divide-y divide-destructive/10 text-[11px]">
+                {bulkRowErrors.map((e, i) => (
+                  <li key={i} className="px-2.5 py-1.5">
+                    <span className="font-semibold">Row {e.row}:</span> {e.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Preview of valid rows */}
           {bulkParsedRows.length > 0 && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-foreground">
-                  Ready to Import: <strong className="text-primary">{bulkParsedRows.length}</strong> staff members
-                </span>
-              </div>
-              <div className="max-h-36 overflow-y-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <span className="text-xs font-semibold text-foreground">
+                Ready to import: <strong className="text-primary">{bulkParsedRows.length}</strong> staff members
+              </span>
+              <div className="max-h-60 overflow-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
                 <table className="w-full text-[11px] text-left">
                   <thead className="bg-zinc-50 dark:bg-zinc-800/60 sticky top-0 border-b border-zinc-200 dark:border-zinc-800">
                     <tr>
                       <th className="p-1.5">Name</th>
                       <th className="p-1.5">Email</th>
+                      <th className="p-1.5">Phone</th>
+                      <th className="p-1.5">Gender</th>
+                      <th className="p-1.5">Date of Birth</th>
                       <th className="p-1.5">Type</th>
-                      <th className="p-1.5">Dept</th>
+                      <th className="p-1.5">Department</th>
+                      {bulkParsedRows.some((r) => r.monthlyGross !== undefined) && <th className="p-1.5">Salary</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {bulkParsedRows.slice(0, 10).map((r, i) => (
+                    {bulkParsedRows.map((r, i) => (
                       <tr key={i}>
-                        <td className="p-1.5 font-medium">{r.firstName} {r.lastName}</td>
+                        <td className="p-1.5 font-medium">{fullName(r)}</td>
                         <td className="p-1.5 font-mono text-muted-foreground">{r.email}</td>
+                        <td className="p-1.5 font-mono">{r.phone}</td>
+                        <td className="p-1.5">{r.gender}</td>
+                        <td className="p-1.5 font-mono">{r.dob}</td>
                         <td className="p-1.5"><Badge size="sm" variant="outline">{r.personType}</Badge></td>
                         <td className="p-1.5">{r.departmentName || "—"}</td>
+                        {bulkParsedRows.some((x) => x.monthlyGross !== undefined) && (
+                          <td className="p-1.5 font-mono">{r.monthlyGross !== undefined ? `₹${Number(r.monthlyGross).toLocaleString("en-IN")}` : "—"}</td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -2607,6 +2290,16 @@ export function PeoplePage() {
             </div>
           )}
 
+          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={bulkSendInvites}
+              onChange={(e) => setBulkSendInvites(e.target.checked)}
+              className="h-3.5 w-3.5 accent-primary"
+            />
+            Send login invitations by email
+          </label>
+
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
             <Button
               type="button"
@@ -2614,8 +2307,7 @@ export function PeoplePage() {
               size="sm"
               onClick={() => {
                 setBulkImportModalOpen(false);
-                setBulkCsvText("");
-                setBulkParsedRows([]);
+                resetBulkImport();
               }}
             >
               Cancel
@@ -2624,7 +2316,7 @@ export function PeoplePage() {
               type="button"
               size="sm"
               onClick={() => bulkImport.mutate(bulkParsedRows)}
-              disabled={bulkParsedRows.length === 0 || bulkImport.isPending}
+              disabled={bulkParsedRows.length === 0 || bulkImport.isPending || bulkParsing}
               className="gap-2 font-bold"
             >
               <Upload className="h-4 w-4" />

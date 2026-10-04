@@ -1,3 +1,4 @@
+import { SearchInput } from "./search-input";
 import {
   useState,
   useRef,
@@ -312,26 +313,13 @@ export const Select = forwardRef<HTMLDivElement, SelectProps>(
             >
               {/* Search filter input */}
               {isSearchable && (
-                <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/60 px-2.5 py-1.5 dark:border-zinc-800 dark:bg-zinc-800/60">
-                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder="Search options..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
+                <SearchInput
+                  ref={searchInputRef}
+                  placeholder="Search options..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="mb-1.5 h-8"
+                />
               )}
 
               {/* Options list */}

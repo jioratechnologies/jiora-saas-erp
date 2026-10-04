@@ -13,10 +13,12 @@ import { ZitadelAuthGuard } from "../../auth/zitadel-auth.guard";
 import { RequirePermission } from "../../auth/require-permission.decorator";
 import { PermissionsGuard } from "../../auth/permissions.guard";
 import { CurrentUser } from "../../auth/current-user.decorator";
+import { PersonContextService } from "../../auth/person-context.service";
 import type { AuthContext } from "../../auth/auth-context";
+import { parsePaging } from "../../common/pagination";
 import { AttendanceService } from "../services/attendance.service";
 import { PersonsService } from "../services/persons.service";
-import { CheckInDto, CheckOutDto, SyncAttendanceBatchDto, RegularizeAttendanceDto } from "../dto/attendance.dto";
+import { CheckInDto, CheckOutDto, SyncAttendanceBatchDto, RegularizeAttendanceDto, ManualAttendanceDto } from "../dto/attendance.dto";
 
 @ApiTags("hr/attendance")
 @ApiBearerAuth()
@@ -26,14 +28,22 @@ export class AttendanceController {
   constructor(
     private readonly service: AttendanceService,
     private readonly personsService: PersonsService,
+    private readonly personContext: PersonContextService,
   ) {}
 
   private async resolvePersonId(user: AuthContext): Promise<string> {
-    const person = await this.personsService.getByUserId(user.tenantId!, user.userId);
-    if (!person) {
+    const personId = await this.personContext.getPersonId(user.tenantId!, user.userId);
+    if (!personId) {
       throw new NotFoundException("No Employee or Volunteer profile linked to your account yet.");
     }
-    return person.id;
+    return personId;
+  }
+
+  /** undefined = unrestricted (hr.attendance.manage); else own + direct reports. */
+  private async visibleScope(user: AuthContext): Promise<string[] | undefined> {
+    if (user.permissionKeys.has("hr.attendance.manage")) return undefined;
+    const personId = await this.personContext.getPersonId(user.tenantId!, user.userId);
+    return this.service.getVisiblePersonIds(user.tenantId!, personId ?? undefined);
   }
 
   @Post("check-in")
@@ -56,16 +66,23 @@ export class AttendanceController {
   @RequirePermission("hr.attendance.checkin")
   @ApiOperation({ summary: "Get current user's attendance status for today" })
   async getToday(@CurrentUser() user: AuthContext) {
-    const person = await this.personsService.getByUserId(user.tenantId!, user.userId);
-    if (!person) return null;
-    return this.service.getToday(user.tenantId!, person.id);
+    const personId = await this.personContext.getPersonId(user.tenantId!, user.userId);
+    if (!personId) return null;
+    return this.service.getToday(user.tenantId!, personId);
   }
 
   @Get("my-logs")
   @RequirePermission("hr.attendance.checkin")
   @ApiOperation({ summary: "Get current user's personal attendance history" })
-  async getMyLogs(@CurrentUser() user: AuthContext) {
+  async getMyLogs(
+    @CurrentUser() user: AuthContext,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("month") month?: string,
+  ) {
     const personId = await this.resolvePersonId(user);
+    const paging = parsePaging(page, pageSize);
+    if (paging) return this.service.listMine(user.tenantId!, personId, month, paging);
     return this.service.list(user.tenantId!, { personId });
   }
 
@@ -73,7 +90,7 @@ export class AttendanceController {
   @RequirePermission("hr.attendance.read")
   @ApiOperation({ summary: "Get daily team attendance roster with leave cross-referencing" })
   async getRoster(@CurrentUser() user: AuthContext, @Query("date") date?: string) {
-    return this.service.getRoster(user.tenantId!, date);
+    return this.service.getRoster(user.tenantId!, date, await this.visibleScope(user));
   }
 
   @Post("sync")
@@ -85,6 +102,21 @@ export class AttendanceController {
   ) {
     const personId = await this.resolvePersonId(user);
     return this.service.syncBatch(user.tenantId!, personId, dto);
+  }
+
+  @Post("manual")
+  @RequirePermission("hr.attendance.manage")
+  @ApiOperation({ summary: "Create an attendance record for another person (manager/HR)" })
+  async createManual(@CurrentUser() user: AuthContext, @Body() dto: ManualAttendanceDto) {
+    const caller = await this.personsService.getByUserId(user.tenantId!, user.userId);
+    return this.service.createManual(
+      user.tenantId!,
+      user.userId,
+      caller?.id,
+      caller ? `${caller.firstName} ${caller.lastName ?? ""}`.trim() : user.userId,
+      dto,
+      await this.visibleScope(user),
+    );
   }
 
   @Post(":id/regularize")
@@ -101,13 +133,17 @@ export class AttendanceController {
   @Get()
   @RequirePermission("hr.attendance.read")
   @ApiOperation({ summary: "Query attendance logs (by date range, person, or department)" })
-  list(
+  async list(
     @CurrentUser() user: AuthContext,
     @Query("personId") personId?: string,
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
     @Query("departmentId") departmentId?: string,
   ) {
-    return this.service.list(user.tenantId!, { personId, startDate, endDate, departmentId });
+    return this.service.list(
+      user.tenantId!,
+      { personId, startDate, endDate, departmentId },
+      await this.visibleScope(user),
+    );
   }
 }

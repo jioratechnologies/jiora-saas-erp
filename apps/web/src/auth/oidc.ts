@@ -25,4 +25,7 @@ export const userManager = new UserManager({
   scope: "openid profile email offline_access",
   userStore: new WebStorageStateStore({ store: window.localStorage }),
   automaticSilentRenew: true,
+  // Fire the "expiring" event (which triggers the refresh-token renew) 2 min
+  // before expiry, so a renew failure can still be retried before requests 401.
+  accessTokenExpiringNotificationTimeInSeconds: 120,
 });

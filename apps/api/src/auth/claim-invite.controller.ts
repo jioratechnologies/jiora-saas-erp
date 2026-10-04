@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service";
 import { bearerTokenFrom, fetchUserInfo } from "./verify-token";
+import { AuthzCacheService } from "./authz-cache.service";
 import { ZitadelAuthGuard } from "./zitadel-auth.guard";
 import { CurrentUser } from "./current-user.decorator";
 import type { AuthContext } from "./auth-context";
@@ -22,7 +23,10 @@ import type { AuthContext } from "./auth-context";
 @ApiBearerAuth()
 @Controller("auth")
 export class ClaimInviteController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authzCache: AuthzCacheService,
+  ) {}
 
   @Post("claim-invite")
   async claimInvite(@Req() request: Request) {
@@ -62,11 +66,27 @@ export class ClaimInviteController {
   async me(@CurrentUser() user: AuthContext) {
     let roles: string[] = [];
     if (user.tenantId) {
-      const userRoles = await this.prisma.runInTenantContext(
-        { tenantId: user.tenantId, isPlatformContext: false },
-        (tx) => tx.userRole.findMany({ where: { userId: user.userId }, include: { role: true } }),
-      );
-      roles = userRoles.map((ur) => ur.role.name);
+      const tenantId = user.tenantId;
+      // Roles/designation change only via writes that bump the authz generation, so cache them like the guard identity (one Redis read, no DB tx on a hit).
+      const key = `me:roles:${tenantId}:${user.userId}`;
+      const { value, gen } = await this.authzCache.read<string[]>(key);
+      if (value) {
+        roles = value;
+      } else {
+        const profile = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
+          tx.user.findUnique({
+            where: { id: user.userId },
+            select: {
+              roles: { select: { role: { select: { name: true } } } },
+              designation: { select: { name: true } },
+              person: { select: { designation: { select: { name: true } } } },
+            },
+          }),
+        );
+        const designationName = profile?.person?.designation?.name ?? profile?.designation?.name;
+        roles = [...(profile?.roles.map((ur) => ur.role.name) ?? []), ...(designationName ? [designationName] : [])];
+        await this.authzCache.write(key, gen, roles, 300);
+      }
     } else if (user.isPlatformContext) {
       roles = ["Platform Admin"];
     }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { PayrollRunStatus } from "@prisma/client";
 
 export class ExecutePayrollRunDto {
@@ -39,7 +39,7 @@ export class UpdatePayrollRunStatusDto {
 
 export class UpdatePayslipPaymentDto {
   @ApiProperty({ example: "PAID", enum: ["PENDING", "PAID"] })
-  @IsString()
+  @IsIn(["PENDING", "PAID"])
   paymentStatus!: "PENDING" | "PAID";
 
   @ApiPropertyOptional({ example: "NEFT-REF-99210" })

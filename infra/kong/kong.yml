@@ -1,0 +1,228 @@
+# Kong DB-less declarative config for the SaaS ERP API gateway.
+#
+# Kong does NOT validate JWTs: each service verifies the Zitadel token itself.
+# No auth plugin is configured, so the Authorization header is forwarded as-is.
+#
+# TODAY all three services point at the single backend (backend:3000).
+# FUTURE per-service split is a config-only change: edit the `target:` of each
+# upstream below (see the FUTURE comments):
+#   api-identity -> api-identity:3000
+#   api-hr       -> api-hr:3000
+#   api-payroll  -> api-payroll:3000
+#
+# CORS origins: declarative files have no env substitution. Edit the origins
+# list below (or render this file with envsubst from KONG_CORS_ORIGINS into
+# kong.yml before starting Kong). See README.md.
+#
+# Note: a route-level plugin replaces the global plugin of the same name for
+# that route (e.g. the stricter rate limit on claim-invite).
+
+_format_version: "3.0"
+_transform: true
+
+upstreams:
+  - name: api-identity
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 2
+        concurrency: 2
+        healthy: {interval: 10, successes: 2, http_statuses: [200]}
+        unhealthy: {interval: 5, http_failures: 3, tcp_failures: 3, timeouts: 3, http_statuses: [500, 502, 503, 504]}
+      passive:
+        healthy: {successes: 5, http_statuses: [200, 201, 204, 301, 302, 304]}
+        unhealthy: {http_failures: 5, tcp_failures: 3, timeouts: 3, http_statuses: [502, 503, 504]}
+    targets:
+      - target: backend:3000   # FUTURE: api-identity:3000
+  - name: api-hr
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 2
+        concurrency: 2
+        healthy: {interval: 10, successes: 2, http_statuses: [200]}
+        unhealthy: {interval: 5, http_failures: 3, tcp_failures: 3, timeouts: 3, http_statuses: [500, 502, 503, 504]}
+      passive:
+        healthy: {successes: 5, http_statuses: [200, 201, 204, 301, 302, 304]}
+        unhealthy: {http_failures: 5, tcp_failures: 3, timeouts: 3, http_statuses: [502, 503, 504]}
+    targets:
+      - target: backend:3000   # FUTURE: api-hr:3000
+  - name: api-payroll
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 2
+        concurrency: 2
+        healthy: {interval: 10, successes: 2, http_statuses: [200]}
+        unhealthy: {interval: 5, http_failures: 3, tcp_failures: 3, timeouts: 3, http_statuses: [500, 502, 503, 504]}
+      passive:
+        healthy: {successes: 5, http_statuses: [200, 201, 204, 301, 302, 304]}
+        unhealthy: {http_failures: 5, tcp_failures: 3, timeouts: 3, http_statuses: [502, 503, 504]}
+    targets:
+      - target: backend:3000   # FUTURE: api-payroll:3000
+
+services:
+  - name: api-identity
+    host: api-identity
+    port: 3000   # upstream name resolves via the matching upstream entry above
+    protocol: http
+    connect_timeout: 5000
+    read_timeout: 60000
+    write_timeout: 60000
+    retries: 3
+    routes:
+      - name: identity-claim-invite
+        paths:
+          - "/auth/claim-invite"
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 30
+              limit_by: ip
+              policy: redis
+              fault_tolerant: true
+              hide_client_headers: false
+              redis: {host: redis, port: 6379, database: 1}
+      - name: identity-uploads
+        paths:
+          - "~/auth/profile/(avatar|kyc)$"
+          - "~/admin/org/logo$"
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: request-size-limiting
+            config: {allowed_payload_size: 10, size_unit: megabytes, require_content_length: false}
+      - name: identity-cache-permission-catalog
+        paths:
+          - "~/admin/roles/permission-catalog/?$"
+        methods: [GET, HEAD]
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: proxy-cache
+            config:
+              strategy: memory
+              memory: {dictionary_name: kong_db_cache}
+              cache_ttl: 60
+              cache_control: true
+              request_method: [GET, HEAD]
+              response_code: [200]
+              content_type: [application/json, "application/json; charset=utf-8"]
+              vary_headers: [Authorization]
+      - name: identity-cache-public-tenants
+        paths:
+          - "~/public/tenants/?$"
+        methods: [GET, HEAD]
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: proxy-cache
+            config:
+              strategy: memory
+              memory: {dictionary_name: kong_db_cache}
+              cache_ttl: 60
+              cache_control: true
+              request_method: [GET, HEAD]
+              response_code: [200]
+              content_type: [application/json, "application/json; charset=utf-8"]
+              vary_headers: [Authorization]
+      - name: identity
+        paths:
+          - "/auth"
+          - "/admin"
+          - "/platform"
+          - "/public"
+          - "/health"
+        strip_path: false
+        preserve_host: true
+  - name: api-hr
+    host: api-hr
+    port: 3000   # upstream name resolves via the matching upstream entry above
+    protocol: http
+    connect_timeout: 5000
+    read_timeout: 60000
+    write_timeout: 60000
+    retries: 3
+    routes:
+      - name: hr-uploads
+        paths:
+          - "~/hr/persons/[^/]+/documents"
+          - "~/hr/leave/requests/upload-document"
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: request-size-limiting
+            config: {allowed_payload_size: 10, size_unit: megabytes, require_content_length: false}
+      - name: hr
+        paths:
+          - "/hr"
+        strip_path: false
+        preserve_host: true
+  - name: api-payroll
+    host: api-payroll
+    port: 3000   # upstream name resolves via the matching upstream entry above
+    protocol: http
+    connect_timeout: 5000
+    read_timeout: 60000
+    write_timeout: 60000
+    retries: 3
+    routes:
+      - name: payroll-uploads
+        paths:
+          - "~/payroll/claims/expenses/[^/]+/receipt$"
+        methods: [POST, PUT, PATCH]
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: request-size-limiting
+            config: {allowed_payload_size: 10, size_unit: megabytes, require_content_length: false}
+      - name: payroll
+        paths:
+          - "/payroll"
+        strip_path: false
+        preserve_host: true
+
+plugins:
+  - name: correlation-id
+    config: {header_name: X-Request-ID, generator: uuid, echo_downstream: true}
+
+  - name: cors
+    config:
+      origins:    # keep in sync with KONG_CORS_ORIGINS (see README)
+        - http://localhost:5174
+        - http://localhost:5173
+      methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]
+      headers: [Authorization, Content-Type, Idempotency-Key]
+      exposed_headers: [X-Request-ID]
+      credentials: true
+      max_age: 3600
+
+  - name: request-size-limiting
+    config: {allowed_payload_size: 1, size_unit: megabytes, require_content_length: false}
+
+  - name: rate-limiting
+    config:
+      minute: 600
+      limit_by: ip
+      policy: redis
+      fault_tolerant: true
+      hide_client_headers: false
+      redis: {host: redis, port: 6379, database: 1}
+
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options:nosniff"
+          - "Referrer-Policy:strict-origin-when-cross-origin"
+
+  - name: prometheus
+    config: {per_consumer: false, status_code_metrics: true, latency_metrics: true}

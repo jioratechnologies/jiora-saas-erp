@@ -1,11 +1,38 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
-const issuer = process.env.ZITADEL_ISSUER ?? "http://localhost:8080";
-const jwks = createRemoteJWKSet(new URL(`${issuer}/oauth/v2/keys`));
+import { Logger } from "@nestjs/common";
 
-/** Verifies signature + issuer only. Callers decide what to do with the resulting claims. */
+const logger = new Logger("verify-token");
+
+// Read env lazily (first use), not at import time, so ConfigModule/dotenv has loaded.
+function getIssuer(): string {
+  return process.env.ZITADEL_ISSUER ?? "http://localhost:8080";
+}
+
+let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
+function getJwks() {
+  jwks ??= createRemoteJWKSet(new URL(`${getIssuer()}/oauth/v2/keys`));
+  return jwks;
+}
+
+let warnedNoAudience = false;
+function getAudience(): string | undefined {
+  const audience = process.env.ZITADEL_PROJECT_ID;
+  if (audience) return audience;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ZITADEL_PROJECT_ID is not set; refusing to verify tokens without audience check");
+  }
+  if (!warnedNoAudience) {
+    warnedNoAudience = true;
+    logger.warn("ZITADEL_PROJECT_ID not set; skipping audience check (dev only)");
+  }
+  return undefined;
+}
+
+/** Verifies signature, issuer and audience. Callers decide what to do with the resulting claims. */
 export async function verifyZitadelToken(token: string): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, jwks, { issuer });
+  const audience = getAudience();
+  const { payload } = await jwtVerify(token, getJwks(), { issuer: getIssuer(), ...(audience ? { audience } : {}) });
   return payload;
 }
 
@@ -26,7 +53,7 @@ export function bearerTokenFrom(authHeader: string | undefined): string {
  * Used only by claim-invite; ZitadelAuthGuard never needs email, only sub.
  */
 export async function fetchUserInfo(accessToken: string): Promise<{ sub: string; email?: string }> {
-  const res = await fetch(`${issuer}/oidc/v1/userinfo`, {
+  const res = await fetch(`${getIssuer()}/oidc/v1/userinfo`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`UserInfo request failed: ${res.status}`);

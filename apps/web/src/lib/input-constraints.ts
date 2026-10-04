@@ -114,3 +114,68 @@ export function formatEmergencyContact(phone: string, relation: string, name?: s
   }
   return phone.trim();
 }
+
+// ─── Person contact / identity validation (mirrors API CreatePersonDto) ──────
+
+/** Same pattern the API enforces for phone / altPhone. */
+export const PHONE_REGEX = /^\+?[0-9 ]{8,15}$/;
+
+export const GENDER_OPTIONS = [
+  { value: "MALE", label: "Male" },
+  { value: "FEMALE", label: "Female" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+export const PERSON_FIELD_MESSAGES = {
+  phoneRequired: "Please enter a phone number.",
+  phoneInvalid: "Please enter a valid phone number (8 to 15 digits, optional leading +).",
+  genderRequired: "Please select a gender.",
+  dobRequired: "Please enter the date of birth.",
+  dobFuture: "Date of birth cannot be in the future.",
+} as const;
+
+/** Maps legacy values like "Female" to "FEMALE"; unknown values become "" so the user must pick one. */
+export function normalizeGender(raw?: string | null): string {
+  const up = (raw ?? "").trim().toUpperCase();
+  return GENDER_OPTIONS.some((g) => g.value === up) ? up : "";
+}
+
+/** first + middle (only if present) + last. */
+export function fullName(p?: { firstName?: string | null; middleName?: string | null; lastName?: string | null } | null): string {
+  if (!p) return "";
+  return [p.firstName, p.middleName, p.lastName]
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function isFutureDate(iso: string): boolean {
+  const t = Date.parse(iso);
+  return !Number.isNaN(t) && t > Date.now();
+}
+
+export interface PersonContactValues {
+  phone: string;
+  altPhone?: string;
+  gender: string;
+  dob: string;
+  emergencyPhone?: string;
+}
+
+/** Returns a field -> message map; empty when valid. Keys: phone, altPhone, gender, dob, emergencyPhone. */
+export function validatePersonContact(v: PersonContactValues): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const phone = v.phone.trim();
+  if (!phone) errors.phone = PERSON_FIELD_MESSAGES.phoneRequired;
+  else if (!PHONE_REGEX.test(phone)) errors.phone = PERSON_FIELD_MESSAGES.phoneInvalid;
+
+  if (v.altPhone?.trim() && !PHONE_REGEX.test(v.altPhone.trim())) errors.altPhone = PERSON_FIELD_MESSAGES.phoneInvalid;
+  if (v.emergencyPhone?.trim() && !PHONE_REGEX.test(v.emergencyPhone.trim())) errors.emergencyPhone = PERSON_FIELD_MESSAGES.phoneInvalid;
+
+  if (!normalizeGender(v.gender)) errors.gender = PERSON_FIELD_MESSAGES.genderRequired;
+
+  if (!v.dob) errors.dob = PERSON_FIELD_MESSAGES.dobRequired;
+  else if (Number.isNaN(Date.parse(v.dob)) || isFutureDate(v.dob)) errors.dob = PERSON_FIELD_MESSAGES.dobFuture;
+
+  return errors;
+}

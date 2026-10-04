@@ -3,6 +3,8 @@ import { ZitadelAuthGuard } from "./zitadel-auth.guard";
 import { PermissionsGuard } from "./permissions.guard";
 import { ClaimInviteController } from "./claim-invite.controller";
 import { ProfileController } from "./profile.controller";
+import { AuthzCacheService } from "./authz-cache.service";
+import { PersonContextService } from "./person-context.service";
 
 /**
  * @Global: every module can use ZitadelAuthGuard/PermissionsGuard without
@@ -15,7 +17,7 @@ import { ProfileController } from "./profile.controller";
 @Global()
 @Module({
   controllers: [ClaimInviteController, ProfileController],
-  providers: [ZitadelAuthGuard, PermissionsGuard],
-  exports: [ZitadelAuthGuard, PermissionsGuard],
+  providers: [ZitadelAuthGuard, PermissionsGuard, AuthzCacheService, PersonContextService],
+  exports: [ZitadelAuthGuard, PermissionsGuard, AuthzCacheService, PersonContextService],
 })
 export class AuthModule {}

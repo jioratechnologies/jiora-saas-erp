@@ -17,17 +17,32 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ZitadelAuthGuard } from "./zitadel-auth.guard";
 import { CurrentUser } from "./current-user.decorator";
 import type { AuthContext } from "./auth-context";
+import { IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength } from "class-validator";
+import { Transform } from "class-transformer";
+import { GENDERS, IsNotFutureDate } from "../hr/dto/person.dto";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
+import { DOCUMENT_UPLOAD, IMAGE_UPLOAD } from "../common/upload-rules";
 
-export interface UpdateProfileDto {
-  displayName?: string;
-  phone?: string;
-  whatsapp?: string;
-  address?: string;
-  currentAddress?: string;
-  permanentAddress?: string;
-  emergencyContact?: string;
+export class UpdateProfileDto {
+  @IsOptional() @IsString() @MaxLength(160) displayName?: string;
+  @IsOptional() @IsString() @MaxLength(100) middleName?: string;
+  @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim().toUpperCase() : value))
+  @IsIn(GENDERS, { message: "Please select a gender (Male, Female or Other)." })
+  gender?: string;
+  @IsOptional() @IsDateString() @IsNotFutureDate() dob?: string;
+  @IsOptional() @IsString() @Matches(/^\+?[0-9 ]{8,15}$/, { message: "Please enter a valid phone number (8 to 15 digits, optional leading +)." }) altPhone?: string;
+  @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @IsOptional() @IsString() @MaxLength(500) currentAddress?: string;
+  @IsOptional() @IsString() @MaxLength(500) permanentAddress?: string;
+  @IsOptional() @IsString() @MaxLength(300) emergencyContact?: string;
+}
+
+export class UploadKycDocumentDto {
+  @IsString() @MaxLength(160) name!: string;
+  @IsOptional() @IsString() @MaxLength(80) documentNumber?: string;
 }
 
 @ApiTags("profile")
@@ -136,10 +151,11 @@ export class ProfileController {
             ? {
                 id: person.id,
                 firstName: person.firstName,
+                middleName: person.middleName,
                 lastName: person.lastName,
                 email: person.email,
                 phone: person.phone,
-                whatsapp: person.whatsapp || person.phone,
+                altPhone: person.altPhone,
                 gender: person.gender,
                 dob: person.dob,
                 address: person.address,
@@ -207,6 +223,10 @@ export class ProfileController {
         }
 
         if (person) {
+          // DB columns stay nullable for legacy rows, so the saved profile must end up complete.
+          const complete = (dto.phone || person.phone) && (dto.gender || person.gender) && (dto.dob || person.dob);
+          if (!complete) throw new BadRequestException("Please check the highlighted fields and try again.");
+
           const names = dto.displayName ? dto.displayName.trim().split(" ") : null;
           const firstName = names ? names[0] : undefined;
           const lastName = names && names.length > 1 ? names.slice(1).join(" ") : undefined;
@@ -217,7 +237,10 @@ export class ProfileController {
               ...(firstName ? { firstName } : {}),
               ...(lastName !== undefined ? { lastName } : {}),
               ...(dto.phone ? { phone: dto.phone } : {}),
-              ...(dto.whatsapp !== undefined ? { whatsapp: dto.whatsapp } : {}),
+              ...(dto.middleName !== undefined ? { middleName: dto.middleName.trim() || null } : {}),
+              ...(dto.gender ? { gender: dto.gender } : {}),
+              ...(dto.dob ? { dob: new Date(dto.dob) } : {}),
+              ...(dto.altPhone !== undefined ? { altPhone: dto.altPhone.trim() || null } : {}),
               ...(dto.currentAddress !== undefined ? { currentAddress: dto.currentAddress, address: dto.currentAddress } : (dto.address !== undefined ? { address: dto.address } : {})),
               ...(dto.permanentAddress !== undefined ? { permanentAddress: dto.permanentAddress } : {}),
               ...(dto.emergencyContact !== undefined ? { emergencyContact: dto.emergencyContact } : {}),
@@ -231,7 +254,7 @@ export class ProfileController {
   }
 
   @Post("avatar")
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(FileInterceptor("file", IMAGE_UPLOAD))
   @ApiOperation({ summary: "Upload profile picture for current user" })
   async uploadAvatar(
     @CurrentUser() auth: AuthContext,
@@ -275,11 +298,11 @@ export class ProfileController {
   }
 
   @Post("kyc")
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(FileInterceptor("file", DOCUMENT_UPLOAD))
   @ApiOperation({ summary: "Upload KYC document for current user" })
   async uploadKycDocument(
     @CurrentUser() auth: AuthContext,
-    @Body() body: { name: string; documentNumber?: string },
+    @Body() body: UploadKycDocumentDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!auth.tenantId) throw new BadRequestException("Tenant required for KYC document upload");
@@ -403,7 +426,11 @@ export class ProfileController {
         if (!doc) throw new NotFoundException("Document not found");
 
         const downloadUrl = await this.storage.getPresignedUrl(doc.fileKey, 900, doc.name);
-        return { ...doc, downloadUrl, url: downloadUrl };
+        const previewUrl = await this.storage.getPresignedUrl(doc.fileKey, 900, undefined, {
+          inline: true,
+          contentType: doc.mimeType,
+        });
+        return { ...doc, downloadUrl, url: previewUrl };
       },
     );
   }

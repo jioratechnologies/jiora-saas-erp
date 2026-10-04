@@ -1,5 +1,8 @@
 import { Module } from "@nestjs/common";
+import { APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
+import { TimingInterceptor } from "./common/timing.interceptor";
+import { AllExceptionsFilter } from "./common/all-exceptions.filter";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
 import { RbacModule } from "./rbac/rbac.module";
@@ -26,6 +29,10 @@ import { MailModule } from "./mail/mail.module";
     HrModule,
     PayrollModule,
     MailModule,
+  ],
+  providers: [
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_INTERCEPTOR, useClass: TimingInterceptor },
   ],
 })
 export class AppModule {}

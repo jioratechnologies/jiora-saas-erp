@@ -38,7 +38,18 @@ const prisma = new PrismaClient({
   },
 });
 
+// Dev placeholders; override via env. Never real production identities.
+const PLATFORM_EMAIL = process.env.SEED_PLATFORM_EMAIL || "platform-admin@saas-erp.local";
+const PLATFORM_SUBJECT = process.env.SEED_PLATFORM_ZITADEL_SUBJECT || "dev-platform-subject";
+const TENANT_ADMIN_EMAIL = process.env.SEED_TENANT_ADMIN_EMAIL || "admin@saas-erp.local";
+
 async function main() {
+  // This seed TRUNCATEs every operational table. Refuse unless explicitly allowed.
+  if (process.env.NODE_ENV === "production" || process.env.SEED_ALLOW_RESET !== "true") {
+    throw new Error(
+      "Refusing to run: seed truncates all data. Requires NODE_ENV != production AND SEED_ALLOW_RESET=true.",
+    );
+  }
   console.log("==========================================================");
   console.log("1. Cleaning Up Database (Truncating all operational tables)");
   console.log("==========================================================");
@@ -114,8 +125,8 @@ async function main() {
     data: {
       id: "717f8031-4761-4300-88fc-411878157f5c",
       tenantId: null,
-      zitadelSubjectId: "392937773176783363",
-      email: "jioratechnologies@gmail.com",
+      zitadelSubjectId: PLATFORM_SUBJECT,
+      email: PLATFORM_EMAIL,
       displayName: "Jiora Technologies Admin",
     },
   });
@@ -123,7 +134,7 @@ async function main() {
   await prisma.userRole.create({
     data: { userId: platformUser.id, roleId: superAdminRole.id },
   });
-  console.log("✓ Platform super_admin user created: jioratechnologies@gmail.com (sub: 392937773176783363)");
+  console.log(`✓ Platform super_admin user created: ${PLATFORM_EMAIL}`);
 
   // Tenant Roles & Permissions
   const allPermissions = [
@@ -155,55 +166,18 @@ async function main() {
     },
   });
 
-  const hrRole = await prisma.role.create({
-    data: { tenantId, name: "HR", isProtected: false },
-  });
-
-  const devRole = await prisma.role.create({
-    data: { tenantId, name: "Developer", isProtected: false },
-  });
-
-  const empRole = await prisma.role.create({
-    data: { tenantId, name: "Employee", isProtected: false },
-  });
-
   for (const perm of allPermissions) {
     await prisma.rolePermission.create({
       data: { roleId: adminRole.id, permissionKey: perm },
     });
   }
-
-  for (const perm of allPermissions) {
-    if (perm.startsWith("hr.") || perm.startsWith("payroll.") || perm.includes(".read")) {
-      await prisma.rolePermission.create({
-        data: { roleId: hrRole.id, permissionKey: perm },
-      });
-    }
-  }
-
-  const selfServicePerms = [
-    "admin.department.read", "admin.designation.read",
-    "hr.attendance.checkin", "hr.attendance.read",
-    "hr.leave.apply", "hr.leave.read", "hr.holiday.read",
-    "payroll.payslip.read",
-    "payroll.claim.apply", "payroll.claim.read",
-    "payroll.advance.apply",
-  ];
-  for (const perm of selfServicePerms) {
-    await prisma.rolePermission.create({
-      data: { roleId: devRole.id, permissionKey: perm },
-    });
-    await prisma.rolePermission.create({
-      data: { roleId: empRole.id, permissionKey: perm },
-    });
-  }
-  console.log("✓ Tenant roles (admin, HR, Developer, Employee) and permissions configured");
+  console.log("✓ Tenant admin role configured (other access comes from designations)");
 
   // Tenant Users
   const gauravUser = await prisma.user.create({
     data: {
       tenantId,
-      email: "gaurav.12bhindwar@gmail.com",
+      email: TENANT_ADMIN_EMAIL,
       displayName: "Gaurav Bhindwar",
       phone: "+91 9988776655",
       avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
@@ -222,10 +196,7 @@ async function main() {
       avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
     },
   });
-  await prisma.userRole.create({
-    data: { userId: hrUser.id, roleId: hrRole.id },
-  });
-  console.log("✓ Tenant users seeded: gaurav.12bhindwar@gmail.com (admin) & hr@saas-erp.local (HR)");
+  console.log(`✓ Tenant users seeded: ${TENANT_ADMIN_EMAIL} (admin) & hr@saas-erp.local (HR)`);
 
   // ==========================================
   // 3. Departments Master
@@ -270,6 +241,32 @@ async function main() {
     desigMap[name] = d.id;
   }
   console.log("✓ Designations seeded:", Object.keys(desigMap).length);
+
+  // Each designation owns an access role. Everyone also gets the
+  // self-service set (SELF_SERVICE_PERMISSION_KEYS) at login, so only
+  // extra permissions are stored here.
+  const hrPerms = allPermissions.filter(
+    (p) => p.startsWith("hr.") || p.startsWith("payroll.") || p.endsWith(".read"),
+  );
+  const designationAccess = {
+    "Executive Director": allPermissions.filter((p) => p.endsWith(".read") || p.endsWith(".approve") || p.endsWith(".manage")),
+    "HR Executive": hrPerms,
+    "Finance Manager": ["payroll.salary.read", "payroll.run.read", "payroll.run.manage", "payroll.claim.manage", "payroll.advance.manage"],
+    "Senior Accountant": ["payroll.salary.read", "payroll.run.read", "payroll.claim.manage"],
+    "Lead Developer": ["hr.leave.approve", "hr.person.read"],
+    "Volunteer Lead": ["hr.leave.approve", "hr.person.read"],
+    "Operations Coordinator": ["hr.person.read"],
+    "Software Engineer": [],
+  };
+  for (const name of desigs) {
+    const role = await prisma.role.create({
+      data: { tenantId, name, isProtected: false, designationId: desigMap[name] },
+    });
+    for (const perm of designationAccess[name] ?? []) {
+      await prisma.rolePermission.create({ data: { roleId: role.id, permissionKey: perm } });
+    }
+  }
+  console.log("✓ Designation access roles seeded");
 
   // Update user department & designation assignments
   await prisma.user.update({
@@ -341,7 +338,7 @@ async function main() {
       userId: gauravUser.id,
       firstName: "Gaurav",
       lastName: "Bhindwar",
-      email: "gaurav.12bhindwar@gmail.com",
+      email: TENANT_ADMIN_EMAIL,
       phone: "+91 9988776655",
       gender: "Male",
       dob: new Date("1994-08-22"),

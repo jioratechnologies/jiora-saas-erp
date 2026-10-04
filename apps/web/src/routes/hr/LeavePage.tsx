@@ -3,14 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   PlaneTakeoff,
-  Plus,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Check,
   X,
-  FileCheck,
-  AlertCircle,
   Paperclip,
   Upload,
   FileText,
@@ -19,21 +12,18 @@ import {
 import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { DatePicker } from "../../components/ui/date-picker";
-import { DateInput } from "../../components/ui/date-input";
 import { Badge } from "../../components/ui/badge";
-import { User } from "../../components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { PageHeader } from "../../components/page-header";
 import { QueryState } from "../../components/query-state";
 import { Modal } from "../../components/ui/modal";
 import { toast } from "../../components/ui/toast";
-import { useMe } from "../../auth/use-me";
+import { formatErrorMessage } from "../../lib/error-formatter";
 import { useAuthStore } from "../../auth/auth-store";
 import { cn } from "../../lib/utils";
-import { exportToCsv } from "../../lib/csv-export";
+import { exportToExcel } from "../../lib/excel-export";
 import { Pagination, usePagination } from "../../components/ui/pagination";
 
 export interface LeaveSupportingDoc {
@@ -61,7 +51,7 @@ interface LeaveType {
   applicableTo: "ALL" | "EMPLOYEES_ONLY" | "VOLUNTEERS_ONLY";
 }
 
-interface LeaveRequest {
+export interface LeaveRequest {
   id: string;
   startDate: string;
   endDate: string;
@@ -77,7 +67,7 @@ interface LeaveRequest {
   };
   person: {
     id: string;
-    firstName: string;
+    firstName: string; middleName?: string | null;
     lastName: string;
     email: string;
     personType: string;
@@ -87,11 +77,8 @@ interface LeaveRequest {
 
 export function LeavePage() {
   const queryClient = useQueryClient();
-  const { data: me } = useMe();
 
-  const [activeTab, setActiveTab] = useState<"my-requests" | "approvals">("my-requests");
   const [applyModalOpen, setApplyModalOpen] = useState(false);
-  const [createTypeModalOpen, setCreateTypeModalOpen] = useState(false);
 
   // Apply Form State
   const [selectedTypeId, setSelectedTypeId] = useState("");
@@ -118,8 +105,8 @@ export function LeavePage() {
       }
       setUploadedDocs((prev) => [...prev, ...newDocs]);
       toast.success("Files attached", `${newDocs.length} supporting document(s) uploaded.`);
-    } catch (err: any) {
-      toast.error("Upload failed", err.message || "Failed to upload document");
+    } catch (err) {
+      toast.error("Upload failed", formatErrorMessage(err));
     } finally {
       setUploadingDoc(false);
       e.target.value = "";
@@ -132,20 +119,10 @@ export function LeavePage() {
       if (data?.url) {
         window.open(data.url, "_blank");
       }
-    } catch (err: any) {
-      toast.error("Download failed", err.message || "Could not retrieve document URL.");
+    } catch (err) {
+      toast.error("Download failed", formatErrorMessage(err));
     }
   };
-
-  // Create Leave Type Form State
-  const [typeName, setTypeName] = useState("");
-  const [typeCode, setTypeCode] = useState("");
-  const [annualQuota, setAnnualQuota] = useState(12);
-
-  // Decision Modal State
-  const [decisionModalOpen, setDecisionModalOpen] = useState(false);
-  const [decisionTarget, setDecisionTarget] = useState<{ id: string; action: "approve" | "reject"; personName: string } | null>(null);
-  const [decisionNotes, setDecisionNotes] = useState("");
 
   // Queries
   const { data: leaveTypes, isLoading: typesLoading } = useQuery({
@@ -165,17 +142,6 @@ export function LeavePage() {
   } = useQuery({
     queryKey: ["hr", "leave", "requests", "own"],
     queryFn: () => api.get<LeaveRequest[]>("/hr/leave/requests?scope=own"),
-    enabled: activeTab === "my-requests",
-  });
-
-  const {
-    data: approvals,
-    isLoading: approvalsLoading,
-    error: approvalsError,
-  } = useQuery({
-    queryKey: ["hr", "leave", "requests", "approvals"],
-    queryFn: () => api.get<LeaveRequest[]>("/hr/leave/requests?scope=approvals"),
-    enabled: activeTab === "approvals",
   });
 
   // Mutations
@@ -186,7 +152,7 @@ export function LeavePage() {
       toast.success("Leave request cancelled", "Your application has been withdrawn.");
     },
     onError: (err) => {
-      toast.error("Failed to cancel leave", (err as Error).message);
+      toast.error("Failed to cancel leave", formatErrorMessage(err));
     },
   });
 
@@ -210,50 +176,12 @@ export function LeavePage() {
       toast.success("Leave request submitted", "Your manager has been notified for approval.");
     },
     onError: (err) => {
-      toast.error("Failed to submit leave", (err as Error).message);
-    },
-  });
-
-  const createType = useMutation({
-    mutationFn: () =>
-      api.post<LeaveType>("/hr/leave/types", {
-        name: typeName,
-        code: typeCode.toUpperCase(),
-        annualQuota: Number(annualQuota),
-      }),
-    onSuccess: (t) => {
-      setCreateTypeModalOpen(false);
-      setTypeName("");
-      setTypeCode("");
-      setAnnualQuota(12);
-      queryClient.invalidateQueries({ queryKey: ["hr", "leave"] });
-      toast.success("Leave policy created", `Policy "${t.name}" added with ${t.annualQuota} days annual quota.`);
-    },
-    onError: (err) => {
-      toast.error("Failed to create leave policy", (err as Error).message);
-    },
-  });
-
-  const decideRequest = useMutation({
-    mutationFn: ({ id, action, notes }: { id: string; action: "approve" | "reject"; notes?: string }) =>
-      api.patch(`/hr/leave/requests/${id}/${action}`, { decisionNotes: notes || undefined }),
-    onSuccess: (_, vars) => {
-      setDecisionModalOpen(false);
-      setDecisionTarget(null);
-      setDecisionNotes("");
-      queryClient.invalidateQueries({ queryKey: ["hr", "leave"] });
-      toast.success(
-        vars.action === "approve" ? "Leave approved" : "Leave rejected",
-        "The request status has been updated.",
-      );
-    },
-    onError: (err) => {
-      toast.error("Failed to process decision", (err as Error).message);
+      toast.error("Failed to submit leave", formatErrorMessage(err));
     },
   });
 
   const handleExportCsv = () => {
-    if (activeTab === "my-requests" && myRequests) {
+    if (myRequests) {
       const headers = ["Leave Type", "Start Date", "End Date", "Days", "Reason", "Status", "Decision Notes"];
       const rows = myRequests.map((r) => [
         r.leaveType.name,
@@ -264,7 +192,7 @@ export function LeavePage() {
         r.status,
         r.decisionNotes || "",
       ]);
-      exportToCsv("My_Leave_Requests", headers, rows);
+      exportToExcel("My_Leave_Requests", headers, rows);
       toast.success("Leave requests exported", `${rows.length} records downloaded.`);
     } else if (leaveBalances) {
       const headers = ["Leave Type", "Code", "Annual Quota", "Approved Used", "Pending Approval", "Remaining Balance"];
@@ -276,24 +204,21 @@ export function LeavePage() {
         b.pendingDays,
         b.remainingBalance,
       ]);
-      exportToCsv("Leave_Balance_Ledger", headers, rows);
+      exportToExcel("Leave_Balance_Ledger", headers, rows);
       toast.success("Leave ledger exported", `${rows.length} policy balances downloaded.`);
     }
   };
 
-  const canApprove = me?.permissionKeys?.includes("hr.leave.approve");
-  const canManageTypes = me?.permissionKeys?.includes("hr.holiday.write");
 
   // Pagination
   const myRequestsPagination = usePagination(myRequests ?? [], 10);
-  const approvalsPagination = usePagination(approvals ?? [], 10);
 
   return (
     <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
       <PageHeader
         icon={PlaneTakeoff}
         title="Leave Management"
-        description="Apply for leave, track quota balances, and review team approval requests."
+        description="Apply for leave, track quota balances, and follow your requests."
         badge={
           <Badge variant="outline" className="text-xs font-mono">
             {myRequests?.length || 0} Requests
@@ -308,19 +233,8 @@ export function LeavePage() {
               className="gap-1.5 rounded-xl text-xs font-semibold"
             >
               <Download className="h-3.5 w-3.5" />
-              <span>Export CSV</span>
+              <span>Export Excel</span>
             </Button>
-            {canManageTypes && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCreateTypeModalOpen(true)}
-                className="gap-1.5 rounded-xl text-xs font-semibold"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Leave Policy</span>
-              </Button>
-            )}
             <Button onClick={() => setApplyModalOpen(true)} className="gap-2 shrink-0 rounded-xl text-xs font-bold shadow-sm">
               <PlaneTakeoff className="h-3.5 w-3.5" />
               <span>Apply for Leave</span>
@@ -361,41 +275,7 @@ export function LeavePage() {
         })}
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">
-        <button
-          onClick={() => setActiveTab("my-requests")}
-          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all ${
-            activeTab === "my-requests"
-              ? "bg-primary text-primary-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          }`}
-        >
-          <CalendarDays className="h-4 w-4" />
-          <span>My Requests</span>
-        </button>
-        {canApprove && (
-          <button
-            onClick={() => setActiveTab("approvals")}
-            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all ${
-              activeTab === "approvals"
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            }`}
-          >
-            <FileCheck className="h-4 w-4" />
-            <span>Manager Approval Queue</span>
-            {approvals && approvals.filter((r) => r.status === "PENDING").length > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-                {approvals.filter((r) => r.status === "PENDING").length}
-              </span>
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* Tab Content: My Requests */}
-      {activeTab === "my-requests" && (
+      {/* My Requests */}
         <Card>
           <CardContent className="p-0">
             <QueryState isLoading={myRequestsLoading} error={myRequestsError}>
@@ -582,243 +462,6 @@ export function LeavePage() {
             />
           </CardContent>
         </Card>
-      )}
-
-      {/* Tab Content: Manager Approval Queue */}
-      {activeTab === "approvals" && (
-        <Card>
-          <CardContent className="p-0">
-            <QueryState isLoading={approvalsLoading} error={approvalsError}>
-              {approvalsPagination.paginatedItems.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  No team leave requests pending your review.
-                </div>
-              ) : (
-                <>
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {approvalsPagination.paginatedItems.map((req) => (
-                      <div key={req.id} className="p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <User
-                            name={`${req.person.firstName} ${req.person.lastName}`}
-                            description={req.person.department?.name || req.person.email}
-                            avatarProps={{ size: "sm", isBordered: true }}
-                          />
-                          <Badge
-                            variant={
-                              req.status === "APPROVED"
-                                ? "success"
-                                : req.status === "REJECTED"
-                                ? "destructive"
-                                : "warning"
-                            }
-                            dot
-                            size="sm"
-                          >
-                            {req.status}
-                          </Badge>
-                        </div>
-
-                        <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-100/60 dark:border-zinc-800/60">
-                          <Badge variant="outline" size="sm">
-                            {req.leaveType.code}
-                          </Badge>
-                          <span className="text-muted-foreground font-medium">
-                            {new Date(req.startDate).toLocaleDateString()} – {new Date(req.endDate).toLocaleDateString()} ({req.daysCount}d)
-                          </span>
-                        </div>
-
-                        {req.reason && (
-                          <div className="text-xs text-muted-foreground bg-zinc-50 dark:bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-200/50 dark:border-zinc-800/50">
-                            <span className="font-semibold text-foreground">Reason: </span>
-                            {req.reason}
-                          </div>
-                        )}
-
-                        {req.supportingDocuments && req.supportingDocuments.length > 0 && (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {req.supportingDocuments.map((doc, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => handleDownloadDoc(doc.fileKey)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer font-medium"
-                                title={`Download ${doc.name}`}
-                              >
-                                <Paperclip className="h-3 w-3 shrink-0" />
-                                <span className="truncate max-w-[140px]">{doc.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {req.status === "PENDING" ? (
-                          <div className="grid grid-cols-2 gap-2 pt-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setDecisionTarget({
-                                  id: req.id,
-                                  action: "approve",
-                                  personName: `${req.person.firstName} ${req.person.lastName}`,
-                                });
-                                setDecisionModalOpen(true);
-                              }}
-                              className="h-8 text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 justify-center"
-                            >
-                              <Check className="h-3.5 w-3.5 mr-1" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setDecisionTarget({
-                                  id: req.id,
-                                  action: "reject",
-                                  personName: `${req.person.firstName} ${req.person.lastName}`,
-                                });
-                                setDecisionModalOpen(true);
-                              }}
-                              className="h-8 text-xs border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 justify-center"
-                            >
-                              <X className="h-3.5 w-3.5 mr-1" />
-                              Reject
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="text-right text-xs text-muted-foreground italic">Processed</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Desktop Table View */}
-                  <div className="hidden sm:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Subordinate</TableHead>
-                          <TableHead>Leave Type</TableHead>
-                          <TableHead>Period</TableHead>
-                          <TableHead>Reason</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="w-36 text-right">Decision</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {approvalsPagination.paginatedItems.map((req) => (
-                          <TableRow key={req.id}>
-                            <TableCell>
-                              <User
-                                name={`${req.person.firstName} ${req.person.lastName}`}
-                                description={req.person.department?.name || req.person.email}
-                                avatarProps={{ size: "sm", isBordered: true }}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" size="sm">
-                                {req.leaveType.code}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {new Date(req.startDate).toLocaleDateString()} to {new Date(req.endDate).toLocaleDateString()} ({req.daysCount}d)
-                            </TableCell>
-                            <TableCell className="text-xs max-w-xs text-muted-foreground">
-                              <p className="truncate">{req.reason}</p>
-                              {req.supportingDocuments && req.supportingDocuments.length > 0 && (
-                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                                  {req.supportingDocuments.map((doc, idx) => (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => handleDownloadDoc(doc.fileKey)}
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer font-medium"
-                                      title={`Download ${doc.name}`}
-                                    >
-                                      <Paperclip className="h-3 w-3 shrink-0" />
-                                      <span className="truncate max-w-[120px]">{doc.name}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  req.status === "APPROVED"
-                                    ? "success"
-                                    : req.status === "REJECTED"
-                                    ? "destructive"
-                                    : "warning"
-                                }
-                                dot
-                                size="sm"
-                              >
-                                {req.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {req.status === "PENDING" ? (
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setDecisionTarget({
-                                        id: req.id,
-                                        action: "approve",
-                                        personName: `${req.person.firstName} ${req.person.lastName}`,
-                                      });
-                                      setDecisionModalOpen(true);
-                                    }}
-                                    className="h-7 px-2 text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
-                                  >
-                                    <Check className="h-3.5 w-3.5 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setDecisionTarget({
-                                        id: req.id,
-                                        action: "reject",
-                                        personName: `${req.person.firstName} ${req.person.lastName}`,
-                                      });
-                                      setDecisionModalOpen(true);
-                                    }}
-                                    className="h-7 px-2 text-xs border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                                  >
-                                    <X className="h-3.5 w-3.5 mr-1" />
-                                    Reject
-                                  </Button>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-muted-foreground italic">Processed</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
-              )}
-            </QueryState>
-            <Pagination
-              currentPage={approvalsPagination.currentPage}
-              totalPages={approvalsPagination.totalPages}
-              totalItems={approvalsPagination.totalItems}
-              pageSize={approvalsPagination.pageSize}
-              onPageChange={approvalsPagination.setCurrentPage}
-              onPageSizeChange={(size) => { approvalsPagination.setPageSize(size); approvalsPagination.setCurrentPage(1); }}
-            />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Apply Leave Modal */}
       <Modal
@@ -943,111 +586,6 @@ export function LeavePage() {
               disabled={!selectedTypeId || !startDate || !endDate || !reason.trim() || submitRequest.isPending}
             >
               {submitRequest.isPending ? "Submitting…" : "Submit Leave Application"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Decision Remarks Modal */}
-      <Modal
-        isOpen={decisionModalOpen}
-        onClose={() => setDecisionModalOpen(false)}
-        title={decisionTarget?.action === "approve" ? "Approve Leave Request" : "Reject Leave Request"}
-        description={`Decision for ${decisionTarget?.personName}`}
-        maxWidth="sm"
-      >
-        <div className="space-y-3.5">
-          <div>
-            <label className="text-xs font-medium text-foreground block mb-1">
-              Decision Comments / Remarks (optional)
-            </label>
-            <Input
-              placeholder={decisionTarget?.action === "approve" ? "Approved as planned." : "Please reschedule due to pending project deadline."}
-              value={decisionNotes}
-              onChange={(e) => setDecisionNotes(e.target.value)}
-            />
-          </div>
-
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-            <Button type="button" variant="outline" onClick={() => setDecisionModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant={decisionTarget?.action === "approve" ? "default" : "destructive"}
-              onClick={() => {
-                if (decisionTarget) {
-                  decideRequest.mutate({
-                    id: decisionTarget.id,
-                    action: decisionTarget.action,
-                    notes: decisionNotes,
-                  });
-                }
-              }}
-              disabled={decideRequest.isPending}
-            >
-              {decideRequest.isPending ? "Processing…" : decisionTarget?.action === "approve" ? "Confirm Approval" : "Confirm Rejection"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Create Leave Type Modal */}
-      <Modal
-        isOpen={createTypeModalOpen}
-        onClose={() => setCreateTypeModalOpen(false)}
-        title="Create Leave Policy"
-        description="Define a new leave quota for staff or volunteers."
-        maxWidth="md"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            createType.mutate();
-          }}
-          className="space-y-3.5"
-        >
-          <div>
-            <label className="text-xs font-medium text-foreground block mb-1">Leave Policy Name *</label>
-            <Input
-              placeholder="e.g. Casual Leave / Study Leave"
-              value={typeName}
-              onChange={(e) => setTypeName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Code *</label>
-              <Input
-                placeholder="CL / SL"
-                value={typeCode}
-                onChange={(e) => setTypeCode(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Annual Quota (Days) *</label>
-              <Input
-                type="number"
-                min="1"
-                max="365"
-                value={annualQuota}
-                onChange={(e) => setAnnualQuota(Number(e.target.value))}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-            <Button type="button" variant="outline" onClick={() => setCreateTypeModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!typeName.trim() || !typeCode.trim() || createType.isPending}
-            >
-              {createType.isPending ? "Saving…" : "Save Policy"}
             </Button>
           </div>
         </form>

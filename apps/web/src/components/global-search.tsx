@@ -1,3 +1,5 @@
+import { SearchInput } from "./ui/search-input";
+import { fullName } from "../lib/input-constraints";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -24,7 +26,7 @@ import { cn } from "../lib/utils";
 
 interface SearchPerson {
   id: string;
-  firstName: string;
+  firstName: string; middleName?: string | null;
   lastName: string;
   email: string;
   avatarUrl?: string;
@@ -111,11 +113,11 @@ export function GlobalSearch({ isMobileModal = false, onClose }: GlobalSearchPro
 
   const filteredPeople = (people || []).filter((p) => {
     if (!q) return false;
-    const fullName = `${p.firstName} ${p.lastName}`.toLowerCase();
+    const nameLower = fullName(p).toLowerCase();
     const email = p.email.toLowerCase();
     const dept = p.department?.name?.toLowerCase() || "";
     const desig = p.designation?.name?.toLowerCase() || "";
-    return fullName.includes(q) || email.includes(q) || dept.includes(q) || desig.includes(q);
+    return nameLower.includes(q) || email.includes(q) || dept.includes(q) || desig.includes(q);
   }).slice(0, 6);
 
   const handleSelectPage = (path: string) => {
@@ -138,24 +140,13 @@ export function GlobalSearch({ isMobileModal = false, onClose }: GlobalSearchPro
         <div ref={containerRef} className="w-full max-w-lg mx-auto bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
           {/* Mobile Search Header */}
           <div className="flex items-center gap-2 p-3 border-b border-zinc-100 dark:border-zinc-800">
-            <Search className="h-4 w-4 text-primary shrink-0 ml-1" />
-            <input
+            <SearchInput
               ref={inputRef}
-              type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search people, modules, or pages..."
-              className="flex-1 h-9 px-2 text-sm bg-transparent outline-hidden placeholder:text-muted-foreground text-foreground"
+              className="flex-1"
             />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
             <button
               type="button"
               onClick={onClose}
@@ -187,14 +178,14 @@ export function GlobalSearch({ isMobileModal = false, onClose }: GlobalSearchPro
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <Avatar
-                            name={`${person.firstName} ${person.lastName}`}
+                            name={fullName(person)}
                             src={person.avatarUrl}
                             size="sm"
                             className="h-8 w-8 text-xs shrink-0"
                           />
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-foreground truncate">
-                              {person.firstName} {person.lastName}
+                              {fullName(person)}
                             </p>
                             <p className="text-[10px] text-muted-foreground truncate">
                               {person.designation?.name || "Staff"} • {person.department?.name || "General"}
@@ -251,38 +242,23 @@ export function GlobalSearch({ isMobileModal = false, onClose }: GlobalSearchPro
   return (
     <div ref={containerRef} className="relative flex-1 max-w-sm sm:max-w-md mx-2 sm:mx-4">
       {/* Search Input Trigger */}
-      <div className="relative flex items-center">
-        <Search className="absolute left-3 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder="Search people, modules, or pages..."
-          className="w-full h-8 pl-8 pr-14 text-xs rounded-xl bg-zinc-100/80 hover:bg-zinc-100 focus:bg-white dark:bg-zinc-900/80 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-hidden transition-all placeholder:text-muted-foreground/70"
-        />
-        <div className="absolute right-2 flex items-center gap-1">
-          {query ? (
-            <button
-              onClick={() => {
-                setQuery("");
-                inputRef.current?.focus();
-              }}
-              className="p-0.5 text-muted-foreground hover:text-foreground rounded"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          ) : (
-            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/80 bg-zinc-200/60 dark:bg-zinc-800 rounded border border-zinc-300/60 dark:border-zinc-700/60">
-              ⌘K
-            </kbd>
-          )}
-        </div>
-      </div>
+      <SearchInput
+        ref={inputRef}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onClear={() => setQuery("")}
+        onFocus={() => setOpen(true)}
+        placeholder="Search people, modules, or pages..."
+        className="h-8"
+        trailing={
+          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/80 bg-muted rounded border border-border">
+            ⌘K
+          </kbd>
+        }
+      />
 
       {/* Floating Dropdown Search Palette */}
       {open && (
@@ -307,14 +283,14 @@ export function GlobalSearch({ isMobileModal = false, onClose }: GlobalSearchPro
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Avatar
-                          name={`${person.firstName} ${person.lastName}`}
+                          name={fullName(person)}
                           src={person.avatarUrl}
                           size="sm"
                           className="h-7 w-7 text-[11px] shrink-0"
                         />
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate">
-                            {person.firstName} {person.lastName}
+                            {fullName(person)}
                           </p>
                           <p className="text-[10px] text-muted-foreground truncate">
                             {person.designation?.name || "Staff"} • {person.department?.name || "General"}

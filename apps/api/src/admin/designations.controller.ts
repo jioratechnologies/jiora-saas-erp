@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, UseGuards, Header } from "@nestjs/common";
+import { REFERENCE_CACHE_CONTROL } from "../cache/ref-cache";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { ZitadelAuthGuard } from "../auth/zitadel-auth.guard";
 import { PermissionsGuard } from "../auth/permissions.guard";
@@ -16,6 +17,8 @@ export class DesignationsController {
   constructor(private readonly designations: DesignationsService) {}
 
   @Get()
+  @RequirePermission("admin.designation.read")
+  @Header("Cache-Control", REFERENCE_CACHE_CONTROL)
   list(@CurrentUser() user: AuthContext) {
     return this.designations.list(user.tenantId!);
   }

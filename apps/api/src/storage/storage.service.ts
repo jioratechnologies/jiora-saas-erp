@@ -8,6 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { INLINE_SAFE_MIME } from "../common/upload-rules";
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -78,12 +79,28 @@ export class StorageService implements OnModuleInit {
     return key;
   }
 
-  async getPresignedUrl(key: string, expiresIn = 900, downloadFilename?: string): Promise<string> {
+  /**
+   * Presigned GET URL. With `downloadFilename` the browser downloads the file;
+   * with `inline` it renders in the page (images / PDFs in a preview frame).
+   */
+  async getPresignedUrl(
+    key: string,
+    expiresIn = 900,
+    downloadFilename?: string,
+    opts?: { inline?: boolean; contentType?: string },
+  ): Promise<string> {
     const cleanFilename = downloadFilename ? downloadFilename.replace(/[^a-zA-Z0-9._-]/g, "_") : undefined;
+    // Never render user content inline unless it is a known-safe type (blocks stored XSS via HTML/SVG).
+    const inline = !!opts?.inline && !!opts.contentType && INLINE_SAFE_MIME.includes(opts.contentType);
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
-      ResponseContentDisposition: cleanFilename ? `attachment; filename="${cleanFilename}"` : undefined,
+      ResponseContentDisposition: inline
+        ? "inline"
+        : cleanFilename
+          ? `attachment; filename="${cleanFilename}"`
+          : undefined,
+      ResponseContentType: inline ? opts!.contentType : undefined,
     });
     return getSignedUrl(this.client, command, { expiresIn });
   }

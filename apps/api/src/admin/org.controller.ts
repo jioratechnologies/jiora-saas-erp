@@ -1,14 +1,5 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Patch,
-  Post,
-  UploadedFile,
-  UseGuards,
-  UseInterceptors,
-} from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors, Header } from "@nestjs/common";
+import { REFERENCE_CACHE_CONTROL } from "../cache/ref-cache";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ZitadelAuthGuard } from "../auth/zitadel-auth.guard";
@@ -18,7 +9,9 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthContext } from "../auth/auth-context";
 import { TenantsService } from "../tenants/tenants.service";
 import { UpdateTenantThemeDto } from "../tenants/dto";
+import { UpdateWorkScheduleDto } from "./dto";
 import { StorageService } from "../storage/storage.service";
+import { IMAGE_UPLOAD } from "../common/upload-rules";
 
 /** The tenant's own organisation profile — name, theme, branding. Not platform tenant CRUD (see tenants.controller.ts). */
 @ApiTags("admin: organisation")
@@ -39,6 +32,7 @@ export class OrgController {
    * off chance something else does.
    */
   @Get()
+  @Header("Cache-Control", REFERENCE_CACHE_CONTROL)
   get(@CurrentUser() user: AuthContext) {
     if (!user.tenantId) return null;
     return this.tenants.getOwn(user.tenantId);
@@ -50,9 +44,20 @@ export class OrgController {
     return this.tenants.updateTheme(user.tenantId!, dto);
   }
 
+  @Patch("work-schedule")
+  @RequirePermission("admin.org.write")
+  updateWorkSchedule(@CurrentUser() user: AuthContext, @Body() dto: UpdateWorkScheduleDto) {
+    const { basic, hra, other } = dto.salarySplit;
+    if (basic + hra + other !== 100) throw new BadRequestException("Salary split must add up to 100%.");
+    if (Math.round(dto.workHoursPerDay * 2) !== dto.workHoursPerDay * 2) {
+      throw new BadRequestException("Hours per day must be in steps of 0.5.");
+    }
+    return this.tenants.updateWorkSchedule(user.tenantId!, dto);
+  }
+
   @Post("logo")
   @RequirePermission("admin.org.write")
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(FileInterceptor("file", IMAGE_UPLOAD))
   @ApiOperation({ summary: "Upload and update organisation logo" })
   async uploadLogo(
     @CurrentUser() user: AuthContext,

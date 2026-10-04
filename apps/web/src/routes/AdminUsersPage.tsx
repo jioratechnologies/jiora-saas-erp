@@ -1,3 +1,4 @@
+import { SearchInput } from "../components/ui/search-input";
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -32,7 +33,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { PageHeader } from "../components/page-header";
 import { QueryState } from "../components/query-state";
 import { Modal } from "../components/ui/modal";
-import { HeaderActionPortal } from "../components/header-action-portal";
 import { Pagination, usePagination } from "../components/ui/pagination";
 import { useConfirm } from "../hooks/use-confirm";
 import { toast } from "../components/ui/toast";
@@ -124,7 +124,8 @@ export function AdminUsersPage() {
   const [inviteName, setInviteName] = useState("");
   const [inviteDepartmentId, setInviteDepartmentId] = useState<string>("");
   const [inviteDesignationId, setInviteDesignationId] = useState<string>("");
-  const [inviteSelectedRoles, setInviteSelectedRoles] = useState<Set<string>>(new Set());
+  const [inviteAsAdmin, setInviteAsAdmin] = useState(false);
+  const adminRoleId = roles.find((r) => r.isProtected)?.id;
 
   // Invite mutation
   const inviteMutation = useMutation({
@@ -133,8 +134,8 @@ export function AdminUsersPage() {
         email: inviteEmail.trim(),
         displayName: inviteName.trim(),
         departmentId: inviteDepartmentId || undefined,
-        designationId: inviteDesignationId || undefined,
-        roleIds: Array.from(inviteSelectedRoles),
+        designationId: inviteDesignationId,
+        roleIds: inviteAsAdmin && adminRoleId ? [adminRoleId] : undefined,
       }),
     onSuccess: () => {
       const email = inviteEmail.trim();
@@ -142,7 +143,7 @@ export function AdminUsersPage() {
       setInviteName("");
       setInviteDepartmentId("");
       setInviteDesignationId("");
-      setInviteSelectedRoles(new Set());
+      setInviteAsAdmin(false);
       setInviteModalOpen(false);
       queryClient.invalidateQueries({ queryKey: usersKey });
       toast.success("Invitation dispatched", `An onboarding invitation has been sent to ${email}.`);
@@ -164,6 +165,28 @@ export function AdminUsersPage() {
     },
   });
 
+  // Delete (permanent) mutation — deactivated users only
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: usersKey });
+      toast.success("User deleted", "The login was removed. The HR person record is kept.");
+    },
+    onError: (err) => {
+      toast.error("Failed to delete user", formatErrorMessage(err));
+    },
+  });
+
+  const confirmDelete = async (u: UserRow) => {
+    const ok = await confirm({
+      title: `Delete ${u.displayName} permanently?`,
+      description: `${u.email}'s login will be removed and cannot be restored. Their HR person record is kept.`,
+      confirmLabel: "Delete permanently",
+      variant: "destructive",
+    });
+    if (ok) deleteMutation.mutate(u.id);
+  };
+
   // Filtering users
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
@@ -175,15 +198,15 @@ export function AdminUsersPage() {
         if (!matchesName && !matchesEmail) return false;
       }
 
-      // Status filter
+      // Status filter ("all" hides deactivated users; they live under their own tab)
+      if (statusFilter === "all" && u.deactivatedAt) return false;
       if (statusFilter === "active" && (!u.zitadelSubjectId || u.deactivatedAt)) return false;
       if (statusFilter === "pending" && (u.zitadelSubjectId !== null || u.deactivatedAt)) return false;
       if (statusFilter === "deactivated" && !u.deactivatedAt) return false;
 
       // Role filter
       if (roleFilter !== "all") {
-        const hasRole = u.roles.some((r) => r.role.id === roleFilter);
-        if (!hasRole) return false;
+        if (u.designation?.id !== roleFilter) return false;
       }
 
       return true;
@@ -195,7 +218,7 @@ export function AdminUsersPage() {
 
   // KPI stats
   const stats = useMemo(() => {
-    const total = users.length;
+    const total = users.filter((u) => !u.deactivatedAt).length;
     const active = users.filter((u) => u.zitadelSubjectId && !u.deactivatedAt).length;
     const pending = users.filter((u) => !u.zitadelSubjectId && !u.deactivatedAt).length;
     const deactivated = users.filter((u) => Boolean(u.deactivatedAt)).length;
@@ -214,33 +237,12 @@ export function AdminUsersPage() {
     setInviteName("");
     setInviteDepartmentId("");
     setInviteDesignationId("");
-    // Default to Employee role if available
-    const empRole = roles.find((r) => r.name.toLowerCase().includes("employee"));
-    setInviteSelectedRoles(new Set(empRole ? [empRole.id] : []));
+    setInviteAsAdmin(false);
     setInviteModalOpen(true);
-  };
-
-  const toggleInviteRole = (roleId: string) => {
-    const next = new Set(inviteSelectedRoles);
-    if (next.has(roleId)) {
-      next.delete(roleId);
-    } else {
-      next.add(roleId);
-    }
-    setInviteSelectedRoles(next);
   };
 
   return (
     <div className="max-w-[1720px] mx-auto space-y-5 px-3 sm:px-6 py-4">
-      {/* Top Header Portal Button */}
-      <HeaderActionPortal>
-        <Button onClick={handleOpenInvite} size="sm" className="h-9 gap-1.5 font-medium shadow-xs">
-          <UserPlus className="h-4 w-4" />
-          <span className="hidden sm:inline">Invite Member</span>
-          <span className="sm:hidden">Invite</span>
-        </Button>
-      </HeaderActionPortal>
-
       {/* Modern Page Header */}
       <PageHeader
         title="User Management"
@@ -250,7 +252,7 @@ export function AdminUsersPage() {
         action={
           <Button onClick={handleOpenInvite} className="h-9 gap-1.5 font-medium shadow-xs">
             <UserPlus className="h-4 w-4" />
-            <span>Invite Team Member</span>
+            <span>Invite</span>
           </Button>
         }
       />
@@ -260,23 +262,12 @@ export function AdminUsersPage() {
         <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name or email address..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 pl-9 text-xs bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 rounded-xl"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
+            <SearchInput
+ placeholder="Search by name or email address..."
+ value={searchQuery}
+ onChange={(e) => setSearchQuery(e.target.value)}
+ className="flex-1 max-w-md"
+ />
 
             {/* Filter Tabs & Role Dropdown */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -299,6 +290,7 @@ export function AdminUsersPage() {
                     )}
                   >
                     {tab.label}
+                    {tab.id === "deactivated" && ` (${users.filter((u) => u.deactivatedAt).length})`}
                   </button>
                 ))}
               </div>
@@ -310,8 +302,8 @@ export function AdminUsersPage() {
                   onChange={(e) => setRoleFilter(e.target.value)}
                   className="h-9 px-3 pr-8 text-xs font-medium bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-700 rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer appearance-none"
                 >
-                  <option value="all">All Roles</option>
-                  {roles.map((r) => (
+                  <option value="all">All Designations</option>
+                  {designations.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
                     </option>
@@ -335,7 +327,7 @@ export function AdminUsersPage() {
                   <TableRow className="border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-950/40">
                     <TableHead className="w-[320px] font-semibold text-xs">User Profile</TableHead>
                     <TableHead className="font-semibold text-xs">Department & Placement</TableHead>
-                    <TableHead className="font-semibold text-xs">Assigned Roles</TableHead>
+                    <TableHead className="font-semibold text-xs">Access</TableHead>
                     <TableHead className="font-semibold text-xs">Identity Status</TableHead>
                     <TableHead className="w-12 text-right pr-4 font-semibold text-xs">Action</TableHead>
                   </TableRow>
@@ -388,20 +380,21 @@ export function AdminUsersPage() {
                           )}
                         </TableCell>
 
-                        {/* Assigned Roles Cell */}
+                        {/* Access Cell */}
                         <TableCell className="py-3 px-4">
                           <div className="flex flex-wrap gap-1.5">
-                            {u.roles.map((r) => (
-                              <Badge
-                                key={r.role.name}
-                                variant="outline"
-                                className={cn("text-[11px] font-medium px-2 py-0.5 rounded-md", getRoleBadgeStyle(r.role.name))}
-                              >
-                                {r.role.name}
+                            {u.designation && (
+                              <Badge variant="outline" className="text-[11px] font-medium px-2 py-0.5 rounded-md">
+                                {u.designation.name}
                               </Badge>
-                            ))}
-                            {u.roles.length === 0 && (
-                              <span className="text-xs text-muted-foreground italic">No roles</span>
+                            )}
+                            {u.roles.some((r) => r.role.isProtected) && (
+                              <Badge
+                                variant="outline"
+                                className={cn("text-[11px] font-medium px-2 py-0.5 rounded-md", getRoleBadgeStyle("admin"))}
+                              >
+                                Admin
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
@@ -454,7 +447,13 @@ export function AdminUsersPage() {
                               <UserMinus className="h-4 w-4" />
                             </button>
                           ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <button
+                              type="button"
+                              onClick={() => confirmDelete(u)}
+                              className="px-2 py-1 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                            >
+                              Delete permanently
+                            </button>
                           )}
                         </TableCell>
                       </TableRow>
@@ -521,11 +520,16 @@ export function AdminUsersPage() {
 
                     <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
                       <div className="flex flex-wrap gap-1">
-                        {u.roles.map((r) => (
-                          <Badge key={r.role.name} variant="outline" className={cn("text-[10px] px-1.5 py-0", getRoleBadgeStyle(r.role.name))}>
-                            {r.role.name}
+                        {u.designation && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {u.designation.name}
                           </Badge>
-                        ))}
+                        )}
+                        {u.roles.some((r) => r.role.isProtected) && (
+                          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", getRoleBadgeStyle("admin"))}>
+                            Admin
+                          </Badge>
+                        )}
                       </div>
 
                       {!isDeactivated && (
@@ -542,6 +546,15 @@ export function AdminUsersPage() {
                           className="text-xs text-destructive hover:underline p-1"
                         >
                           Deactivate
+                        </button>
+                      )}
+                      {isDeactivated && (
+                        <button
+                          type="button"
+                          onClick={() => confirmDelete(u)}
+                          className="text-xs text-destructive hover:underline p-1"
+                        >
+                          Delete permanently
                         </button>
                       )}
                     </div>
@@ -638,13 +651,16 @@ export function AdminUsersPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">Designation</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Designation <span className="text-destructive">*</span>
+              </label>
               <select
+                required
                 value={inviteDesignationId}
                 onChange={(e) => setInviteDesignationId(e.target.value)}
                 className="w-full h-9 px-3 text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                <option value="">(None / Unassigned)</option>
+                <option value="">Select designation</option>
                 {designations.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
@@ -654,51 +670,23 @@ export function AdminUsersPage() {
             </div>
           </div>
 
-          {/* Roles Selection Cards */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-foreground">
-                Assign Roles <span className="text-destructive">*</span>
-              </label>
-              <span className="text-[11px] text-muted-foreground">
-                {inviteSelectedRoles.size} selected
+          {/* Organisation admin */}
+          {adminRoleId && (
+            <label className="flex items-start gap-2 text-xs text-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={inviteAsAdmin}
+                onChange={(e) => setInviteAsAdmin(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-primary"
+              />
+              <span>
+                <span className="font-semibold">Organisation admin</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Full access to everything. Other access comes from the designation.
+                </span>
               </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-              {roles.map((r) => {
-                const isChecked = inviteSelectedRoles.has(r.id);
-                return (
-                  <div
-                    key={r.id}
-                    onClick={() => toggleInviteRole(r.id)}
-                    className={cn(
-                      "p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer select-none",
-                      isChecked
-                        ? "bg-primary/5 dark:bg-primary/10 border-primary/40 ring-1 ring-primary/30"
-                        : "bg-white dark:bg-zinc-900 border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/60",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Shield className={cn("h-4 w-4 shrink-0", isChecked ? "text-primary" : "text-muted-foreground")} />
-                      <span className="text-xs font-medium text-foreground truncate">{r.name}</span>
-                    </div>
-
-                    <div
-                      className={cn(
-                        "flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border transition-all",
-                        isChecked
-                          ? "bg-primary border-primary text-primary-foreground shadow-2xs"
-                          : "border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950",
-                      )}
-                    >
-                      {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+            </label>
+          )}
 
           {/* Modal Actions */}
           <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-end gap-2">
@@ -717,7 +705,7 @@ export function AdminUsersPage() {
               disabled={
                 !inviteEmail.trim() ||
                 !inviteName.trim() ||
-                inviteSelectedRoles.size === 0 ||
+                !inviteDesignationId ||
                 inviteMutation.isPending
               }
               className="h-8.5 text-xs font-medium rounded-xl gap-1.5 shadow-xs"

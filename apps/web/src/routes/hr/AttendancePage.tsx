@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { SearchInput } from "../../components/ui/search-input";
+import { fullName } from "../../lib/input-constraints";
+import { memo, useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Clock,
@@ -17,6 +19,8 @@ import {
   AlertTriangle,
   RotateCcw,
   Edit3,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { api } from "../../api/client";
 import { Button } from "../../components/ui/button";
@@ -30,9 +34,13 @@ import { PageHeader } from "../../components/page-header";
 import { QueryState } from "../../components/query-state";
 import { Modal } from "../../components/ui/modal";
 import { toast } from "../../components/ui/toast";
-import { exportToCsv } from "../../lib/csv-export";
+import { formatErrorMessage } from "../../lib/error-formatter";
+import { exportToExcel } from "../../lib/excel-export";
 import { useMe } from "../../auth/use-me";
+import { AttendanceReport } from "../../components/hr/AttendanceReport";
 import { Pagination, usePagination } from "../../components/ui/pagination";
+import { Skeleton } from "../../components/ui/skeleton";
+import { usePagedQuery } from "../../lib/use-paged-query";
 
 interface AttendanceRecord {
   id: string;
@@ -50,7 +58,7 @@ interface AttendanceRecord {
   regularizationReason?: string | null;
   person?: {
     id: string;
-    firstName: string;
+    firstName: string; middleName?: string | null;
     lastName: string;
     email: string;
     personType?: string;
@@ -62,7 +70,7 @@ interface AttendanceRecord {
 interface RosterItem {
   person: {
     id: string;
-    firstName: string;
+    firstName: string; middleName?: string | null;
     lastName: string;
     email: string;
     phone?: string;
@@ -77,10 +85,110 @@ interface RosterItem {
   derivedStatus: "PRESENT" | "HALF_DAY" | "ABSENT" | "ON_LEAVE" | "IN_PROGRESS";
 }
 
+/** yyyy-mm-dd from local date components (not UTC). */
+function localDateStr(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** ISO instant for a local date + HH:mm. */
+function localIso(date: string, time: string): string {
+  return new Date(`${date}T${time}:00`).toISOString();
+}
+
+function formatDuration(checkIn: string, checkOut?: string | null) {
+  if (!checkOut) return "In progress…";
+  const diffMs = new Date(checkOut).getTime() - new Date(checkIn).getTime();
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${mins}m`;
+}
+
+const MyLogRow = memo(function MyLogRow({ rec }: { rec: AttendanceRecord }) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium text-foreground">
+        {new Date(rec.date).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })}
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline" size="sm">
+          {rec.mode}
+        </Badge>
+      </TableCell>
+      <TableCell className="font-mono text-xs">
+        {new Date(rec.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      </TableCell>
+      <TableCell className="font-mono text-xs">
+        {rec.checkOutTime
+          ? new Date(rec.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : "—"}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground font-medium">
+        {formatDuration(rec.checkInTime, rec.checkOutTime)}
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          {rec.verificationStatus === "FLAGGED" ? (
+            <Badge variant="destructive" size="sm" dot>
+              Flagged
+            </Badge>
+          ) : rec.verificationMode === "OFFLINE" ? (
+            <Badge variant="secondary" size="sm" dot>
+              Offline Synced
+            </Badge>
+          ) : rec.regularizedBy ? (
+            <Badge variant="warning" size="sm" dot>
+              Regularized
+            </Badge>
+          ) : (
+            <Badge variant="outline" size="sm" dot>
+              Verified
+            </Badge>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge
+          variant={
+            rec.status === "PRESENT"
+              ? "success"
+              : rec.status === "HALF_DAY"
+              ? "warning"
+              : "destructive"
+          }
+          size="sm"
+          dot
+        >
+          {rec.status.replace("_", " ")}
+        </Badge>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+const LogSkeletonRows = ({ rows, cols }: { rows: number; cols: number }) => (
+  <>
+    {Array.from({ length: rows }).map((_, i) => (
+      <TableRow key={i}>
+        {Array.from({ length: cols }).map((__, j) => (
+          <TableCell key={j}>
+            <Skeleton className="h-4 w-full max-w-[120px]" />
+          </TableCell>
+        ))}
+      </TableRow>
+    ))}
+  </>
+);
+
 export function AttendancePage() {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
-  const canManageAttendance = me?.permissionKeys?.includes("hr.attendance.manage") || me?.permissionKeys?.includes("hr.attendance.read");
+  const canManageAttendance = !!me?.permissionKeys?.includes("hr.attendance.manage");
+  const canReadAttendance = !!me?.permissionKeys?.includes("hr.attendance.read");
 
   // Real-time clock
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -96,10 +204,10 @@ export function AttendancePage() {
   const [checkOutNotes, setCheckOutNotes] = useState("");
 
   // Tab State: "personal" | "team"
-  const [activeTab, setActiveTab] = useState<"personal" | "team">("personal");
+  const [activeTab, setActiveTab] = useState<"personal" | "team" | "report">("personal");
 
   // Filter State for Team View
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(() => localDateStr(new Date()));
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
@@ -118,14 +226,21 @@ export function AttendancePage() {
     queryFn: () => api.get<AttendanceRecord | null>("/hr/attendance/today"),
   });
 
-  const {
-    data: myAttendance,
-    isLoading: myLogsLoading,
-    error: myLogsError,
-  } = useQuery({
-    queryKey: ["hr", "attendance", "my-logs"],
-    queryFn: () => api.get<AttendanceRecord[]>("/hr/attendance/my-logs"),
+  const [logMonth, setLogMonth] = useState(() => localDateStr(new Date()).slice(0, 7));
+  const shiftMonth = (delta: number) => {
+    const [y, m] = logMonth.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setLogMonth(localDateStr(d).slice(0, 7));
+  };
+  const myLogs = usePagedQuery<AttendanceRecord>({
+    key: ["hr", "attendance", "my-logs"],
+    path: "/hr/attendance/my-logs",
+    params: { month: logMonth },
+    pageSize: 25,
   });
+  const myAttendance = myLogs.items;
+  const myLogsLoading = myLogs.isLoading;
+  const myLogsError = myLogs.error;
 
   const {
     data: roster,
@@ -156,7 +271,9 @@ export function AttendancePage() {
       toast.success("Checked in successfully", `Logged at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`);
     },
     onError: (err) => {
-      toast.error("Check-in failed", (err as Error).message);
+      toast.error("Check-in failed", formatErrorMessage(err));
+      // 409 = already checked in; refetch so the UI shows the real state.
+      queryClient.invalidateQueries({ queryKey: ["hr", "attendance"] });
     },
   });
 
@@ -170,7 +287,8 @@ export function AttendancePage() {
       toast.success("Checked out successfully", "Have a great evening!");
     },
     onError: (err) => {
-      toast.error("Check-out failed", (err as Error).message);
+      toast.error("Check-out failed", formatErrorMessage(err));
+      queryClient.invalidateQueries({ queryKey: ["hr", "attendance"] });
     },
   });
 
@@ -183,23 +301,20 @@ export function AttendancePage() {
       if (attendanceId) {
         return api.post(`/hr/attendance/${attendanceId}/regularize`, {
           status: regStatus,
-          checkInTime: `${selectedDate}T${regCheckIn}:00.000Z`,
-          checkOutTime: regStatus === "PRESENT" || regStatus === "HALF_DAY" ? `${selectedDate}T${regCheckOut}:00.000Z` : undefined,
+          checkInTime: localIso(selectedDate, regCheckIn),
+          checkOutTime: regStatus === "PRESENT" || regStatus === "HALF_DAY" ? localIso(selectedDate, regCheckOut) : undefined,
           reason: regReason.trim(),
         });
       } else {
-        // Create manual sync record if person hadn't checked in at all
-        return api.post("/hr/attendance/sync", {
-          records: [
-            {
-              offlineAttendanceId: `reg-${targetRosterItem.person.id}-${selectedDate}-${Date.now()}`,
-              date: selectedDate,
-              checkInTime: `${selectedDate}T${regCheckIn}:00.000Z`,
-              checkOutTime: regStatus === "PRESENT" || regStatus === "HALF_DAY" ? `${selectedDate}T${regCheckOut}:00.000Z` : undefined,
-              mode: "OFFICE",
-              notes: `[Regularized by Manager/HR: ${regReason.trim()}]`,
-            },
-          ],
+        // No record yet: create one for the selected person (not the caller).
+        const withTimes = regStatus === "PRESENT" || regStatus === "HALF_DAY";
+        return api.post("/hr/attendance/manual", {
+          personId: targetRosterItem.person.id,
+          date: selectedDate,
+          status: regStatus,
+          checkInTime: withTimes ? localIso(selectedDate, regCheckIn) : undefined,
+          checkOutTime: withTimes && regCheckOut ? localIso(selectedDate, regCheckOut) : undefined,
+          reason: regReason.trim(),
         });
       }
     },
@@ -210,17 +325,9 @@ export function AttendancePage() {
       setRegReason("");
     },
     onError: (err) => {
-      toast.error("Regularization failed", (err as Error).message);
+      toast.error("Regularization failed", formatErrorMessage(err));
     },
   });
-
-  const formatDuration = (checkIn: string, checkOut?: string | null) => {
-    if (!checkOut) return "In progress…";
-    const diffMs = new Date(checkOut).getTime() - new Date(checkIn).getTime();
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${mins}m`;
-  };
 
   const isCheckedIn = !!todayStatus?.checkInTime;
   const isCheckedOut = !!todayStatus?.checkOutTime;
@@ -241,7 +348,7 @@ export function AttendancePage() {
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      const name = `${item.person.firstName} ${item.person.lastName}`.toLowerCase();
+      const name = `${fullName(item.person)}`.toLowerCase();
       const email = item.person.email.toLowerCase();
       if (!name.includes(q) && !email.includes(q)) return false;
     }
@@ -258,8 +365,8 @@ export function AttendancePage() {
   const onLeaveCount = roster?.filter((r) => r.derivedStatus === "ON_LEAVE").length || 0;
   const absentCount = roster?.filter((r) => r.derivedStatus === "ABSENT").length || 0;
 
-  // CSV Export
-  const handleExportCsv = () => {
+  // Excel Export
+  const handleExportCsv = async () => {
     if (activeTab === "team" && roster) {
       const headers = [
         "Date",
@@ -278,7 +385,7 @@ export function AttendancePage() {
       ];
       const rows = roster.map((r) => [
         selectedDate,
-        `${r.person.firstName} ${r.person.lastName}`,
+        `${fullName(r.person)}`,
         r.person.personType,
         r.person.department?.name || "—",
         r.person.designation?.name || "—",
@@ -291,11 +398,18 @@ export function AttendancePage() {
         r.attendance?.verificationStatus || "VERIFIED",
         r.attendance?.notes || r.leaveDetails?.reason || "",
       ]);
-      exportToCsv(`Attendance_Register_${selectedDate}`, headers, rows);
+      exportToExcel(`Attendance_Register_${selectedDate}`, headers, rows);
       toast.success("Attendance register exported", `${rows.length} records downloaded.`);
-    } else if (myAttendance) {
+    } else {
+      let all: AttendanceRecord[];
+      try {
+        all = await myLogs.fetchAll();
+      } catch (e) {
+        toast.error("Export failed", formatErrorMessage(e));
+        return;
+      }
       const headers = ["Date", "Mode", "Check-In", "Check-Out", "Duration", "Status", "Notes"];
-      const rows = myAttendance.map((m) => [
+      const rows = all.map((m) => [
         new Date(m.date).toISOString().split("T")[0],
         m.mode,
         new Date(m.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -304,7 +418,7 @@ export function AttendancePage() {
         m.status,
         m.notes || "",
       ]);
-      exportToCsv("My_Attendance_Logs", headers, rows);
+      exportToExcel(`My_Attendance_Logs_${logMonth}`, headers, rows);
       toast.success("Personal attendance exported", `${rows.length} logs downloaded.`);
     }
   };
@@ -332,16 +446,9 @@ export function AttendancePage() {
             className="gap-2 font-semibold rounded-xl text-xs"
           >
             <Download className="h-3.5 w-3.5" />
-            <span>Export {activeTab === "team" ? "Register" : "Logs"} (CSV)</span>
+            <span>Export {activeTab === "team" ? "Register" : "Logs"} (Excel)</span>
           </Button>
         }
-        stats={[
-          { label: "Total", value: totalStaff },
-          { label: "Present", value: presentCount, color: "text-emerald-500" },
-          { label: "Remote", value: remoteFieldCount, color: "text-primary" },
-          { label: "On Leave", value: onLeaveCount, color: "text-amber-500" },
-          { label: "Absent", value: absentCount, color: "text-rose-500" },
-        ]}
       />
 
       {/* Realtime Hero Attendance Widget */}
@@ -405,7 +512,7 @@ export function AttendancePage() {
                   />
                   <Button
                     onClick={() => checkOut.mutate()}
-                    disabled={checkOut.isPending}
+                    disabled={checkOut.isPending || statusLoading}
                     variant="destructive"
                     className="w-full gap-2 h-10 font-bold shadow-md shadow-destructive/20"
                   >
@@ -451,7 +558,7 @@ export function AttendancePage() {
 
                   <Button
                     onClick={() => checkIn.mutate()}
-                    disabled={checkIn.isPending}
+                    disabled={checkIn.isPending || statusLoading}
                     className="w-full gap-2 h-10 font-bold shadow-md shadow-primary/25"
                   >
                     <CheckCircle2 className="h-4 w-4" />
@@ -488,13 +595,40 @@ export function AttendancePage() {
           <Users className="h-4 w-4" />
           <span>Team Overview & Daily Roster</span>
         </button>
+        {canReadAttendance && (
+          <button
+            onClick={() => setActiveTab("report")}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all ${
+              activeTab === "report"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
+          >
+            <Filter className="h-4 w-4" />
+            <span>Attendance Report</span>
+          </button>
+        )}
       </div>
 
-      {activeTab === "personal" ? (
+      {activeTab === "report" && canReadAttendance ? (
+        <AttendanceReport />
+      ) : activeTab === "personal" ? (
         /* Personal Attendance Logs Table */
         <Card>
           <CardContent className="p-0">
-            <QueryState isLoading={myLogsLoading} error={myLogsError}>
+            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+              <div className="flex items-center gap-1.5">
+                <Button variant="outline" size="sm" onClick={() => shiftMonth(-1)} aria-label="Previous month">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Input type="month" value={logMonth} onChange={(e) => e.target.value && setLogMonth(e.target.value)} className="w-40" />
+                <Button variant="outline" size="sm" onClick={() => shiftMonth(1)} aria-label="Next month">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              {myLogs.isFetching && !myLogsLoading && <span className="text-xs text-muted-foreground">Updating...</span>}
+            </div>
+            <QueryState isLoading={false} error={myLogsError}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -508,80 +642,29 @@ export function AttendancePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {myAttendance?.length === 0 ? (
+                  {myLogsLoading ? (
+                    <LogSkeletonRows rows={Math.max(5, Math.min(myLogs.pageSize, 10))} cols={7} />
+                  ) : myAttendance.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
-                        No attendance logs recorded yet.
+                        No attendance logs for this month.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    myAttendance?.map((rec) => (
-                      <TableRow key={rec.id}>
-                        <TableCell className="font-medium text-foreground">
-                          {new Date(rec.date).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" size="sm">
-                            {rec.mode}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {new Date(rec.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {rec.checkOutTime
-                            ? new Date(rec.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium">
-                          {formatDuration(rec.checkInTime, rec.checkOutTime)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            {rec.verificationStatus === "FLAGGED" ? (
-                              <Badge variant="destructive" size="sm" dot>
-                                Flagged
-                              </Badge>
-                            ) : rec.verificationMode === "OFFLINE" ? (
-                              <Badge variant="secondary" size="sm" dot>
-                                Offline Synced
-                              </Badge>
-                            ) : rec.regularizedBy ? (
-                              <Badge variant="warning" size="sm" dot>
-                                Regularized
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" size="sm" dot>
-                                Verified
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              rec.status === "PRESENT"
-                                ? "success"
-                                : rec.status === "HALF_DAY"
-                                ? "warning"
-                                : "destructive"
-                            }
-                            size="sm"
-                            dot
-                          >
-                            {rec.status.replace("_", " ")}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    myAttendance.map((rec) => <MyLogRow key={rec.id} rec={rec} />)
                   )}
                 </TableBody>
               </Table>
             </QueryState>
+            <Pagination
+              currentPage={myLogs.page}
+              totalPages={myLogs.totalPages}
+              totalItems={myLogs.total}
+              pageSize={myLogs.pageSize}
+              onPageChange={myLogs.setPage}
+              onPageSizeChange={myLogs.setPageSize}
+              pageSizeOptions={[10, 25, 50, 100]}
+            />
           </CardContent>
         </Card>
       ) : (
@@ -620,15 +703,12 @@ export function AttendancePage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="w-36 h-9 text-xs"
               />
-              <div className="relative w-44">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search staff…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 h-9 text-xs"
-                />
-              </div>
+              <SearchInput
+                placeholder="Search staff…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-44"
+              />
               <Select
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
@@ -685,7 +765,7 @@ export function AttendancePage() {
                           <TableCell>
                             <div className="flex items-center gap-2.5">
                               <User
-                                name={`${item.person.firstName} ${item.person.lastName}`}
+                                name={`${fullName(item.person)}`}
                                 description={item.person.email}
                                 avatarProps={{ size: "sm", src: item.person.avatarUrl }}
                               />
@@ -814,7 +894,7 @@ export function AttendancePage() {
       <Modal
         isOpen={regularizeModalOpen}
         onClose={() => setRegularizeModalOpen(false)}
-        title={`Regularize Attendance: ${targetRosterItem?.person.firstName} ${targetRosterItem?.person.lastName}`}
+        title={`Regularize Attendance: ${fullName(targetRosterItem?.person)}`}
         description={`Manually adjust or confirm attendance record for ${selectedDate}.`}
       >
         <div className="space-y-4 pt-2">

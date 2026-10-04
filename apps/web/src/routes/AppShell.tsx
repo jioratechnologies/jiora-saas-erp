@@ -12,6 +12,7 @@ import {
   Building,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Sun,
   Moon,
   Laptop,
@@ -50,18 +51,37 @@ interface NavItem {
   icon: any;
   permission?: string;
   section: "hr" | "admin" | "payroll";
+  /** Expandable group: children are shown only when the user holds their permission. */
+  children?: NavChild[];
+}
+
+interface NavChild {
+  to: string;
+  label: string;
+  icon: any;
+  permission?: string;
+  /** Exact path match, so "/hr/leave" is not active on "/hr/leave/approvals". */
+  end?: boolean;
 }
 
 const navItems: NavItem[] = [
   // HR Core Module
   { to: "/hr/people", label: "People", icon: Users, permission: "hr.person.read", section: "hr" },
-  { to: "/hr/departments", label: "Department Teams", icon: Network, permission: "hr.person.read", section: "hr" },
-  { to: "/hr/attendance", label: "Attendance", icon: Clock, permission: "hr.attendance.read", section: "hr" },
-  { to: "/hr/leave", label: "Leave", icon: PlaneTakeoff, permission: "hr.leave.read", section: "hr" },
-  { to: "/hr/holidays", label: "Holidays", icon: CalendarDays, permission: "hr.holiday.read", section: "hr" },
+  {
+    to: "/hr/attendance",
+    label: "Attendance & Leave",
+    icon: Clock,
+    section: "hr",
+    children: [
+      { to: "/hr/attendance", label: "Attendance", icon: Clock, permission: "hr.attendance.read", end: true },
+      { to: "/hr/leave", label: "My Leaves", icon: PlaneTakeoff, permission: "hr.leave.read", end: true },
+      { to: "/hr/leave/approvals", label: "Leave Approvals", icon: UserCheck, permission: "hr.leave.approve", end: true },
+      { to: "/hr/leave/policies", label: "Leave Policies & Holidays", icon: CalendarDays, permission: "hr.holiday.read", end: true },
+    ],
+  },
 
   // Payroll & Claims Module (Phase 3)
-  { to: "/payroll/salary", label: "Salary & CTC", icon: Banknote, permission: "payroll.salary.read", section: "payroll" },
+  { to: "/payroll/salary", label: "Compensation", icon: Banknote, permission: "payroll.salary.read", section: "payroll" },
   { to: "/payroll/runs", label: "Payroll Runs", icon: FileSpreadsheet, permission: "payroll.run.read", section: "payroll" },
   { to: "/payroll/claims", label: "Claims & Advances", icon: CreditCard, section: "payroll" },
   { to: "/payroll/my-payslips", label: "My Payslips", icon: Receipt, section: "payroll" },
@@ -70,9 +90,109 @@ const navItems: NavItem[] = [
   { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.read", section: "admin" },
   { to: "/admin/departments", label: "Departments", icon: Network, permission: "admin.department.read", section: "admin" },
   { to: "/admin/designations", label: "Designations", icon: IdCard, permission: "admin.designation.read", section: "admin" },
-  { to: "/admin/roles", label: "Roles", icon: ShieldCheck, permission: "admin.role.read", section: "admin" },
+  { to: "/admin/roles", label: "Access Control", icon: ShieldCheck, permission: "admin.role.read", section: "admin" },
   { to: "/admin/users", label: "Users", icon: UserCheck, permission: "admin.user.read", section: "admin" },
 ];
+
+/** Expandable sidebar group; flyout list when the sidebar is collapsed to icons. */
+function NavGroup({
+  label,
+  icon: Icon,
+  items,
+  collapsed,
+  pathname,
+  onNavigate,
+}: {
+  label: string;
+  icon: any;
+  items: NavChild[];
+  collapsed: boolean;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const childActive = items.some((c) => pathname === c.to || pathname.startsWith(c.to + "/"));
+  const [open, setOpen] = useState(childActive);
+
+  // Auto-expand when navigating (e.g. via global search or a redirect) into a child route.
+  useEffect(() => {
+    if (childActive) setOpen(true);
+  }, [childActive]);
+
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "flex items-center gap-2.5 rounded-xl text-sm font-medium transition-all duration-150 px-3 py-2",
+      isActive
+        ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
+        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+    );
+
+  if (collapsed) {
+    return (
+      <div className="group relative">
+        <button
+          type="button"
+          title={label}
+          aria-label={label}
+          aria-haspopup="menu"
+          className={cn(
+            "flex h-11 w-11 mx-auto items-center justify-center rounded-xl transition-all duration-150 cursor-pointer",
+            childActive
+              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+          )}
+        >
+          <Icon className="h-5 w-5 shrink-0" />
+        </button>
+        <div
+          role="menu"
+          className="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 transition-opacity absolute left-full top-0 z-50 pl-2"
+        >
+          <div className="w-60 space-y-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2 shadow-xl">
+            <p className="px-3 pb-1 pt-0.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+              {label}
+            </p>
+            {items.map(({ to, label: l, icon: CIcon, end }) => (
+              <NavLink key={to} to={to} end={end} onClick={onNavigate} className={linkClass}>
+                <CIcon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{l}</span>
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-150 cursor-pointer",
+          childActive && !open
+            ? "bg-primary/10 text-primary font-semibold"
+            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="truncate flex-1 text-left">{label}</span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="mt-1 ml-4 space-y-1 border-l border-zinc-200 dark:border-zinc-800 pl-2">
+          {items.map(({ to, label: l, icon: CIcon, end }) => (
+            <NavLink key={to} to={to} end={end} onClick={onNavigate} className={linkClass}>
+              <CIcon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{l}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Shared shell with collapsible sidebar (icon-only when collapsed),
@@ -146,15 +266,13 @@ export function AppShell() {
 
   const showLogo = Boolean(orgLogo && !logoError);
 
-  const hrNavItems = navItems.filter(
-    (item) => item.section === "hr" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
-  );
-  const payrollNavItems = navItems.filter(
-    (item) => item.section === "payroll" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
-  );
-  const adminNavItems = navItems.filter(
-    (item) => item.section === "admin" && (!item.permission || me?.permissionKeys?.includes(item.permission)),
-  );
+  const can = (permission?: string) => !permission || Boolean(me?.permissionKeys?.includes(permission));
+  const visibleNav = navItems
+    .map((item) => (item.children ? { ...item, children: item.children.filter((c) => can(c.permission)) } : item))
+    .filter((item) => (item.children ? item.children.length > 0 : can(item.permission)));
+  const hrNavItems = visibleNav.filter((item) => item.section === "hr");
+  const payrollNavItems = visibleNav.filter((item) => item.section === "payroll");
+  const adminNavItems = visibleNav.filter((item) => item.section === "admin");
   const hasNavItems = hrNavItems.length > 0 || payrollNavItems.length > 0 || adminNavItems.length > 0;
 
   if (isMeLoading) {
@@ -380,7 +498,18 @@ export function AppShell() {
                       HR Core
                     </p>
                   )}
-                  {hrNavItems.map(({ to, label, icon: Icon }) => (
+                  {hrNavItems.map(({ to, label, icon: Icon, children }) =>
+                    children ? (
+                      <NavGroup
+                        key={to}
+                        label={label}
+                        icon={Icon}
+                        items={children}
+                        collapsed={collapsed}
+                        pathname={location.pathname}
+                        onNavigate={() => setMobileOpen(false)}
+                      />
+                    ) : (
                     <NavLink
                       key={to}
                       to={to}
@@ -400,7 +529,8 @@ export function AppShell() {
                       <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
                       {!collapsed && <span className="truncate">{label}</span>}
                     </NavLink>
-                  ))}
+                    ),
+                  )}
                 </div>
               )}
 

@@ -82,4 +82,59 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Failed to delByPattern "${pattern}": ${err.message}`);
     }
   }
+
+  /** Fetches several keys in one round trip; missing/unparsable entries are null. Fails open (all null). */
+  async mget<T>(keys: string[]): Promise<Array<T | null>> {
+    if (!this.client || keys.length === 0) return keys.map(() => null);
+    try {
+      const raw = await this.client.mget(...keys);
+      return raw.map((r) => {
+        if (!r) return null;
+        try {
+          return JSON.parse(r) as T;
+        } catch {
+          return null;
+        }
+      });
+    } catch {
+      return keys.map(() => null);
+    }
+  }
+
+  /** Atomic increment (used as a generation counter). Returns null when Redis is unavailable. */
+  async incr(key: string): Promise<number | null> {
+    if (!this.client) return null;
+    try {
+      return await this.client.incr(key);
+    } catch (err: any) {
+      this.logger.warn(`Failed to incr cache key "${key}": ${err.message}`);
+      return null;
+    }
+  }
+
+  /** Deletes every key starting with `prefix` (SCAN-based, never blocks Redis like KEYS). */
+  async delByPrefix(prefix: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      const escaped = prefix.replace(/[\\*?[\]]/g, "\\$&");
+      let cursor = "0";
+      do {
+        const [next, keys] = await this.client.scan(cursor, "MATCH", `${escaped}*`, "COUNT", 200);
+        cursor = next;
+        if (keys.length > 0) await this.client.del(...keys);
+      } while (cursor !== "0");
+    } catch (err: any) {
+      this.logger.warn(`Failed to delByPrefix "${prefix}": ${err.message}`);
+    }
+  }
+
+  /** Cache-aside: returns the cached value or loads it from `loader` and stores it. Cache errors never fail the read. */
+  async wrap<T>(key: string, ttlSeconds: number, loader: () => Promise<T>): Promise<T> {
+    const hit = await this.get<{ v: T }>(key);
+    if (hit) return hit.v;
+    const value = await loader();
+    // Wrapped in an envelope so falsy/null values are cacheable and distinguishable from a miss.
+    await this.set(key, { v: value ?? null }, ttlSeconds);
+    return value;
+  }
 }

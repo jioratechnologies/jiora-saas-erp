@@ -41,7 +41,7 @@ under connection pooling: ADR 0007.
 **Zitadel answers "who is this?" Postgres answers "what can they do?"** These are deliberately
 two different systems — see ADR 0002 and ADR 0003 for why.
 
-## Role model
+## Role model and access control
 
 ![Role model](diagrams/04-role-model.svg)
 
@@ -51,23 +51,49 @@ automatically when a tenant is created). Every other role — HR, Finance, Field
 tenant needs — is custom, built by that tenant's `admin` from a fixed permission catalog
 (`packages/permissions`) via the Role Builder (`apps/web/src/routes/AdminRolesPage.tsx`).
 
+### Access model: designation-owned roles + self-service
+
+Each **designation** (e.g. "HR Manager") owns exactly one **role** defining its permissions.
+A user's effective permissions are the **union** of: (1) protected platform role (`super_admin`,
+`admin`, etc., grants broad access regardless of designation); (2) their assigned designation's
+role; and (3) self-service permissions set at login (e.g. viewing only their own records).
+Assignment authz: only platform `super_admin` or tenant `admin` can change a user's designation.
+Enforcement is at the database layer via Row-Level Security, not just application code.
+
 ## What's actually implemented right now
 
 ![Foundation & Admin data flow](diagrams/05-foundation-admin-data-flow.svg)
 
-This is **Phase 0 (infra/scaffold) + Phase 1 (Foundation & Admin)** only:
+**Phase 0 (infra/scaffold)** + **Phase 1 (Foundation & Admin)** — hardened:
 
 - Tenant provisioning, Super Admin panel (list/create/suspend tenants)
 - Organisation profile + theming (white-label colors/logo)
-- Departments, Designations
+- Departments, Designations, Roles
 - Role Builder (custom roles from the permission catalog)
+- Designation-based access control (permissions now per designation + self-service set)
 - User invite → first-login claim flow
-- Full RLS + RBAC enforcement, proven end-to-end (see verification notes below)
+- Full RLS + RBAC enforcement, proven end-to-end
+- Global exception filter with friendly, user-facing error messages (no raw JSON or Prisma codes)
+- JWT audience check via `ZITADEL_PROJECT_ID`
+- Suspended-tenant enforcement (403 when `auth_tenant_suspended()` returns true)
+- Server-side paging and Excel exports
 
-**Not yet built**: HR Core (employee/volunteer master, attendance, leave — Phase 2), HR Payroll
-(Phase 3), Finance, Projects, CRM (Phases 4–6). See the client-facing
-`docs/deliverables/Sachhi_Saheli_ERP_Phased_Delivery_Plan.docx` for that phase breakdown — this
-document is about the platform's technical architecture, that one is about the product roadmap.
+**Phase 2 (HR Core)** — in flight:
+
+- Employee/volunteer master (persons, contact fields)
+- Attendance tracking
+- Leave management (types, balances, requests)
+
+**Phase 3 (Payroll & Claims)** — core models live, services implemented:
+
+- Day-rate and fixed-rate salary structures
+- Payroll runs (calculate, lock, finalize)
+- Salary adjustments, advance claims, voucher deductions
+- Claims service with approval workflows
+
+**Not yet built**: Finance module (Phase 4), Projects, CRM (Phases 5–6). See the client-facing
+`docs/deliverables/Sachhi_Saheli_ERP_Phased_Delivery_Plan.docx` for the full product roadmap — this
+document covers technical architecture only.
 
 ## Decisions, in full
 

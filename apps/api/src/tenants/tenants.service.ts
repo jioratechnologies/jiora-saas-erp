@@ -3,6 +3,9 @@ import { Prisma } from "@prisma/client";
 import { TENANT_OWNER_ROLE } from "@saas-erp/shared-types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RbacService } from "../rbac/rbac.service";
+import { CacheService } from "../cache/cache.service";
+import { REF_TTL_S, cachedRef, invalidateRef } from "../cache/ref-cache";
+import { AuthzCacheService } from "../auth/authz-cache.service";
 import { MailService } from "../mail/services/mail.service";
 import type { CreateTenantDto, InviteOwnerDto, UpdateTenantThemeDto } from "./dto";
 
@@ -13,7 +16,14 @@ export class TenantsService {
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
     private readonly mail: MailService,
+    private readonly cache: CacheService,
+    private readonly authzCache: AuthzCacheService,
   ) {}
+
+  /** Branding/profile changed: drop the tenant's org row and the public (pre-login) branding caches. */
+  private async invalidateOrg(tenantId: string) {
+    await Promise.all([invalidateRef(this.cache, tenantId, "org"), this.cache.del("ref:public:tenants"), this.cache.delByPrefix("ref:public:branding:")]);
+  }
 
   async list() {
     return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, (tx) =>
@@ -22,6 +32,12 @@ export class TenantsService {
   }
 
   async create(dto: CreateTenantDto) {
+    const result = await this.createInTx(dto);
+    await this.invalidateOrg("");
+    return result;
+  }
+
+  private async createInTx(dto: CreateTenantDto) {
     return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
       const existing = await tx.tenant.findUnique({ where: { slug: dto.slug } });
       if (existing) throw new ConflictException(`Slug "${dto.slug}" is already in use`);
@@ -35,6 +51,12 @@ export class TenantsService {
   }
 
   async suspend(tenantId: string) {
+    const result = await this.suspendInTx(tenantId);
+    await Promise.all([this.authzCache.invalidateTenantAuthz(tenantId), this.invalidateOrg(tenantId)]);
+    return result;
+  }
+
+  private async suspendInTx(tenantId: string) {
     return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
       await this.assertExists(tx, tenantId);
       return tx.tenant.update({ where: { id: tenantId }, data: { suspendedAt: new Date() } });
@@ -42,13 +64,23 @@ export class TenantsService {
   }
 
   async reinstate(tenantId: string) {
+    const result = await this.reinstateInTx(tenantId);
+    await Promise.all([this.authzCache.invalidateTenantAuthz(tenantId), this.invalidateOrg(tenantId)]);
+    return result;
+  }
+
+  private async reinstateInTx(tenantId: string) {
     return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
       await this.assertExists(tx, tenantId);
       return tx.tenant.update({ where: { id: tenantId }, data: { suspendedAt: null } });
     });
   }
 
-  async getOwn(tenantId: string) {
+  getOwn(tenantId: string) {
+    return cachedRef(this.cache, tenantId, "org", () => this.getOwnFromDb(tenantId));
+  }
+
+  private async getOwnFromDb(tenantId: string) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
       if (!tenant) throw new NotFoundException("Tenant not found");
@@ -56,7 +88,11 @@ export class TenantsService {
     });
   }
 
-  async getPublicBranding(slug: string) {
+  getPublicBranding(slug: string) {
+    return this.cache.wrap(`ref:public:branding:${slug}`, REF_TTL_S, () => this.getPublicBrandingFromDb(slug));
+  }
+
+  private async getPublicBrandingFromDb(slug: string) {
     return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
       const tenant = await tx.tenant.findUnique({
         where: { slug },
@@ -75,7 +111,11 @@ export class TenantsService {
     });
   }
 
-  async listPublicTenants() {
+  listPublicTenants() {
+    return this.cache.wrap("ref:public:tenants", REF_TTL_S, () => this.listPublicTenantsFromDb());
+  }
+
+  private async listPublicTenantsFromDb() {
     return this.prisma.runInTenantContext({ tenantId: null, isPlatformContext: true }, async (tx) => {
       return tx.tenant.findMany({
         where: { suspendedAt: null },
@@ -94,6 +134,12 @@ export class TenantsService {
   }
 
   async updateTheme(tenantId: string, dto: UpdateTenantThemeDto) {
+    const result = await this.updateThemeInTx(tenantId, dto);
+    await this.invalidateOrg(tenantId);
+    return result;
+  }
+
+  private async updateThemeInTx(tenantId: string, dto: UpdateTenantThemeDto) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       await this.assertExists(tx, tenantId);
       return tx.tenant.update({
@@ -102,6 +148,33 @@ export class TenantsService {
           primaryColor: dto.primaryColor,
           logoUrl: dto.logoUrl,
           showPoweredBy: dto.showPoweredBy,
+        },
+      });
+    });
+  }
+
+  async updateWorkSchedule(
+    tenantId: string,
+    dto: { workingDaysPerMonth: number; workHoursPerDay: number; salarySplit: { basic: number; hra: number; other: number } },
+  ) {
+    const result = await this.updateWorkScheduleInTx(tenantId, dto);
+    await this.invalidateOrg(tenantId);
+    return result;
+  }
+
+  private async updateWorkScheduleInTx(
+    tenantId: string,
+    dto: { workingDaysPerMonth: number; workHoursPerDay: number; salarySplit: { basic: number; hra: number; other: number } },
+  ) {
+    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      await this.assertExists(tx, tenantId);
+      const { basic, hra, other } = dto.salarySplit;
+      return tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          workingDaysPerMonth: dto.workingDaysPerMonth,
+          workHoursPerDay: dto.workHoursPerDay,
+          salarySplit: { basic, hra, other },
         },
       });
     });
@@ -134,6 +207,8 @@ export class TenantsService {
       return { user, tenantName: tenant?.name || "Your Organization" };
     });
 
+    await this.authzCache.invalidateTenantAuthz(tenantId);
+
     // Dispatch invitation email asynchronously
     this.mail.sendInvitation({
       to: dto.email,
@@ -164,7 +239,7 @@ export class TenantsService {
    * action gated by the tenant's own admin.user.deactivate permission.
    */
   async cancelInvite(tenantId: string, userId: string) {
-    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+    await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const user = await tx.user.findFirst({ where: { id: userId, tenantId } });
       if (!user) throw new NotFoundException("User not found");
       if (user.zitadelSubjectId) {
@@ -172,6 +247,7 @@ export class TenantsService {
       }
       await tx.user.delete({ where: { id: userId } });
     });
+    await this.authzCache.invalidateTenantAuthz(tenantId);
   }
 
   private async assertExists(tx: Prisma.TransactionClient, tenantId: string) {

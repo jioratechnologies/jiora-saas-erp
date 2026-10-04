@@ -167,23 +167,48 @@ Destination/network `saas-erp-internal` (the compose file itself also joins
 `dokploy-network` for the public-facing services — already exists on this
 host, see step 0).
 
-Copy `infra/.env.deploy.example` to `.env` for this resource and fill in
-every value, plus these additions the compose file needs that aren't in the
-example file (because they point at the now-separate Postgres and object
-storage resources, and your real domains):
+Copy `infra/.env.deploy.example` to `.env` for this resource and fill in every value, plus these critical additions the compose file needs:
+
+**Required environment variables:**
 
 | Variable | Value |
 | --- | --- |
-| `POSTGRES_HOST` | Internal hostname from the Postgres resource's connection details |
+| `DIRECT_URL` | Owner role direct connection to Postgres: `postgresql://<owner>:<password>@<host>:<port>/<db>?schema=public` — migrations only, never for runtime |
+| `APP_RUNTIME_PASSWORD` | Password for the `app_runtime` role (created in step 1) |
+| `POSTGRES_HOST` | Internal hostname from Postgres resource connection details |
 | `POSTGRES_PORT` | Usually `5432` |
-| `OBJECT_STORAGE_ENDPOINT` | Same as `MINIO_DOMAIN` from step 2, no scheme/port |
+| `ZITADEL_PROJECT_ID` | From Zitadel console — required to verify JWT audience claim |
 | `WEB_DOMAIN` | e.g. `app.your-domain.example` |
-| `API_DOMAIN` | e.g. `api.your-domain.example` — what the mobile app points its baseUrl at |
+
+**Mail (invitation emails via Resend or SMTP):**
+
+Set either Resend API or SMTP credentials (Resend is simpler):
+
+```env
+# Resend (recommended):
+RESEND_API_KEY=<key from Resend dashboard>
+RESEND_FROM_ADDRESS=<verified domain email>
+RESEND_FROM_NAME=Jiora SaaS ERP   # optional
+
+# OR SMTP (fallback, used if RESEND_API_KEY not set):
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=465
+SMTP_USER=resend
+SMTP_PASSWORD=<RESEND_API_KEY>
+SMTP_SECURE=true
+SMTP_FROM=<verified domain email>
+
+WEB_BASE_URL=https://${WEB_DOMAIN}
+```
+
+**Object storage, Zitadel, and routing:**
+
+| Variable | Value |
+| --- | --- |
+| `OBJECT_STORAGE_ENDPOINT` | Same as `MINIO_DOMAIN` from step 2, no scheme/port |
+| `API_DOMAIN` | e.g. `api.your-domain.example` — mobile app baseUrl |
 | `ZITADEL_DOMAIN` | e.g. `auth.your-domain.example` |
-| `RESEND_API_KEY` | From Resend's dashboard |
-| `RESEND_FROM_ADDRESS` | Must be on a domain verified in Resend |
-| `RESEND_FROM_NAME` | Optional, defaults to "Jiora SaaS ERP" |
-| `ZITADEL_CLIENT_ID` | From the one-time Zitadel console step, see `docs/onboarding/GETTING_STARTED.md` step 4 |
+| `ZITADEL_CLIENT_ID` | From Zitadel console, see `docs/onboarding/GETTING_STARTED.md` step 4 |
 
 Point your platform's DNS/domain settings at `WEB_DOMAIN`, `API_DOMAIN`, and
 `ZITADEL_DOMAIN` as you would for any app on it. On Dokploy specifically,
@@ -197,6 +222,47 @@ them pointing at the wrong container port, and the losing router's HTTPS
 entryPoint never takes effect. A host without Dokploy's own Domains
 UI (plain Traefik, Coolify, etc.) would instead read routing straight from
 `traefik.*` labels in the compose file — add them back for that case.
+
+### Critical: Migrations, database backup, and secrets rotation
+
+**Before first deploy, back up your database** — migrations cannot be rolled back easily:
+
+```bash
+# Postgres managed resource: use your provider's backup UI
+# Self-hosted Postgres: pg_dump your saaserp database before proceeding
+```
+
+**Migrations run automatically** when the `api` container starts. Do **not** run migrations from a `docker exec` — let the app's startup flow handle them. If you prefer manual control or are re-deploying:
+
+```bash
+cd apps/api
+DIRECT_URL="<DIRECT_URL>" npx prisma migrate deploy
+```
+
+**Migrations in the October 2026 revamp** (applied automatically on deploy):
+
+- `20261002000000_auth_tenant_suspended_function` — SQL function for suspended-tenant checks
+- `20261002010000_payroll_models` — Salary, adjustments, claims, payroll runs
+- `20261003000000_person_contact_fields` — Employee master (drops `persons.whatsapp`)
+- `20261004000000_designation_access` — **Data transformation:** copies all permissions from custom roles (HR Manager, Developer, Employee, etc.) to their corresponding designations, then deletes the custom roles. Designations now own permissions directly.
+- `20261005000000_org_work_schedule` — Organisation default work schedule
+- `20261006000000_payroll_adjustments` — Advance claims and voucher deductions
+
+**Critical: Rotate any secrets** that were ever pasted in chat logs, PR descriptions, or stdout — even if they're behind a private GitHub repo, assume logs were captured:
+
+- `APP_RUNTIME_PASSWORD` — change in Postgres and `.env`
+- `ZITADEL_CLIENT_ID` — rotate in Zitadel console if it was ever shared
+- `RESEND_API_KEY`, SMTP credentials — regenerate if logged
+- `MINIO_ROOT_PASSWORD`, `OBJECT_STORAGE_SECRET_KEY` — rotate in MinIO
+
+**Database latency note:** If your Postgres is far from the API container (different region or cloud provider), configure:
+
+```env
+PRISMA_TX_TIMEOUT_MS=60000        # transaction timeout (default 30s)
+PRISMA_TX_MAX_WAIT_MS=5000        # max wait to acquire a connection
+```
+
+PgBouncer should run on the same network as Postgres (or same VM) for lowest latency.
 
 ### Critical: Deployment order and MinIO setup
 
@@ -228,6 +294,10 @@ exist and be reachable before the app stack starts:
   `VITE_ZITADEL_ISSUER` (baked into the `web` build) must both resolve to
   the same public HTTPS URL — `https://${ZITADEL_DOMAIN}` — since it's
   embedded in issued tokens and used for JWKS discovery.
+- **Object storage uploads** are scoped to PDF and image MIME types only
+  (`StorageService.isAllowedMimeType()`). Inline preview is supported for
+  PDFs and images; other file types cannot be stored. This is intentional —
+  see `apps/api/src/storage/storage.service.ts`.
 - SMTP (Resend) was originally set up via env vars directly on `zitadel` —
   the very first bootstrap admin activation email has to send before anyone
   can log in to reach the Console at all, so it can't wait for a post-login
@@ -244,3 +314,24 @@ exist and be reachable before the app stack starts:
   from the local dev stack) is intentionally left out of the production
   compose file. Add it as its own resource on `saas-erp-internal` later if
   needed; none of it needs a public route except optionally `grafana`.
+
+## Zitadel runs as its own resource
+
+Zitadel is no longer part of `infra/docker-compose.production.yaml`. Like Postgres and MinIO it is deployed as a
+separate resource, with its own database (a `zitadel` database and its own database user), its own master key and
+its own public HTTPS domain. The app stack only needs to know where it is:
+
+| Variable | Used by | Meaning |
+|---|---|---|
+| `ZITADEL_ISSUER` | api | Public HTTPS URL of the Zitadel resource, exactly as it appears in the `iss` claim of tokens |
+| `ZITADEL_PROJECT_ID` | api | Project id of the app's Zitadel project (token audience is checked against it) |
+| `VITE_ZITADEL_ISSUER` | web build | Defaults to `ZITADEL_ISSUER` |
+| `VITE_ZITADEL_CLIENT_ID` / `ZITADEL_CLIENT_ID` | web build | Client id of the SPA application (PKCE, access tokens of type JWT) |
+
+Do **not** put `ZITADEL_MASTERKEY`, `ZITADEL_ADMIN_USERNAME` or `ZITADEL_ADMIN_PASSWORD` in the app stack; they belong to
+the Zitadel resource only. The master key cannot be rotated after first start, so generate a fresh one for any new
+Zitadel and never paste it into chat or tickets.
+
+Moving existing users to a new Zitadel: see `apps/api/prisma/migrate-users-to-zitadel.js` (dry run by default; it
+creates the users in the new Zitadel and then updates `users.zitadel_subject_id`). Production needs HTTPS on the
+Zitadel domain (`ZITADEL_EXTERNALSECURE=true`, port 443) because browsers will not redirect an HTTPS site to an HTTP login.

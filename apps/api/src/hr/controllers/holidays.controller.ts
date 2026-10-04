@@ -1,13 +1,5 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Query,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards, Header } from "@nestjs/common";
+import { REFERENCE_CACHE_CONTROL } from "../../cache/ref-cache";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ZitadelAuthGuard } from "../../auth/zitadel-auth.guard";
 import { RequirePermission } from "../../auth/require-permission.decorator";
@@ -27,6 +19,7 @@ export class HolidaysController {
   @Get()
   @RequirePermission("hr.holiday.read")
   @ApiOperation({ summary: "List holidays for the active year" })
+  @Header("Cache-Control", REFERENCE_CACHE_CONTROL)
   list(@CurrentUser() user: AuthContext, @Query("year") year?: number) {
     const y = year ? Number(year) : undefined;
     return this.service.list(user.tenantId!, y);

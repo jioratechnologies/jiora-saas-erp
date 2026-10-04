@@ -163,7 +163,34 @@ Built strictly adhering to the architectural standard: modular separation into `
 
 ---
 
-## 6. Frontend HeroUI Web Portal (`apps/web`)
+## 6. Security Hardening (H2)
+
+Authorization hardening across HR and Payroll APIs:
+
+- **Leave documents**: Path validation (tenant-scoped) + owner/HR-admin access check on document download.
+- **Leave approval**: Requires `hr.person.write` (HR-admin); no self-approval; default scope `own`, `scope=all` HR-admin only.
+- **Claims/advances decide**: `APPROVED|REJECTED` only; no self-approval; atomic (409 on duplicate state).
+- **Claim receipts**: Stored as fileKeys, signed on read (15-min TTL); 10 MB max; PDF/JPEG/PNG only.
+- **Claims list**: Non-managers see own only; managers see team via `payroll.claim.manage`.
+- **Payslip masking**: Bank/PAN masked to last 4 for non-payroll-managers.
+- **Attendance access**: Own + direct reports; `hr.attendance.manage` sees all.
+- **Person directory**: Non-HR-admin see directory-only; protected roles need caller to hold them.
+
+---
+
+## 7. Correctness Hardening (H3)
+
+Leave balance ledger accuracy and concurrency protection:
+- Leave balance = working days excluding holidays; per-person advisory lock (`SELECT...FOR UPDATE`) on reads; `getBalances` aligned to quota validation (PENDING + APPROVED ≤ annual quota).
+- Attendance timezone configurable via `ATTENDANCE_TIMEZONE` (default `Asia/Kolkata`); check-in duplicates return 409; offline sync requires `offlineAttendanceId`, capped at 200 per batch, per-item results (`CREATED|MERGED|DUPLICATE|REJECTED`); regularization of own record blocked.
+- Exit workflow: `PATCH /hr/persons/:id/exit` captures `NOTICE_PERIOD` (date + reason); state transitions to `EXITED` only via checklist finalize (4-item audit + `exitDate` + reason); cascades cancel leave, re-point reports, deactivate user, cycle checks.
+- Bulk import: 500-record cap; per-row failures reported atomically.
+- Payroll: forward-only status machine (`DRAFT→CALCULATED→APPROVED→DISBURSED`); atomic disburse; advisory lock per tenant/month; EMI capped to net salary; new `payroll-calc.ts` computes working days, unpaid leave by name (`/unpaid|lop/`), proration by `joiningDate`/`exitDate`. PF/PT/TDS marked "Placeholder statutory calc—confirm with client."
+- Known open: maker-checker audit log needs `calculatedBy` column; historical month payroll uses current gross (to be frozen); mid-month revision recalcs whole month.
+
+---
+
+## 8. Frontend HeroUI Web Portal (`apps/web`)
 
 Modern, accessible web portal styled with HeroUI aesthetic tokens (`rounded-2xl`, smooth transitions, flat & bordered variants, and dark/light mode):
 
@@ -197,7 +224,7 @@ Modern, accessible web portal styled with HeroUI aesthetic tokens (`rounded-2xl`
 
 ---
 
-## 7. Mobile Application Architecture (Flutter)
+## 9. Mobile Application Architecture (Flutter)
 
 - **Framework**: **Flutter (Dart)** for cross-platform Android & iOS delivery.
 - **Repository Location**: `apps/mobile/` (transitional engine) and `apps/mobile_flutter/` (production client).
@@ -210,7 +237,7 @@ Modern, accessible web portal styled with HeroUI aesthetic tokens (`rounded-2xl`
 
 ---
 
-## 8. 18-Month Operational Backfill Dataset Summary
+## 10. 18-Month Operational Backfill Dataset Summary
 
 To prove production readiness and support executive demonstrations, an 18-month historical dataset (April 2025 – September 2026) was seeded for tenant `Jiora_Sacchi_Saheli_Test1`:
 
@@ -222,7 +249,7 @@ To prove production readiness and support executive demonstrations, an 18-month 
 
 ---
 
-## 9. Verification & Build Status
+## 11. Verification & Build Status
 
 - `@saas-erp/api`: Compiled cleanly with `nest build` — **Exit Code 0**.
 - `@saas-erp/web`: Compiled cleanly with `tsc --noEmit && vite build` — **Exit Code 0**.
@@ -230,3 +257,87 @@ To prove production readiness and support executive demonstrations, an 18-month 
 - All technical errors sanitized to client-friendly messages.
 
 **Phase 2 and Phase 3 are formally marked as COMPLETE and approved for mainline merge.**
+
+---
+
+## 12. Revamp (October 2026)
+
+### Overview
+
+The October 2026 revamp introduces **designation-based access control** and **day-rate payroll calculation**, replacing the earlier free-standing HR/Developer/Employee roles with a cleaner model where each designation owns a role and propagates permissions to all users holding that designation. Concurrently, payroll day-rate logic now correctly ties compensation to working-day schedules, statutory leaves, and organization-specific work hours per day.
+
+### A. Access Control Refactor: Designation → Role → Permissions
+
+**Key Changes:**
+
+- **Designation Ownership**: Each `Designation` entity now holds a `role_id` foreign key with cascade delete. When a user is assigned a designation, they inherit that role's permissions. Platform users holding the `admin` role also gain the organization's base `admin` role via `user_roles`.
+- **Permission Assignment**: Custom roles (HR, Developer, Employee) were retired. All permissions live on per-designation roles, plus platform-wide self-service permissions (e.g. `hr.attendance.checkin`, `payroll.claim.apply`) added at login.
+- **Access Control Enforcement**: `assertCanAssignDesignation()` in `rbac.service.ts` enforces: caller must hold the org `admin` role OR already possess all permissions of the designation being assigned. Self-assignment is blocked.
+- **Access Control Page Redesign**: Renamed from "Roles" to "Access Control." Single Grant Access button. Permission keys are hidden; only module cards and designation bindings are shown, reducing cognitive load.
+- **Invite UX**: Designation dropdown + optional Organisation admin checkbox; no longer a separate role selection.
+
+**Database Migration**: `20261004000000_designation_access` copies permissions from old role holders to corresponding designation roles, ensuring no permission loss during the transition.
+
+**Diagram: Designation Access Flow**
+
+```mermaid
+graph LR
+    A["User"] -->|assigned to| B["Designation"]
+    B -->|owns| C["Role"]
+    C -->|grants| D["Permissions"]
+    D -->|includes base| E["Org admin<br/>via user_roles"]
+    D -->|includes self-service| F["SELF_SERVICE_PERMISSION_KEYS<br/>from packages/permissions"]
+    A -->|login| G["ZitadelAuthGuard"]
+    G -->|reads from| H["user_roles +<br/>designation role"]
+    H -->|enforces| D
+    I["rbac.service:<br/>assertCanAssignDesignation"] -->|checks| D
+```
+
+### B. Payroll Day-Rate Model
+
+**Key Changes:**
+
+- **Per-Day Rate Calculation**: `monthlyGross ÷ workingDaysPerMonth` (e.g. ₹100,000 ÷ 22 = ₹4,545.45/day). Stored in `EmployeeSalaryAssignment` and updated on salary changes.
+- **Working Day Schedule**: Tenant configures `workingDaysPerMonth` (default 22), `workHoursPerDay` (default 8, configurable per client), and `salarySplit` {basic, hra, other} each as a percentage (must total 100%). Endpoint `PATCH /admin/org/work-schedule` updates these. Migration `20261005000000_org_work_schedule` seeds defaults.
+- **Credit Logic per Working Day**: For each day Mon–Fri excluding holidays:
+  - Approved paid leave: 1 day credit
+  - Approved unpaid leave: 0 days credit
+  - Present with actual worked hours ≥ half of `workHoursPerDay`: 1 day credit
+  - Half-day or partial: 0.5 days credit
+  - Absent or no punch: 0 days credit
+  - Open punch (no checkout): full day credit
+- **Gross Calculation**: 
+  ```
+  earnedGross = max(0, (W >= M ? gross : min(gross, W × perDay)) - unpaidDays × perDay)
+  ```
+  where W = days in joined/left window, M = full-month working days, unpaidDays = count of approved unpaid leaves. This handles mid-month joines/exits and pro-rata calculations correctly.
+- **Earnings Split**: Breakdown by `basic`, `hra`, `other` according to org `salarySplit`; no per-component calculation—proportional split of `earnedGross`.
+- **Statutory Placeholders**: PF, PT, TDS remain hard-coded comment placeholders: "Placeholder statutory calc—confirm with client."
+- **Compensation Page**: Shows monthly gross, CTC = gross × 12, calculated per-day rate. Increments tab allows amount increase + new base.
+- **Payroll Page**: Month picker, attendance & pay table, status flow (Draft → Calculated → Approved → Disbursed), payslip viewer, Excel export, final settlement preview for leavers.
+
+**Database Migration**: `20261006000000_payroll_adjustments` adds `PayrollAdjustment` table for bonus/allowance/deduction post-calculations; adjustments are blocked after payroll approval.
+
+**Diagram: Payroll Flow**
+
+```mermaid
+graph TD
+    A["Attendance Punches<br/>Leave Approvals<br/>Holidays"] -->|input| B["Day-Rate Engine"]
+    C["Org Work Schedule:<br/>workingDaysPerMonth<br/>workHoursPerDay<br/>salarySplit"] -->|config| B
+    B -->|calculates| D["Working Days (W)<br/>Unpaid Days<br/>Worked Hours Check"]
+    D -->|applies credit logic<br/>Mon-Fri, -holidays| E["Daily Credits<br/>0 / 0.5 / 1"]
+    E -->|sums to month| F["Earned Days"]
+    F -->|× perDay<br/>= earnedGross| G["Gross Compensation"]
+    G -->|split| H["Basic + HRA + Other"]
+    H -->|deduct<br/>unpaid days| I["Net Earnings"]
+    I -->|+ statutory<br/>placeholders| J["Payslip"]
+    J -->|status<br/>Draft → Calculated<br/>→ Approved<br/>→ Disbursed| K["Payroll Run"]
+    K -->|export| L["Excel Register<br/>Voucher Print/PDF"]
+```
+
+### C. Related ADRs
+
+- **ADR 0010**: Designation-based access control model, role ownership, and permission propagation.
+- **ADR 0011**: Day-rate payroll calculation tied to working-day schedules and statutory compliance.
+
+---

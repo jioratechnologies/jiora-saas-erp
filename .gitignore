@@ -21,3 +21,4 @@ docs/CREDENTIALS.local.md
 AI_TRACKER.local.md
 .gradle/
 *.bin
+zitadel-subject-backup-*.json

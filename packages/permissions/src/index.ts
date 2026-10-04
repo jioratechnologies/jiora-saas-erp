@@ -71,3 +71,24 @@ export function isPlatformPermission(key: string): boolean {
 export function getPermission(key: string): Permission | undefined {
   return PERMISSION_CATALOG.find((p) => p.key === key);
 }
+
+/**
+ * Self-service access every tenant user gets regardless of designation:
+ * their own attendance, leave, payslips, claims and advances, plus the
+ * department/designation lists the app shell needs. Services scope these
+ * reads to the caller's own records (see apps/api hr/payroll controllers).
+ * A designation's permission set adds to this; it can never remove it.
+ */
+export const SELF_SERVICE_PERMISSION_KEYS: readonly string[] = [
+  "admin.department.read",
+  "admin.designation.read",
+  "hr.attendance.checkin",
+  "hr.attendance.read",
+  "hr.leave.apply",
+  "hr.leave.read",
+  "hr.holiday.read",
+  "payroll.payslip.read",
+  "payroll.claim.apply",
+  "payroll.claim.read",
+  "payroll.advance.apply",
+];

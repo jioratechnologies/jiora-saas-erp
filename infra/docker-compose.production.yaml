@@ -5,7 +5,7 @@
 # resource, since apps/api talks to it as a generic S3 endpoint.
 #
 # No `ports:` anywhere. Every service sits on `saas-erp-internal` (shared
-# with the Postgres and MinIO resources). `web`, `zitadel`, and `api` also
+# with the Postgres and MinIO resources). `web` and `api` also
 # join `dokploy-network`, the network Dokploy's own Traefik listens on (see
 # that network's own comment further down for naming notes). `api` does get
 # a public route — needed for the mobile app, which can't use web's
@@ -42,8 +42,9 @@
 #   WEB_DOMAIN                e.g. app.your-domain.example
 #   API_DOMAIN                e.g. api.your-domain.example — what the mobile
 #                             app points its baseUrl at
-#   ZITADEL_DOMAIN            e.g. auth.your-domain.example — must match
-#                             ZITADEL_ISSUER's host
+#   ZITADEL_ISSUER            public https URL of the separate Zitadel resource
+#                             (Zitadel is no longer part of this stack; it runs
+#                             as its own resource like Postgres and MinIO)
 #   RESEND_API_KEY            from Resend's dashboard — used as the SMTP
 #                             password Zitadel authenticates with
 #   RESEND_FROM_ADDRESS       must be on a domain verified in Resend, or
@@ -58,7 +59,7 @@ services:
       # app_runtime, not the table owner — see infra/postgres/init for why,
       # and docs/deployment/PRODUCTION_DEPLOY.md for how to create this role
       # on the standalone Postgres resource.
-      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}
+      DATABASE_URL: postgres://app_runtime:${APP_RUNTIME_PASSWORD:?APP_RUNTIME_PASSWORD is required}@${POSTGRES_HOST:?POSTGRES_HOST is required}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 200
       DEFAULT_POOL_SIZE: 20
@@ -139,63 +140,6 @@ services:
     networks:
       - saas-erp-internal
 
-  zitadel:
-    image: ghcr.io/zitadel/zitadel:latest
-    restart: unless-stopped
-    # --tlsMode external (not "disabled"!): per Zitadel's own cmd/tls/tls.go,
-    # this flag *always* overwrites externalSecure/tls.enabled, ignoring
-    # ZITADEL_EXTERNALSECURE entirely. "disabled" sets tls.enabled=false AND
-    # externalSecure=false — wrong for a reverse-proxy setup, and the actual
-    # cause of Console's environment.json advertising "http://" instead of
-    # "https://" (browsers then block every post-login API call as mixed
-    # content). "external" is the mode built for exactly this: Traefik
-    # terminates TLS, Zitadel stays plain HTTP internally, but still
-    # correctly tells clients it's reachable over HTTPS externally.
-    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode external
-    environment:
-      ZITADEL_DATABASE_POSTGRES_HOST: ${POSTGRES_HOST}
-      ZITADEL_DATABASE_POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
-      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: ${POSTGRES_USER:-saaserp}
-      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${POSTGRES_PASSWORD}
-      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
-      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: ${POSTGRES_USER:-saaserp}
-      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
-      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
-      ZITADEL_EXTERNALSECURE: "true"
-      # Defaults to 8080 if unset, which leaks into self-advertised URLs
-      # (Console's environment.json "api" field showed
-      # "http://<domain>:8080" instead of "https://<domain>" without this —
-      # confirmed via direct curl against a live deploy).
-      ZITADEL_EXTERNALPORT: "443"
-      ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN}
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME}
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
-      # SMTP via Resend temporarily removed — on Coolify, RESEND_API_KEY/
-      # RESEND_FROM_ADDRESS/RESEND_FROM_NAME (added after the app's initial
-      # setup there) never resolved, stayed literal "${VAR}" text across 3
-      # redeploys and a no-cache rebuild, so Zitadel's bootstrap kept failing
-      # validation on an empty from-address and crash-looping. Without SMTP
-      # config, bootstrap completes fine (confirmed) — the activation email
-      # just won't send. Worth re-testing on whatever host actually runs
-      # this (that failure was specific to Coolify's variable handling, not
-      # a Zitadel or Docker Compose issue) — re-add if var substitution
-      # works cleanly there, or configure SMTP via the Console UI after
-      # first login instead either way.
-    # No Traefik labels here — routing is configured via Dokploy's own
-    # Domains UI for this service instead (container port 8080). Hand-written
-    # labels alongside Dokploy's auto-generated ones created two competing
-    # routers for the same host, one of them pointing at the wrong port —
-    # confirmed live: Dokploy's generated router advertised port 3000 (api's
-    # port, not this service's) while this label said 8080, and the https
-    # entryPoint from the losing router never took effect. Don't re-add
-    # labels here without also removing the domain from Dokploy's UI, or the
-    # conflict comes back.
-    networks:
-      - saas-erp-internal
-      - dokploy-network
-
   api:
     build:
       context: ..
@@ -203,11 +147,11 @@ services:
     restart: unless-stopped
     depends_on:
       - redis
-      - zitadel
     environment:
-      # Connect directly via Docker internal network (or via DATABASE_URL env var if specified)
-      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public}
-      DIRECT_URL: ${DIRECT_URL:-postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public}
+      # Runtime traffic: restricted app_runtime role via pgbouncer so RLS applies.
+      DATABASE_URL: postgresql://app_runtime:${APP_RUNTIME_PASSWORD:?APP_RUNTIME_PASSWORD is required}@pgbouncer:5432/${POSTGRES_DB:-saaserp}?pgbouncer=true
+      # Owner role, direct to Postgres: only for `prisma migrate`/seed, never runtime queries.
+      DIRECT_URL: ${DIRECT_URL:?DIRECT_URL (owner role, direct Postgres) is required}
       # MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT}
@@ -216,8 +160,13 @@ services:
       OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY}
       OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
-      ZITADEL_ISSUER: ${ZITADEL_ISSUER:-https://${ZITADEL_DOMAIN}}
-      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID}
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER:?ZITADEL_ISSUER is required (public https URL of the separate Zitadel resource)}
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID:?ZITADEL_PROJECT_ID is required}
+      # Invitation emails: Resend SMTP relay (see apps/api/src/mail/services/mail.service.ts)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_ADDRESS: ${RESEND_FROM_ADDRESS:-}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-}
+      WEB_DOMAIN: ${WEB_DOMAIN}
       # Only matters for browser callers — mobile's native HTTP client isn't
       # CORS-restricted at all. Locked to just the web app's own origin;
       # mobile reaches this same public API_DOMAIN directly, no CORS
@@ -231,6 +180,42 @@ services:
     # nginx /api proxy trick the way a browser can. The browser still only
     # ever talks to web's own domain though — nothing here changes that.
     networks:
+      saas-erp-internal:
+        # Kong's upstreams are written as backend:3000 (same name as the dev stack).
+        aliases:
+          - backend
+      dokploy-network: {}
+
+  # API gateway. Public API_DOMAIN should now be routed (Dokploy Domains UI)
+  # to this service, container port 8000, instead of `api` port 3000. No host
+  # port is published; Kong's admin API is internal-only. Config: infra/kong/.
+  kong:
+    image: kong:3.9
+    restart: unless-stopped
+    depends_on:
+      - api
+      - redis
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+      KONG_STATUS_LISTEN: 0.0.0.0:8100
+      KONG_NGINX_WORKER_PROCESSES: auto
+      # Per-IP rate limits must see the real client address that web nginx forwards,
+      # not the nginx container. Kong is not reachable from outside this network.
+      KONG_TRUSTED_IPS: "0.0.0.0/0,::/0"
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_REAL_IP_RECURSIVE: "on"
+    volumes:
+      - ./kong:/kong:ro
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
       - saas-erp-internal
       - dokploy-network
 
@@ -242,11 +227,11 @@ services:
         # Relative path: the browser calls this frontend's own origin, nginx
         # proxies /api/* to the api container internally (apps/web/nginx.conf).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
-        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-https://${ZITADEL_DOMAIN}}
+        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-${ZITADEL_ISSUER}}
         VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-${ZITADEL_CLIENT_ID}}
     restart: unless-stopped
     depends_on:
-      - api
+      - kong
     # No Traefik labels here either — configure this service's domain via
     # Dokploy's own Domains UI (container port 80, nginx) instead. See the
     # zitadel service's comment above for why: hand-written labels alongside

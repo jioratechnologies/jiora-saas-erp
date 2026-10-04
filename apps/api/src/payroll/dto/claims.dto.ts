@@ -1,6 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsArray, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { ArrayMaxSize, IsArray, IsDateString, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Min, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
 import { ExpenseClaimCategory } from "@prisma/client";
+
+export class ClaimReceiptDto {
+  @ApiProperty()
+  @IsString()
+  name!: string;
+
+  // Storage key only (never a presigned URL); format matches POST expenses/:id/receipt.
+  @ApiProperty()
+  @IsString()
+  @Matches(/^tenants\/[^/]+\/claims\/[^/]+\/[^/]+$/)
+  fileKey!: string;
+}
 
 export class SubmitExpenseClaimDto {
   @ApiProperty({ example: "Inter-city Train to Field Unit" })
@@ -25,15 +38,18 @@ export class SubmitExpenseClaimDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ type: [Object], example: [{ name: "ticket.pdf", fileKey: "receipts/...", url: "..." }] })
+  @ApiPropertyOptional({ type: [ClaimReceiptDto] })
   @IsOptional()
   @IsArray()
-  receiptUrls?: any[];
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ClaimReceiptDto)
+  receiptUrls?: ClaimReceiptDto[];
 }
 
 export class DecideExpenseClaimDto {
   @ApiProperty({ example: "APPROVED", enum: ["APPROVED", "REJECTED"] })
-  @IsString()
+  @IsIn(["APPROVED", "REJECTED"])
   status!: "APPROVED" | "REJECTED";
 
   @ApiPropertyOptional()
@@ -66,7 +82,7 @@ export class RequestSalaryAdvanceDto {
 
 export class DecideSalaryAdvanceDto {
   @ApiProperty({ example: "APPROVED", enum: ["APPROVED", "REJECTED"] })
-  @IsString()
+  @IsIn(["APPROVED", "REJECTED"])
   status!: "APPROVED" | "REJECTED";
 
   @ApiPropertyOptional({ example: 15000 })

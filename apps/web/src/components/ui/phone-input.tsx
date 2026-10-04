@@ -1,3 +1,4 @@
+import { SearchInput } from "./search-input";
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -212,25 +213,14 @@ export function PhoneInput({
             onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Search Box */}
-            <div className="relative mb-2 px-1">
-              <Search className="absolute left-3.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text"
+            <div className="mb-2 px-1">
+              <SearchInput
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search country, code (IND, +91)…"
-                className="w-full h-8 pl-8 pr-7 text-xs bg-zinc-100 dark:bg-zinc-900 border border-transparent rounded-lg focus:outline-hidden focus:border-primary text-foreground placeholder:text-muted-foreground"
+                className="h-8 rounded-lg"
                 autoFocus
               />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  className="absolute right-3 top-2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
             </div>
 
             {/* Listbox */}

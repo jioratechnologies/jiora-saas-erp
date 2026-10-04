@@ -24,7 +24,14 @@ docker compose -f docker-compose.minio.local.yaml up -d
 docker compose up -d
 ```
 
-That starts Postgres 18, MinIO, PgBouncer, MongoDB, Redis, Zitadel, and the OTel/Grafana stack.
+This starts Postgres 18, MinIO, PgBouncer, MongoDB, Redis, Zitadel, and the OTel/Grafana stack.
+If the backend later crashes with "Can't reach database server at pgbouncer:5432", PgBouncer may
+not be ready yet — bring it up first:
+
+```bash
+cd infra
+docker compose up -d redis pgbouncer
+```
 
 **Note on ports:** several services are mapped to non-default host ports (Postgres on 5433 not
 5432, PgBouncer on 6433, Redis on 6380, MinIO on 9010/9011, Zitadel on 8081 not 8080) — this is
@@ -113,7 +120,37 @@ apps/web/src/routes/
   <Feature>Page.tsx   # one file per screen, uses TanStack Query against apps/api
 ```
 
-## 8. Common commands
+## 8. Running tests
+
+Unit and integration tests for the backend:
+
+```bash
+cd apps/api
+npx jest                    # run all tests once
+npx jest --watch            # watch mode, re-run on file changes
+```
+
+## 9. Database seeding
+
+**Important:** Never run `node prisma/seed.js` on a shared database — it **TRUNCATES everything**.
+It requires `SEED_ALLOW_RESET=true` and is only for local dev fresh starts.
+
+**Safe additive script** (dry-run by default, adds demo payroll data without destructing):
+
+```bash
+cd apps/api
+DIRECT_URL="..." node prisma/seed-payroll-demo.js        # dry-run
+DIRECT_URL="..." node prisma/seed-payroll-demo.js --apply # write changes
+
+# Optional env vars:
+#   SEED_TENANT_SLUG    — target tenant (default: any one with org)
+#   SEED_ALLOW_RESET    — never set this to true on shared DBs
+```
+
+This script idempotently adds missing leave types, fixed-date holidays, and salary structures to
+support payroll demo workflows.
+
+## 10. Common commands
 
 | Command | What it does |
 |---|---|
@@ -124,7 +161,19 @@ apps/web/src/routes/
 | `pnpm --filter @saas-erp/api prisma studio` | Browse the database in a GUI |
 | `docker compose -f infra/docker-compose.yaml logs -f <service>` | Tail one infra service's logs |
 
-## 9. If something's already running on these ports
+## 11. Attendance & scheduling
+
+The HR attendance module uses timezone-aware date boundaries. Set the timezone for
+your dev environment:
+
+```bash
+export ATTENDANCE_TIMEZONE="Asia/Kolkata"   # or your timezone (IANA format)
+```
+
+If not set, defaults to UTC. This env var is read by the attendance service when
+recording punch-in/punch-out times and calculating daily attendance.
+
+## 12. If something's already running on these ports
 
 This is a shared dev machine in some setups — check `docs/architecture/ARCHITECTURE.md`'s port
 note, and `infra/docker-compose.yaml`'s top comment, before assuming a port conflict means

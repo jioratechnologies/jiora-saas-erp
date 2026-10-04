@@ -27,6 +27,7 @@ import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 import { Avatar } from "../ui/avatar";
 import { Select } from "../ui/select";
+import { DatePicker } from "../ui/date-picker";
 import { PhoneInput } from "../ui/phone-input";
 import { FileDropzone } from "../ui/file-dropzone";
 import { toast } from "../ui/toast";
@@ -36,10 +37,45 @@ import {
   EMERGENCY_RELATIONS,
   parseEmergencyContact,
   formatEmergencyContact,
+  GENDER_OPTIONS,
+  normalizeGender,
+  validatePersonContact,
   type EmergencyRelation,
 } from "../../lib/input-constraints";
 import type { PersonDocumentItem } from "@saas-erp/shared-types";
 import { cn } from "../../lib/utils";
+
+/** PhoneInput with a red-asterisk label and inline error (PhoneInput itself has no error slot). */
+export function PhoneField({
+  label,
+  required,
+  error,
+  value,
+  onChange,
+  placeholder,
+  id,
+}: {
+  label: string;
+  required?: boolean;
+  error?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  id?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium text-foreground block">
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </label>
+      <div className={cn(error && "rounded-xl ring-1 ring-red-500")}>
+        <PhoneInput id={id} value={value} onChange={onChange} placeholder={placeholder} />
+      </div>
+      {error && <p className="text-xs text-red-500 leading-tight">{error}</p>}
+    </div>
+  );
+}
 
 interface ProfileResponse {
   user: {
@@ -55,10 +91,11 @@ interface ProfileResponse {
   person?: {
     id: string;
     firstName: string;
+    middleName?: string | null;
     lastName: string;
     email: string;
     phone?: string | null;
-    whatsapp?: string | null;
+    altPhone?: string | null;
     gender?: string | null;
     dob?: string | null;
     address?: string | null;
@@ -95,8 +132,11 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
   // Form states
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [sameAsPhone, setSameAsPhone] = useState(true);
+  const [middleName, setMiddleName] = useState("");
+  const [altPhone, setAltPhone] = useState("");
+  const [gender, setGender] = useState("");
+  const [dob, setDob] = useState("");
+  const [showErrors, setShowErrors] = useState(false);
   const [currentAddress, setCurrentAddress] = useState("");
   const [permanentAddress, setPermanentAddress] = useState("");
   const [sameAsCurrentAddress, setSameAsCurrentAddress] = useState(true);
@@ -118,10 +158,18 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
     if (profileData) {
       setDisplayName(profileData.user?.displayName || "");
       const pPhone = profileData.person?.phone || profileData.user?.phone || "";
-      const pWhatsapp = profileData.person?.whatsapp || pPhone;
       setPhone(pPhone);
-      setWhatsapp(pWhatsapp);
-      setSameAsPhone(!profileData.person?.whatsapp || profileData.person?.whatsapp === pPhone);
+      setMiddleName(profileData.person?.middleName || "");
+      setAltPhone(profileData.person?.altPhone || "");
+      const pGender = normalizeGender(profileData.person?.gender);
+      const pDob = profileData.person?.dob ? profileData.person.dob.slice(0, 10) : "";
+      setGender(pGender);
+      setDob(pDob);
+      // Legacy records missing required details are highlighted straight away.
+      setShowErrors(
+        !!profileData.person &&
+          Object.keys(validatePersonContact({ phone: pPhone, gender: pGender, dob: pDob })).length > 0,
+      );
 
       const pCurrentAddr = profileData.person?.currentAddress || profileData.person?.address || "";
       const pPermAddr = profileData.person?.permanentAddress || pCurrentAddr;
@@ -136,16 +184,22 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
     }
   }, [profileData]);
 
+  // Required person details only apply when the account is linked to a person record.
+  const contactErrors = profileData?.person
+    ? validatePersonContact({ phone, altPhone, gender, dob, emergencyPhone })
+    : {};
+
   // Save profile info mutation
   const saveInfoMutation = useMutation({
     mutationFn: () => {
       const emergencyContact = formatEmergencyContact(emergencyPhone, emergencyRelation, emergencyName);
-      const finalWhatsapp = sameAsPhone ? phone.trim() : whatsapp.trim();
       const finalPermAddr = sameAsCurrentAddress ? currentAddress.trim() : permanentAddress.trim();
       return api.patch("/auth/profile", {
         displayName: displayName.trim(),
         phone: phone.trim(),
-        whatsapp: finalWhatsapp,
+        ...(profileData?.person
+          ? { middleName: middleName.trim(), altPhone: altPhone.trim(), gender, dob }
+          : {}),
         currentAddress: currentAddress.trim(),
         permanentAddress: finalPermAddr,
         address: currentAddress.trim(),
@@ -159,7 +213,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
       toast.success("Profile updated", "Your profile details have been saved.");
     },
     onError: (err: any) => {
-      toast.error("Save failed", err.message || "Failed to update profile details.");
+      toast.error("Save failed", formatErrorMessage(err));
     },
   });
 
@@ -392,6 +446,11 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (Object.keys(contactErrors).length > 0) {
+                setShowErrors(true);
+                toast.error("Missing details", "Please check the highlighted fields and try again.");
+                return;
+              }
               saveInfoMutation.mutate();
             }}
             className="space-y-4 pt-1"
@@ -414,50 +473,61 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                 <Input id="profile-email" value={user?.email || ""} disabled className="bg-muted opacity-80" />
               </div>
 
-              <div className="sm:col-span-2">
-                <PhoneInput
-                  label="Phone Number"
-                  value={phone}
-                  onChange={(val) => {
-                    setPhone(val);
-                    if (sameAsPhone) setWhatsapp(val);
-                  }}
-                  placeholder="Enter mobile number"
-                />
-              </div>
-
-              <div className="sm:col-span-2 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="profile-whatsapp">WhatsApp Number</Label>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
-                    <input
-                      type="checkbox"
-                      checked={sameAsPhone}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setSameAsPhone(checked);
-                        if (checked) setWhatsapp(phone);
-                      }}
-                      className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
-                    />
-                    <span>Same as Phone number</span>
-                  </label>
-                </div>
-                {!sameAsPhone ? (
-                  <PhoneInput
-                    id="profile-whatsapp"
-                    value={whatsapp}
-                    onChange={setWhatsapp}
-                    placeholder="Enter WhatsApp mobile number"
+              {profileData?.person && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-middle-name">Middle Name</Label>
+                  <Input
+                    id="profile-middle-name"
+                    value={middleName}
+                    onChange={(e) => setMiddleName(e.target.value)}
+                    placeholder="Optional"
+                    maxLength={INPUT_LIMITS.PERSON_NAME_MAX}
                   />
-                ) : (
-                  <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs font-mono text-muted-foreground flex items-center justify-between">
-                    <span>{phone || "Same as primary phone number"}</span>
-                    <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                      Synced with Phone
-                    </span>
-                  </div>
-                )}
+                </div>
+              )}
+
+              {profileData?.person && (
+                <Select
+                  label="Gender"
+                  required
+                  placeholder="Select gender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  options={GENDER_OPTIONS.map((g) => ({ value: g.value, label: g.label }))}
+                  error={showErrors ? contactErrors.gender : undefined}
+                />
+              )}
+
+              {profileData?.person && (
+                <DatePicker
+                  label="Date of Birth"
+                  isRequired
+                  value={dob}
+                  onChange={(val) => setDob(val)}
+                  maxDate={new Date()}
+                  error={showErrors ? contactErrors.dob : undefined}
+                />
+              )}
+
+              <PhoneField
+                id="profile-phone"
+                label="Phone Number"
+                required={!!profileData?.person}
+                value={phone}
+                onChange={setPhone}
+                placeholder="Enter mobile number"
+                error={showErrors ? contactErrors.phone : undefined}
+              />
+
+              <div className="sm:col-span-2">
+                <PhoneField
+                  id="profile-alt-phone"
+                  label="Alternate Mobile Number"
+                  value={altPhone}
+                  onChange={setAltPhone}
+                  placeholder="Optional alternate number"
+                  error={showErrors ? contactErrors.altPhone : undefined}
+                />
               </div>
 
               <div className="sm:col-span-2 p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 space-y-3">
@@ -468,11 +538,13 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-3">
-                    <PhoneInput
+                    <PhoneField
+                      id="emergency-phone"
                       label="Emergency Phone Number"
                       value={emergencyPhone}
                       onChange={setEmergencyPhone}
                       placeholder="Emergency contact phone"
+                      error={showErrors ? contactErrors.emergencyPhone : undefined}
                     />
                   </div>
 

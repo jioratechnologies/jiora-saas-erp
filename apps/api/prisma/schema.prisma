@@ -26,6 +26,10 @@ model Tenant {
   createdAt     DateTime  @default(now()) @map("created_at")
   suspendedAt   DateTime? @map("suspended_at")
 
+  workingDaysPerMonth Int   @default(22) @map("working_days_per_month")
+  workHoursPerDay     Float @default(8) @map("work_hours_per_day")
+  salarySplit         Json  @default("{\"basic\":50,\"hra\":25,\"other\":25}") @map("salary_split")
+
   users           User[]
   departments     Department[]
   designations    Designation[]
@@ -42,6 +46,7 @@ model Tenant {
   employeeSalaryAssignments EmployeeSalaryAssignment[]
   payrollRuns               PayrollRun[]
   payslips                  Payslip[]
+  payrollAdjustments        PayrollAdjustment[]
   expenseClaims             ExpenseClaim[]
   salaryAdvances            SalaryAdvance[]
   salaryRevisions           SalaryRevision[]
@@ -74,6 +79,7 @@ model Designation {
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   users   User[]
   persons Person[]
+  role    Role?
 
   @@unique([tenantId, name])
   @@map("designations")
@@ -115,13 +121,16 @@ model User {
 /// tenant-scoped role (the seeded, protected "admin" owner role, or a custom role the tenant's
 /// admin built via the Role Builder).
 model Role {
-  id          String   @id @default(uuid())
-  tenantId    String?  @map("tenant_id")
-  name        String
-  isProtected Boolean  @default(false) @map("is_protected")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  tenantId      String?  @map("tenant_id")
+  name          String
+  isProtected   Boolean  @default(false) @map("is_protected")
+  /// Set when this role is the access profile of a designation.
+  designationId String?  @unique @map("designation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   tenant      Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  designation Designation?     @relation(fields: [designationId], references: [id], onDelete: Cascade)
   permissions RolePermission[]
   users       UserRole[]
 
@@ -151,6 +160,7 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+  @@index([roleId], map: "idx_user_roles_role_id")
   @@map("user_roles")
 }
 
@@ -219,10 +229,11 @@ model Person {
   personType       PersonType   @default(EMPLOYEE) @map("person_type")
   status           PersonStatus @default(ACTIVE)
   firstName        String       @map("first_name")
+  middleName       String?      @map("middle_name")
   lastName         String       @map("last_name")
   email            String
   phone            String?
-  whatsapp         String?
+  altPhone         String?      @map("alt_phone")
   gender           String?
   dob              DateTime?
   address          String?
@@ -230,22 +241,22 @@ model Person {
   permanentAddress String?      @map("permanent_address")
   emergencyContact String?      @map("emergency_contact")
   avatarUrl        String?      @map("avatar_url")
-  
-  departmentId     String?      @map("department_id")
-  designationId    String?      @map("designation_id")
-  managerId        String?      @map("manager_id")
-  
-  joiningDate      DateTime     @default(now()) @map("joining_date")
-  confirmationDate DateTime?    @map("confirmation_date")
-  exitDate         DateTime?    @map("exit_date")
-  exitReason       String?      @map("exit_reason")
-  exitChecklist    Json?        @default("{}") @map("exit_checklist")
-  panNumber        String?      @map("pan_number")
-  aadhaarNumber    String?      @map("aadhaar_number")
-  bankAccount      String?      @map("bank_account")
-  bankIfsc         String?      @map("bank_ifsc")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  departmentId  String? @map("department_id")
+  designationId String? @map("designation_id")
+  managerId     String? @map("manager_id")
+
+  joiningDate      DateTime  @default(now()) @map("joining_date")
+  confirmationDate DateTime? @map("confirmation_date")
+  exitDate         DateTime? @map("exit_date")
+  exitReason       String?   @map("exit_reason")
+  exitChecklist    Json?     @default("{}") @map("exit_checklist")
+  panNumber        String?   @map("pan_number")
+  aadhaarNumber    String?   @map("aadhaar_number")
+  bankAccount      String?   @map("bank_account")
+  bankIfsc         String?   @map("bank_ifsc")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user           User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -258,16 +269,18 @@ model Person {
   leaveRequests  LeaveRequest[]
   approvedLeaves LeaveRequest[]   @relation("LeaveApprover")
 
-  salaryAssignment  EmployeeSalaryAssignment?
-  payslips          Payslip[]
-  submittedClaims   ExpenseClaim[]            @relation("ClaimSubmitter")
-  approvedClaims    ExpenseClaim[]            @relation("ClaimApprover")
-  salaryAdvances    SalaryAdvance[]           @relation("AdvanceRequester")
-  approvedAdvances  SalaryAdvance[]           @relation("AdvanceApprover")
-  salaryRevisions   SalaryRevision[]
+  salaryAssignment   EmployeeSalaryAssignment?
+  payslips           Payslip[]
+  payrollAdjustments PayrollAdjustment[]
+  submittedClaims    ExpenseClaim[]            @relation("ClaimSubmitter")
+  approvedClaims     ExpenseClaim[]            @relation("ClaimApprover")
+  salaryAdvances     SalaryAdvance[]           @relation("AdvanceRequester")
+  approvedAdvances   SalaryAdvance[]           @relation("AdvanceApprover")
+  salaryRevisions    SalaryRevision[]
 
   @@unique([tenantId, email])
   @@index([tenantId, personType, status])
+  @@index([tenantId, status, firstName, id], map: "idx_persons_tenant_id_status_first_name_id")
   @@index([tenantId, departmentId])
   @@index([tenantId, designationId])
   @@index([tenantId, managerId])
@@ -299,17 +312,17 @@ model PersonDocument {
 }
 
 model Attendance {
-  id           String           @id @default(uuid())
-  tenantId     String           @map("tenant_id")
-  personId     String           @map("person_id")
-  date         DateTime         @db.Date
-  checkInTime  DateTime         @map("check_in_time")
-  checkOutTime DateTime?        @map("check_out_time")
-  mode         AttendanceMode   @default(OFFICE)
-  latitude     Float?
-  longitude    Float?
-  locationName String?          @map("location_name")
-  notes        String?
+  id                   String           @id @default(uuid())
+  tenantId             String           @map("tenant_id")
+  personId             String           @map("person_id")
+  date                 DateTime         @db.Date
+  checkInTime          DateTime         @map("check_in_time")
+  checkOutTime         DateTime?        @map("check_out_time")
+  mode                 AttendanceMode   @default(OFFICE)
+  latitude             Float?
+  longitude            Float?
+  locationName         String?          @map("location_name")
+  notes                String?
   status               AttendanceStatus @default(PRESENT)
   offlineAttendanceId  String?          @map("offline_attendance_id")
   verificationMode     String           @default("ONLINE") @map("verification_mode")
@@ -330,6 +343,7 @@ model Attendance {
   @@unique([tenantId, offlineAttendanceId])
   @@index([tenantId, date, status])
   @@index([tenantId, personId, checkInTime])
+  @@index([tenantId, date(sort: Desc), checkInTime(sort: Desc)], map: "idx_attendances_tenant_id_date_check_in_time")
   @@map("attendances")
 }
 
@@ -352,20 +366,20 @@ model LeaveType {
 }
 
 model LeaveRequest {
-  id            String      @id @default(uuid())
-  tenantId      String      @map("tenant_id")
-  personId      String      @map("person_id")
-  leaveTypeId   String      @map("leave_type_id")
-  startDate     DateTime    @map("start_date") @db.Date
-  endDate       DateTime    @map("end_date") @db.Date
-  daysCount     Int         @default(1) @map("days_count")
+  id                  String      @id @default(uuid())
+  tenantId            String      @map("tenant_id")
+  personId            String      @map("person_id")
+  leaveTypeId         String      @map("leave_type_id")
+  startDate           DateTime    @map("start_date") @db.Date
+  endDate             DateTime    @map("end_date") @db.Date
+  daysCount           Int         @default(1) @map("days_count")
   reason              String
   supportingDocuments Json?       @default("[]") @map("supporting_documents")
   status              LeaveStatus @default(PENDING)
-  approverId    String?     @map("approver_id")
-  decisionNotes String?     @map("decision_notes")
-  decidedAt     DateTime?   @map("decided_at")
-  createdAt     DateTime    @default(now()) @map("created_at")
+  approverId          String?     @map("approver_id")
+  decisionNotes       String?     @map("decision_notes")
+  decidedAt           DateTime?   @map("decided_at")
+  createdAt           DateTime    @default(now()) @map("created_at")
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   person    Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -375,6 +389,7 @@ model LeaveRequest {
   @@index([tenantId, approverId, status])
   @@index([tenantId, personId, status])
   @@index([tenantId, startDate, endDate])
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_leave_requests_tenant_id_created_at")
   @@map("leave_requests")
 }
 
@@ -509,6 +524,7 @@ model Payslip {
   grossPay         Float    @default(0) @map("gross_pay")
   totalDeductions  Float    @default(0) @map("total_deductions")
   netPay           Float    @default(0) @map("net_pay")
+  calcSummary      Json?    @map("calc_summary") // { expectedDays, paidDays, unpaidDays, perDayRate, lopAmount, earnedGross, baseGross }
   paymentStatus    String   @default("PENDING") @map("payment_status")
   paymentReference String?  @map("payment_reference")
   createdAt        DateTime @default(now()) @map("created_at")
@@ -565,7 +581,7 @@ model ExpenseClaim {
 
   @@index([tenantId, personId, status])
   @@index([tenantId, approverId, status])
-  @@index([tenantId, status])
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "idx_expense_claims_tenant_id_status_created_at")
   @@map("expense_claims")
 }
 
@@ -600,26 +616,52 @@ model SalaryAdvance {
   approver Person? @relation("AdvanceApprover", fields: [approverId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, personId, status])
-  @@index([tenantId, status])
+  @@index([tenantId, status, createdAt(sort: Desc)], map: "idx_salary_advances_tenant_id_status_created_at")
   @@map("salary_advances")
 }
 
 model SalaryRevision {
-  id                String   @id @default(uuid())
-  tenantId          String   @map("tenant_id")
-  personId          String   @map("person_id")
-  oldGross          Float?   @map("old_gross")
-  newGross          Float    @map("new_gross")
-  oldDesignationId  String?  @map("old_designation_id")
-  newDesignationId  String?  @map("new_designation_id")
-  effectiveDate     DateTime @map("effective_date") @db.Date
-  remarks           String?
-  promotedBy        String?  @map("promoted_by")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  personId         String   @map("person_id")
+  oldGross         Float?   @map("old_gross")
+  newGross         Float    @map("new_gross")
+  oldDesignationId String?  @map("old_designation_id")
+  newDesignationId String?  @map("new_designation_id")
+  effectiveDate    DateTime @map("effective_date") @db.Date
+  remarks          String?
+  promotedBy       String?  @map("promoted_by")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, personId, effectiveDate])
   @@map("salary_revisions")
+}
+
+enum PayrollAdjustmentType {
+  BONUS
+  ALLOWANCE
+  DEDUCTION
+}
+
+model PayrollAdjustment {
+  id        String                @id @default(uuid())
+  tenantId  String                @map("tenant_id")
+  personId  String                @map("person_id")
+  year      Int
+  month     Int
+  type      PayrollAdjustmentType
+  amount    Float
+  reason    String
+  createdBy String?               @map("created_by")
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, year, month])
+  @@index([tenantId, personId, year, month])
+  @@map("payroll_adjustments")
 }

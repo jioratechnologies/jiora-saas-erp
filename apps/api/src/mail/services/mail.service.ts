@@ -8,7 +8,13 @@ export interface SendInvitationParams {
   tenantName: string;
   roleNames?: string[];
   isOwner?: boolean;
+  departmentName?: string | null;
+  designationName?: string | null;
+  isAdmin?: boolean;
 }
+
+const escapeHtml = (v: string): string =>
+  v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 @Injectable()
 export class MailService {
@@ -18,19 +24,26 @@ export class MailService {
   private readonly webBaseUrl: string;
 
   constructor() {
-    const host = process.env.SMTP_HOST;
-    const port = Number.parseInt(process.env.SMTP_PORT || "587", 10);
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASSWORD;
-    const secure = process.env.SMTP_SECURE === "true" || port === 465;
+    // Explicit SMTP_* wins. Otherwise RESEND_API_KEY alone is enough: Resend's
+    // SMTP relay takes the fixed user "resend" and the API key as password.
+    const useResend = !process.env.SMTP_HOST && !!process.env.RESEND_API_KEY;
+    const host = useResend ? "smtp.resend.com" : process.env.SMTP_HOST;
+    const port = useResend ? 465 : Number.parseInt(process.env.SMTP_PORT || "587", 10);
+    const user = useResend ? "resend" : process.env.SMTP_USER;
+    const pass = useResend ? process.env.RESEND_API_KEY : process.env.SMTP_PASSWORD;
+    const secure = useResend || process.env.SMTP_SECURE === "true" || port === 465;
 
+    const resendFrom = process.env.RESEND_FROM_ADDRESS
+      ? `"${(process.env.RESEND_FROM_NAME || "Jiora SaaS ERP").replace(/"/g, "")}" <${process.env.RESEND_FROM_ADDRESS}>`
+      : undefined;
     this.fromAddress =
       process.env.SMTP_FROM ||
-      process.env.RESEND_FROM_ADDRESS ||
+      resendFrom ||
       `"Jiora SaaS ERP" <no-reply@${process.env.WEB_DOMAIN || "saaserp.jioratech.com"}>`;
 
     this.webBaseUrl =
       process.env.WEB_BASE_URL ||
+      process.env.APP_PUBLIC_URL ||
       (process.env.WEB_DOMAIN ? `https://${process.env.WEB_DOMAIN}` : "https://saaserp.jioratech.com");
 
     if (host && user && pass) {
@@ -57,9 +70,22 @@ export class MailService {
    * Sends an invitation email to a newly invited tenant member or owner.
    */
   async sendInvitation(params: SendInvitationParams): Promise<{ success: boolean; previewUrl?: string }> {
-    const { to, displayName, tenantName, roleNames = [], isOwner = false } = params;
+    const { to, displayName, tenantName, roleNames = [], isOwner = false, departmentName, designationName, isAdmin = false } = params;
+    const e = escapeHtml;
+    const eTenant = e(tenantName);
+    const eName = e(displayName || "there");
+    const eTo = e(to);
     const loginUrl = `${this.webBaseUrl}/login?email=${encodeURIComponent(to)}`;
-    const roleText = isOwner ? "Tenant Owner / Administrator" : roleNames.length > 0 ? roleNames.join(", ") : "Team Member";
+    const roleText = isOwner || isAdmin ? "Organisation admin" : roleNames.length > 0 ? roleNames.join(", ") : "Team Member";
+    const eRole = e(roleText);
+    const extraRows = [
+      departmentName ? ["Department", departmentName] : null,
+      designationName ? ["Designation", designationName] : null,
+    ].filter((r): r is string[] => r !== null);
+    const extraHtml = extraRows
+      .map(([l, v]) => `<div class="pill-row"><span class="pill-label">${l}:</span><span class="pill-value">${e(v)}</span></div>`)
+      .join("\n        ");
+    const extraText = extraRows.map(([l, v]) => `${l}: ${v}`).join("\n");
 
     const subject = `You've been invited to join ${tenantName} on SaaS ERP`;
 
@@ -69,7 +95,7 @@ export class MailService {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
+  <title>${e(subject)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 24px; color: #18181b; }
     .card { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06); border: 1px solid #e4e4e7; }
@@ -94,32 +120,38 @@ export class MailService {
   <div class="card">
     <div class="header">
       <div class="logo-badge">SaaS ERP</div>
-      <h1>Invitation to Join ${tenantName}</h1>
+      <h1>Invitation to Join ${eTenant}</h1>
     </div>
     <div class="content">
-      <div class="greeting">Hi ${displayName || "there"},</div>
+      <div class="greeting">Hi ${eName},</div>
       <div class="message">
-        You have been invited to join <strong>${tenantName}</strong> on the SaaS ERP platform.
+        You have been invited to join <strong>${eTenant}</strong> on the SaaS ERP platform.
       </div>
       <div class="pill-card">
         <div class="pill-row">
           <span class="pill-label">Organization:</span>
-          <span class="pill-value">${tenantName}</span>
+          <span class="pill-value">${eTenant}</span>
         </div>
         <div class="pill-row">
           <span class="pill-label">Invited Role:</span>
-          <span class="pill-value">${roleText}</span>
+          <span class="pill-value">${eRole}</span>
         </div>
+        ${extraHtml}
         <div class="pill-row">
           <span class="pill-label">Email Account:</span>
-          <span class="pill-value">${to}</span>
+          <span class="pill-value">${eTo}</span>
         </div>
       </div>
       <div class="cta-container">
-        <a href="${loginUrl}" class="cta-button" target="_blank">Accept Invitation &amp; Sign In</a>
+        <a href="${e(loginUrl)}" class="cta-button" target="_blank">Accept Invitation &amp; Sign In</a>
       </div>
       <div class="note">
-        <strong>Getting Started:</strong> Click the button above to sign in using your email address (<strong>${to}</strong>). Your role and workspace permissions will be automatically linked upon your first sign in.
+        <strong>Getting started</strong>
+        <ol style="margin: 8px 0 0; padding-left: 18px;">
+          <li>Sign in with this email address (<strong>${eTo}</strong>).</li>
+          <li>Complete your profile: phone, gender and date of birth.</li>
+          <li>Start using attendance and leave.</li>
+        </ol>
       </div>
     </div>
     <div class="footer">
@@ -134,11 +166,14 @@ export class MailService {
 Hi ${displayName || "there"},
 
 You have been invited to join ${tenantName} on SaaS ERP as ${roleText}.
-
-To accept your invitation and sign in, visit:
+${extraText ? extraText + "\n" : ""}
+Accept invitation / Sign in:
 ${loginUrl}
 
-Your role and workspace permissions will be automatically linked upon your first sign-in using this email address (${to}).
+Steps:
+1. Sign in with this email address (${to}).
+2. Complete your profile: phone, gender and date of birth.
+3. Start using attendance and leave.
 
 — Jiora SaaS ERP
     `.trim();

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsEnum, IsNumber, IsOptional, IsString } from "class-validator";
+import { ArrayMaxSize, IsUUID, Matches, IsArray, IsDateString, IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 import { AttendanceMode } from "@prisma/client";
 
 export class CheckInDto {
@@ -10,11 +10,15 @@ export class CheckInDto {
   @ApiPropertyOptional({ example: 28.6139 })
   @IsOptional()
   @IsNumber()
+  @Min(-90)
+  @Max(90)
   latitude?: number;
 
   @ApiPropertyOptional({ example: 77.2090 })
   @IsOptional()
   @IsNumber()
+  @Min(-180)
+  @Max(180)
   longitude?: number;
 
   @ApiPropertyOptional({ example: "Community Center, Ward 12" })
@@ -38,19 +42,21 @@ export class CheckOutDto {
 export class SyncAttendanceItemDto {
   @ApiProperty({ example: "550e8400-e29b-41d4-a716-446655440000" })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
   offlineAttendanceId!: string;
 
   @ApiProperty({ example: "2026-09-27" })
-  @IsString()
+  @IsDateString()
   date!: string;
 
   @ApiProperty({ example: "2026-09-27T09:30:00.000Z" })
-  @IsString()
+  @IsDateString()
   checkInTime!: string;
 
   @ApiPropertyOptional({ example: "2026-09-27T18:00:00.000Z" })
   @IsOptional()
-  @IsString()
+  @IsDateString()
   checkOutTime?: string;
 
   @ApiProperty({ enum: AttendanceMode, default: AttendanceMode.OFFICE })
@@ -60,11 +66,15 @@ export class SyncAttendanceItemDto {
   @ApiPropertyOptional({ example: 28.6139 })
   @IsOptional()
   @IsNumber()
+  @Min(-90)
+  @Max(90)
   latitude?: number;
 
   @ApiPropertyOptional({ example: 77.2090 })
   @IsOptional()
   @IsNumber()
+  @Min(-180)
+  @Max(180)
   longitude?: number;
 
   @ApiPropertyOptional({ example: "Community Center" })
@@ -89,35 +99,72 @@ export class SyncAttendanceItemDto {
   @ApiPropertyOptional({ example: 12.5 })
   @IsOptional()
   @IsNumber()
+  @Min(0)
   accuracyMeters?: number;
 }
 
+// Items are validated one by one in the service (SyncAttendanceItemDto) so one bad item does not reject the batch.
 export class SyncAttendanceBatchDto {
-  @ApiPropertyOptional({ type: [SyncAttendanceItemDto] })
+  @ApiPropertyOptional({ type: [SyncAttendanceItemDto], description: "Max 200 items" })
   @IsOptional()
-  records?: SyncAttendanceItemDto[];
+  @IsArray()
+  @ArrayMaxSize(200, { message: "You can sync at most 200 records at a time." })
+  records?: any[];
 
-  @ApiPropertyOptional({ type: [SyncAttendanceItemDto] })
+  @ApiPropertyOptional({ type: [SyncAttendanceItemDto], description: "Alias of records. Max 200 items" })
   @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200, { message: "You can sync at most 200 records at a time." })
   items?: any[];
 }
 
 export class RegularizeAttendanceDto {
   @ApiProperty({ enum: ["PRESENT", "HALF_DAY", "ABSENT", "ON_LEAVE"] })
-  @IsString()
+  @IsIn(["PRESENT", "HALF_DAY", "ABSENT", "ON_LEAVE"])
   status!: "PRESENT" | "HALF_DAY" | "ABSENT" | "ON_LEAVE";
 
   @ApiPropertyOptional({ example: "2026-09-27T09:00:00.000Z" })
   @IsOptional()
-  @IsString()
+  @IsDateString()
   checkInTime?: string;
 
   @ApiPropertyOptional({ example: "2026-09-27T18:00:00.000Z" })
   @IsOptional()
-  @IsString()
+  @IsDateString()
   checkOutTime?: string;
 
   @ApiProperty({ example: "Field duty biometric device was offline, confirmed by Programme Director" })
   @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}
+
+export class ManualAttendanceDto {
+  @ApiProperty()
+  @IsUUID()
+  personId!: string;
+
+  @ApiProperty({ example: "2026-09-27" })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "Please enter a valid date (YYYY-MM-DD)." })
+  date!: string;
+
+  @ApiProperty({ enum: ["PRESENT", "HALF_DAY", "ABSENT", "ON_LEAVE"] })
+  @IsIn(["PRESENT", "HALF_DAY", "ABSENT", "ON_LEAVE"])
+  status!: "PRESENT" | "HALF_DAY" | "ABSENT" | "ON_LEAVE";
+
+  @ApiPropertyOptional({ example: "2026-09-27T04:00:00.000Z" })
+  @IsOptional()
+  @IsDateString()
+  checkInTime?: string;
+
+  @ApiPropertyOptional({ example: "2026-09-27T12:30:00.000Z" })
+  @IsOptional()
+  @IsDateString()
+  checkOutTime?: string;
+
+  @ApiProperty({ example: "Employee forgot to check in; confirmed by manager" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
   reason!: string;
 }

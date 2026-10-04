@@ -77,6 +77,20 @@ export class SalaryController {
     return this.service.createStructure(user.tenantId!, dto);
   }
 
+  @Get("settings")
+  @RequirePermission("payroll.salary.read")
+  @ApiOperation({ summary: "Org-wide salary split and working-day settings" })
+  getSettings(@CurrentUser() user: AuthContext) {
+    return this.service.getSettings(user.tenantId!);
+  }
+
+  @Get("staff")
+  @RequirePermission("payroll.salary.read")
+  @ApiOperation({ summary: "List employees with their salary (if set)" })
+  listStaff(@CurrentUser() user: AuthContext) {
+    return this.service.listStaff(user.tenantId!, user.permissionKeys.has("payroll.salary.manage"));
+  }
+
   // ==========================================
   // Employee Assignments
   // ==========================================
@@ -85,7 +99,7 @@ export class SalaryController {
   @RequirePermission("payroll.salary.read")
   @ApiOperation({ summary: "List all employee compensation assignments" })
   listAssignments(@CurrentUser() user: AuthContext) {
-    return this.service.listAssignments(user.tenantId!);
+    return this.service.listAssignments(user.tenantId!, user.permissionKeys.has("payroll.salary.manage"));
   }
 
   @Get("assignments/person/:personId")
@@ -99,7 +113,7 @@ export class SalaryController {
   @RequirePermission("payroll.salary.manage")
   @ApiOperation({ summary: "Assign or update salary for an employee" })
   assignSalary(@CurrentUser() user: AuthContext, @Body() dto: AssignSalaryDto) {
-    return this.service.assignSalary(user.tenantId!, dto);
+    return this.service.assignSalary(user.tenantId!, dto, user.userId);
   }
 
   // ==========================================
@@ -117,6 +131,10 @@ export class SalaryController {
   @RequirePermission("payroll.salary.manage")
   @ApiOperation({ summary: "Record a salary increase, appraisal or designation promotion" })
   recordRevision(@CurrentUser() user: AuthContext, @Body() dto: RecordSalaryRevisionDto) {
-    return this.service.recordRevision(user.tenantId!, user.userId, dto);
+    return this.service.recordRevision(user.tenantId!, user.userId, dto, {
+      userId: user.userId,
+      permissionKeys: user.permissionKeys,
+      isPlatform: user.isPlatformContext,
+    });
   }
 }
