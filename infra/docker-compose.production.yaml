@@ -151,7 +151,7 @@ services:
       # Runtime traffic: restricted app_runtime role via pgbouncer so RLS applies.
       DATABASE_URL: postgresql://app_runtime:${APP_RUNTIME_PASSWORD:?APP_RUNTIME_PASSWORD is required}@pgbouncer:5432/${POSTGRES_DB:-saaserp}?pgbouncer=true
       # Owner role, direct to Postgres: only for `prisma migrate`/seed, never runtime queries.
-      DIRECT_URL: ${DIRECT_URL:?DIRECT_URL (owner role, direct Postgres) is required}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@${POSTGRES_HOST:?POSTGRES_HOST is required}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-saaserp}?schema=public}
       # MONGO_URL: mongodb://${POSTGRES_USER:-saaserp}:${MONGO_PASSWORD}@mongo:27017/saaserp_audit?authSource=admin
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT}

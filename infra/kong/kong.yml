@@ -199,6 +199,8 @@ plugins:
       origins:    # keep in sync with KONG_CORS_ORIGINS (see README)
         - http://localhost:5174
         - http://localhost:5173
+        - https://saaserp.jioratech.com
+        - https://apisaaserp.jioratech.com
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]
       headers: [Authorization, Content-Type, Idempotency-Key]
       exposed_headers: [X-Request-ID]
