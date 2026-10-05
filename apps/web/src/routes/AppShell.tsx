@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Tenant } from "@saas-erp/shared-types";
@@ -95,6 +95,15 @@ const navItems: NavItem[] = [
 ];
 
 /** Expandable sidebar group; flyout list when the sidebar is collapsed to icons. */
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex items-center gap-2 px-3 pb-1.5 pt-1 font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-primary/80">
+      <span className="h-3 w-0.5 rounded-full bg-primary/70" />
+      {children}
+    </p>
+  );
+}
+
 function NavGroup({
   label,
   icon: Icon,
@@ -148,9 +157,7 @@ function NavGroup({
           className="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 transition-opacity absolute left-full top-0 z-50 pl-2"
         >
           <div className="w-60 space-y-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2 shadow-xl">
-            <p className="px-3 pb-1 pt-0.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
-              {label}
-            </p>
+            <SectionLabel>{label}</SectionLabel>
             {items.map(({ to, label: l, icon: CIcon, end }) => (
               <NavLink key={to} to={to} end={end} onClick={onNavigate} className={linkClass}>
                 <CIcon className="h-4 w-4 shrink-0" />
@@ -494,9 +501,7 @@ export function AppShell() {
               {hrNavItems.length > 0 && (
                 <div className="space-y-1">
                   {!collapsed && (
-                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      HR Core
-                    </p>
+                    <SectionLabel>Workforce</SectionLabel>
                   )}
                   {hrNavItems.map(({ to, label, icon: Icon, children }) =>
                     children ? (
@@ -543,9 +548,7 @@ export function AppShell() {
               {payrollNavItems.length > 0 && (
                 <div className="space-y-1">
                   {!collapsed && (
-                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      Payroll & Claims
-                    </p>
+                    <SectionLabel>Pay & Expenses</SectionLabel>
                   )}
                   {payrollNavItems.map(({ to, label, icon: Icon }) => (
                     <NavLink
@@ -580,9 +583,7 @@ export function AppShell() {
               {adminNavItems.length > 0 && (
                 <div className="space-y-1">
                   {!collapsed && (
-                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      Administration
-                    </p>
+                    <SectionLabel>Workspace Setup</SectionLabel>
                   )}
                   {adminNavItems.map(({ to, label, icon: Icon }) => (
                     <NavLink
