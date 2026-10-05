@@ -258,7 +258,7 @@ export function CompensationPage() {
       <PageHeader
         icon={Banknote}
         title="Compensation"
-        description="Monthly salary, annual CTC and increment history for your staff."
+        description="Monthly salary, annual CTC and increment history. Claims and advances are paid separately."
         badge={{ label: `${withSalary.length} Staff with salary`, variant: "outline" }}
         actions={
           <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Receipt,
@@ -188,6 +189,14 @@ export function MyPayslipsPage() {
           },
         ]}
       />
+
+      <div className="rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs text-muted-foreground">
+        Expense claims and salary advances are paid separately and are <b className="text-foreground">not part of your salary slip</b>. Get their receipts from{" "}
+        <Link to="/payroll/claims" className="font-semibold text-primary hover:underline">
+          Claims &amp; Advances
+        </Link>
+        .
+      </div>
 
       {/* Payslips Container */}
       <Card className="rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">

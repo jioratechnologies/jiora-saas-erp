@@ -1,6 +1,7 @@
 import { fullName } from "../../lib/input-constraints";
 import { memo, useCallback, useState, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { printClaimReceipt, printAdvanceReceipt } from "../../lib/payment-receipt";
 import {
   CreditCard,
   Plus,
@@ -16,6 +17,7 @@ import {
   Building,
   HeartHandshake,
   Search,
+  Receipt,
 } from "lucide-react";
 import { api } from "../../api/client";
 import { useMe } from "../../auth/use-me";
@@ -88,6 +90,7 @@ interface SalaryAdvance {
   amountRecovered: number;
   status: "PENDING" | "APPROVED" | "REJECTED" | "RECOVERING" | "RECOVERED";
   decisionNotes?: string;
+  decidedAt?: string | null;
   createdAt: string;
   person: {
     id: string;
@@ -112,8 +115,9 @@ const SkeletonRows = memo(function SkeletonRows({ cols }: { cols: number }) {
   );
 });
 
-const ClaimRow = memo(function ClaimRow({ c, canAct, settling, onDecide, onSettle }: {
+const ClaimRow = memo(function ClaimRow({ c, canAct, settling, onDecide, onSettle, onReceipt }: {
   c: ExpenseClaim;
+  onReceipt: (c: ExpenseClaim) => void;
   canAct: boolean;
   settling: boolean;
   onDecide: (type: "claim" | "advance", id: string, status: "APPROVED" | "REJECTED") => void;
@@ -163,6 +167,16 @@ const ClaimRow = memo(function ClaimRow({ c, canAct, settling, onDecide, onSettl
                                 </Button>
                               </div>
                             )}
+                            {c.status === "SETTLED" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onReceipt(c)}
+                                className="h-6.5 text-[11px] px-2 gap-1"
+                              >
+                                <Receipt className="h-3 w-3" /> Receipt
+                              </Button>
+                            )}
                             {canAct && c.status === "APPROVED" && (
                               <Button
                                 variant="outline"
@@ -179,8 +193,9 @@ const ClaimRow = memo(function ClaimRow({ c, canAct, settling, onDecide, onSettl
   );
 });
 
-const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide }: {
+const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide, onReceipt }: {
   adv: SalaryAdvance;
+  onReceipt: (a: SalaryAdvance) => void;
   canAct: boolean;
   onDecide: (type: "claim" | "advance", id: string, status: "APPROVED" | "REJECTED") => void;
 }) {
@@ -208,6 +223,16 @@ const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide }: {
                             <Badge variant={statusVariant} size="sm">{adv.status}</Badge>
                           </td>
                           <td className="py-2 px-3 text-center">
+                            {(adv.status === "APPROVED" || adv.status === "RECOVERING" || adv.status === "RECOVERED") && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onReceipt(adv)}
+                                className="h-6.5 text-[11px] px-2 gap-1"
+                              >
+                                <Receipt className="h-3 w-3" /> Receipt
+                              </Button>
+                            )}
                             {canAct && adv.status === "PENDING" && (
                               <div className="flex items-center justify-center gap-1.5">
                                 <Button
@@ -268,6 +293,35 @@ export function ClaimsPage() {
   const [decisionNotes, setDecisionNotes] = useState("");
 
   const [search, setSearch] = useState("");
+
+  const orgQ = useQuery({
+    queryKey: ["org", "theme"],
+    queryFn: () => api.get<{ name: string; logoUrl: string | null }>("/admin/org"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const receiptOrg = { name: orgQ.data?.name ?? "Organisation", logoUrl: orgQ.data?.logoUrl };
+  const handleClaimReceipt = useCallback(
+    (c: ExpenseClaim) => {
+      try {
+        printClaimReceipt(c, receiptOrg);
+      } catch (err) {
+        toast.error(formatErrorMessage(err));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orgQ.data],
+  );
+  const handleAdvanceReceipt = useCallback(
+    (a: SalaryAdvance) => {
+      try {
+        printAdvanceReceipt(a, receiptOrg);
+      } catch (err) {
+        toast.error(formatErrorMessage(err));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orgQ.data],
+  );
 
   // Queries
   const claimsQuery = usePagedQuery<ExpenseClaim, ClaimsPaged>({
@@ -615,6 +669,7 @@ export function ClaimsPage() {
                         settling={settleMutation.isPending}
                         onDecide={handleOpenDecision}
                         onSettle={handleSettle}
+                        onReceipt={handleClaimReceipt}
                       />
                     ))}
                   </tbody>
@@ -734,6 +789,7 @@ export function ClaimsPage() {
                         adv={adv}
                         canAct={filterMode === "team" && canManageAdvances}
                         onDecide={handleOpenDecision}
+                        onReceipt={handleAdvanceReceipt}
                       />
                     ))}
                   </tbody>
