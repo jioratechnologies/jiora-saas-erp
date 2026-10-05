@@ -63,6 +63,7 @@ import {
   PHONE_REGEX,
 } from "../../lib/input-constraints";
 import { cn } from "../../lib/utils";
+import { KYC_ID_TYPES, OTHER_ID_TYPE, kycHint } from "../../lib/kyc-types";
 import { exportToExcel } from "../../lib/excel-export";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
@@ -435,6 +436,7 @@ export function PeoplePage() {
 
   // Document Upload State
   const [docName, setDocName] = useState("");
+  const [docIdType, setDocIdType] = useState("");
   const [docNumber, setDocNumber] = useState("");
   const [docCategory, setDocCategory] = useState<"KYC" | "RESUME" | "CONTRACT" | "OTHER">("KYC");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -888,7 +890,7 @@ export function PeoplePage() {
         setPreviewDocUrl(targetUrl);
       }
     } catch (err: any) {
-      setPreviewDocError("Could not retrieve document from object storage. Please re-upload if needed.");
+      setPreviewDocError("Could not open this document. Please re-upload if needed.");
       toast.error("Preview failed", "Could not generate preview link.");
     } finally {
       setLoadingPreview(false);
@@ -896,7 +898,9 @@ export function PeoplePage() {
   };
 
   const handleUploadDocument = async () => {
-    if (!selectedPersonId || !selectedFile || !docName.trim()) return;
+    const isKyc = docCategory === "KYC";
+    const finalName = isKyc && docIdType !== OTHER_ID_TYPE ? docIdType : docName.trim();
+    if (!selectedPersonId || !selectedFile || !finalName) return;
 
     if (docCategory === "KYC" && !docNumber.trim()) {
       toast.error("Document Number required", "Please enter the document / ID number for KYC verification.");
@@ -907,7 +911,7 @@ export function PeoplePage() {
       setUploadingDoc(true);
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append("name", docName.trim());
+      formData.append("name", finalName);
       formData.append("category", docCategory);
       if (docCategory === "KYC" && docNumber.trim()) {
         formData.append("documentNumber", docNumber.trim());
@@ -916,11 +920,12 @@ export function PeoplePage() {
       await api.upload(`/hr/persons/${selectedPersonId}/documents`, formData);
 
       setDocName("");
+      setDocIdType("");
       setDocNumber("");
       setSelectedFile(null);
       setShowUploadForm(false);
       refetchSelectedPerson();
-      toast.success("Document uploaded", "File uploaded securely to MinIO object storage.");
+      toast.success("Document uploaded", "File uploaded securely.");
     } catch (err: any) {
       toast.error("Upload failed", err.message || "Could not upload document.");
     } finally {
@@ -1431,14 +1436,14 @@ export function PeoplePage() {
               </div>
             )}
 
-            {/* Documents Section (MinIO Object Storage) */}
+            {/* Documents Section */}
             <div className="space-y-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
               <div className="flex items-center justify-between">
                 <div>
                   <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Documents & KYC ({selectedPerson.documents?.length || 0})
                   </h5>
-                  <p className="text-[11px] text-muted-foreground">Stored securely in MinIO Object Storage</p>
+                  <p className="text-[11px] text-muted-foreground">Stored securely</p>
                 </div>
                 {canManage && (
                   <Button
@@ -1466,18 +1471,6 @@ export function PeoplePage() {
               {showUploadForm && (
                 <div className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 space-y-3 animate-in fade-in-50 duration-200">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="text-[11px] font-medium text-foreground block mb-1">
-                        Document Title *
-                      </label>
-                      <Input
-                        placeholder="e.g. Aadhaar Card / Resume"
-                        value={docName}
-                        onChange={(e) => setDocName(e.target.value)}
-                        maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
-                        className="h-9 text-xs"
-                      />
-                    </div>
                     <Select
                       label="Category"
                       value={docCategory}
@@ -1490,15 +1483,58 @@ export function PeoplePage() {
                       <option value="CONTRACT">Contract / Agreement</option>
                       <option value="OTHER">Other Record</option>
                     </Select>
+                    {docCategory === "KYC" ? (
+                      <Select
+                        label="Document Type *"
+                        value={docIdType}
+                        onChange={(e) => setDocIdType(e.target.value)}
+                        className="h-9 text-xs"
+                      >
+                        <option value="">Select ID type</option>
+                        {KYC_ID_TYPES.map((t) => (
+                          <option key={t.label} value={t.label}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                    <div>
+                      <label className="text-[11px] font-medium text-foreground block mb-1">
+                        Document Title *
+                      </label>
+                      <Input
+                        placeholder="e.g. Offer Letter / Resume"
+                        value={docName}
+                        onChange={(e) => setDocName(e.target.value)}
+                        maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                    )}
                   </div>
+
+                  {docCategory === "KYC" && docIdType === OTHER_ID_TYPE && (
+                    <div>
+                      <label className="text-[11px] font-medium text-foreground block mb-1">
+                        Document Name *
+                      </label>
+                      <Input
+                        placeholder="e.g. Ration Card"
+                        value={docName}
+                        onChange={(e) => setDocName(e.target.value)}
+                        maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                  )}
 
                   {docCategory === "KYC" && (
                     <div>
                       <label className="text-[11px] font-medium text-foreground block mb-1">
-                        Document / ID Number *
+                        {docIdType && docIdType !== OTHER_ID_TYPE ? `${docIdType} Number *` : "ID Number *"}
                       </label>
                       <Input
-                        placeholder="e.g. 5423-8891-1029 / ABCDE1234F / Passport No"
+                        placeholder={kycHint(docIdType)}
                         value={docNumber}
                         onChange={(e) => setDocNumber(e.target.value)}
                         maxLength={INPUT_LIMITS.DOC_NUMBER_MAX}
@@ -1524,11 +1560,11 @@ export function PeoplePage() {
                     <Button
                       size="sm"
                       onClick={handleUploadDocument}
-                      disabled={!selectedFile || !docName.trim() || (docCategory === "KYC" && !docNumber.trim()) || uploadingDoc}
+                      disabled={!selectedFile || (docCategory === "KYC" ? !docIdType || (docIdType === OTHER_ID_TYPE && !docName.trim()) || !docNumber.trim() : !docName.trim()) || uploadingDoc}
                       className="gap-1.5 h-8 text-xs"
                     >
                       <Upload className="h-3.5 w-3.5" />
-                      <span>{uploadingDoc ? "Uploading to MinIO…" : "Upload Document"}</span>
+                      <span>{uploadingDoc ? "Uploading…" : "Upload Document"}</span>
                     </Button>
                   </div>
                 </div>
@@ -1669,7 +1705,7 @@ export function PeoplePage() {
                                 onClick={async () => {
                                   const ok = await confirm({
                                     title: `Delete ${doc.name}?`,
-                                    description: "This document will be permanently removed from MinIO storage.",
+                                    description: "This document will be permanently removed.",
                                     confirmLabel: "Delete",
                                   });
                                   if (ok) deleteDoc.mutate({ docId: doc.id });
@@ -1928,7 +1964,7 @@ export function PeoplePage() {
             {loadingPreview ? (
               <div className="p-8 text-center space-y-2">
                 <div className="h-8 w-8 mx-auto animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <p className="text-xs text-muted-foreground">Streaming secure document preview from MinIO…</p>
+                <p className="text-xs text-muted-foreground">Loading document preview…</p>
               </div>
             ) : previewDocError ? (
               <div className="p-8 text-center space-y-3 max-w-sm mx-auto">

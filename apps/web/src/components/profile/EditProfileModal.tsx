@@ -44,6 +44,7 @@ import {
 } from "../../lib/input-constraints";
 import type { PersonDocumentItem } from "@saas-erp/shared-types";
 import { cn } from "../../lib/utils";
+import { KYC_ID_TYPES, OTHER_ID_TYPE, kycHint } from "../../lib/kyc-types";
 
 /** PhoneInput with a red-asterisk label and inline error (PhoneInput itself has no error slot). */
 export function PhoneField({
@@ -149,6 +150,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // KYC upload states
+  const [kycType, setKycType] = useState("");
   const [kycName, setKycName] = useState("");
   const [kycDocNumber, setKycDocNumber] = useState("");
   const [kycFile, setKycFile] = useState<File | null>(null);
@@ -249,8 +251,12 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
       toast.error("File required", "Please choose a KYC document file to upload.");
       return;
     }
-    if (!kycName.trim()) {
-      toast.error("Title required", "Please provide a document title (e.g. Aadhaar Card, Passport).");
+    if (!kycType) {
+      toast.error("Document type required", "Please choose the type of ID you are uploading.");
+      return;
+    }
+    if (kycType === OTHER_ID_TYPE && !kycName.trim()) {
+      toast.error("Document name required", "Please enter a name for this document.");
       return;
     }
     if (!kycDocNumber.trim()) {
@@ -262,11 +268,12 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
     try {
       const formData = new FormData();
       formData.append("file", kycFile);
-      formData.append("name", kycName.trim());
+      formData.append("name", kycType === OTHER_ID_TYPE ? kycName.trim() : kycType);
       formData.append("documentNumber", kycDocNumber.trim());
 
       await api.upload("/auth/profile/kyc", formData);
 
+      setKycType("");
       setKycName("");
       setKycDocNumber("");
       setKycFile(null);
@@ -812,24 +819,41 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="kyc-doc-title">Document Title *</Label>
-                  <Input
-                    id="kyc-doc-title"
-                    value={kycName}
-                    onChange={(e) => setKycName(e.target.value)}
-                    placeholder="e.g. Aadhaar Card / Passport"
-                    maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
-                    required
-                  />
+                  <Select
+                    label="Document Type *"
+                    value={kycType}
+                    onChange={(e) => setKycType(e.target.value)}
+                  >
+                    <option value="">Select ID type</option>
+                    {KYC_ID_TYPES.map((t) => (
+                      <option key={t.label} value={t.label}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
 
+                {kycType === OTHER_ID_TYPE && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="kyc-doc-title">Document Name *</Label>
+                    <Input
+                      id="kyc-doc-title"
+                      value={kycName}
+                      onChange={(e) => setKycName(e.target.value)}
+                      placeholder="e.g. Ration Card"
+                      maxLength={INPUT_LIMITS.DOC_TITLE_MAX}
+                      required
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
-                  <Label htmlFor="kyc-doc-num">Document / ID Number *</Label>
+                  <Label htmlFor="kyc-doc-num">{kycType && kycType !== OTHER_ID_TYPE ? `${kycType} Number *` : "ID Number *"}</Label>
                   <Input
                     id="kyc-doc-num"
                     value={kycDocNumber}
                     onChange={(e) => setKycDocNumber(e.target.value)}
-                    placeholder="e.g. 5423-8891-1029 / ABCDE1234F"
+                    placeholder={kycHint(kycType)}
                     maxLength={INPUT_LIMITS.DOC_NUMBER_MAX}
                     required
                   />

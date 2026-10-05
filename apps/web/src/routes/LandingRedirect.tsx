@@ -49,7 +49,7 @@ export function LandingRedirect() {
               </div>
             )}
             <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-              You're authenticated with Zitadel, but there's no matching user in this workspace yet.
+              You're signed in, but there's no matching user in this workspace yet.
               Ask your administrator to invite you, or switch to an authorized workspace account.
             </p>
           </div>

@@ -209,8 +209,8 @@ export function LoginPage() {
                     <ShieldCheck className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-white">Zero-Trust OIDC Architecture</h3>
-                    <p className="text-xs text-zinc-400">Powered by Zitadel Cloud with Passkey & FIDO2</p>
+                    <h3 className="text-sm font-semibold text-white">Enterprise-grade security</h3>
+                    <p className="text-xs text-zinc-400">Passkey and multi-factor sign-in supported</p>
                   </div>
                 </div>
                 <div className="text-[11px] font-medium text-emerald-400/90 flex items-center gap-1">
@@ -315,7 +315,7 @@ export function LoginPage() {
                   className="btn-shine-sweep group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:from-blue-500 hover:to-indigo-500 hover:shadow-xl hover:shadow-blue-500/35 hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
                 >
                   <KeyRound className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:rotate-12" />
-                  <span>{isSigningIn ? "Connecting to Zitadel..." : "Sign in with Zitadel"}</span>
+                  <span>{isSigningIn ? "Connecting..." : "Sign in securely"}</span>
                   <ArrowRight className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-1" />
                 </button>
 
@@ -345,7 +345,7 @@ export function LoginPage() {
                 <div className="flex items-center justify-center gap-2 rounded-lg bg-white/[0.02] border border-white/[0.05] py-2 px-3 text-[11px] text-zinc-400">
                   <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
                   <span className="truncate">
-                    Protected by Zitadel OIDC · Passkey & MFA Ready
+                    Protected sign-in · Passkey & MFA ready
                   </span>
                 </div>
 
