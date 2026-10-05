@@ -179,24 +179,26 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
                   className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/90 bg-white dark:bg-zinc-900 shadow-xs hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200"
                 >
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-2.5">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 group-hover:scale-105 transition-transform">
-                        <Award className="h-4.5 w-4.5" />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 group-hover:scale-105 transition-transform">
+                          <Award className="h-5 w-5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-foreground leading-snug tracking-tight line-clamp-2">
+                          {row.name}
+                        </h3>
                       </div>
 
                       <button
                         type="button"
                         onClick={() => handleDelete(row)}
-                        className="p-1 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors opacity-70 group-hover:opacity-100"
+                        className="shrink-0 p-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors opacity-70 group-hover:opacity-100"
                         title={`Delete ${singular}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
 
-                    <h3 className="text-sm font-bold text-foreground leading-snug tracking-tight line-clamp-2">
-                      {row.name}
-                    </h3>
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs text-muted-foreground">

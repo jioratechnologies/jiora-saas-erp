@@ -59,24 +59,24 @@ export function PageHeader({
       const items = stats as HeaderStatItem[];
       const gridCols =
         items.length === 5
-          ? "grid-cols-5"
+          ? "grid-cols-2 sm:grid-cols-5"
           : items.length === 4
-            ? "grid-cols-4"
+            ? "grid-cols-2 sm:grid-cols-4"
             : items.length === 3
               ? "grid-cols-3"
               : "grid-cols-2 sm:grid-cols-4";
 
       return (
-        <div className={cn("grid gap-1 sm:gap-2.5", gridCols)}>
+        <div className={cn("grid gap-2 sm:gap-2.5", gridCols)}>
           {items.map((s, idx) => (
             <div
               key={idx}
-              className="rounded-lg sm:rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 px-1.5 sm:px-3 py-1 sm:py-1.5 shadow-2xs min-w-0"
+              className="rounded-lg sm:rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 px-2.5 sm:px-3 py-1.5 shadow-2xs min-w-0"
             >
-              <div className="text-[8px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
+              <div className="text-[10px] leading-tight font-semibold text-muted-foreground uppercase tracking-wide sm:tracking-wider sm:truncate">
                 {s.label}
               </div>
-              <div className={cn("text-xs sm:text-base font-bold text-foreground mt-0.5 truncate", s.color)}>
+              <div className={cn("text-sm sm:text-base font-bold text-foreground mt-0.5 truncate", s.color)}>
                 {s.value}
               </div>
             </div>
@@ -121,7 +121,7 @@ export function PageHeader({
                 {renderBadge()}
               </div>
               {description && (
-                <p className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1">
+                <p className="text-xs text-muted-foreground line-clamp-2 sm:line-clamp-1">
                   {description}
                 </p>
               )}
@@ -129,7 +129,7 @@ export function PageHeader({
           </div>
 
           {renderedAction && (
-            <div className="flex lg:hidden items-center gap-2 flex-wrap shrink-0">
+            <div className="flex lg:hidden items-center gap-2 flex-wrap shrink-0 max-sm:[&>*]:flex-1">
               {renderedAction}
             </div>
           )}

@@ -376,7 +376,7 @@ export function AdminOrgPage() {
       <QueryState isLoading={isLoading} error={error}>
         {org && (
           <Card className="rounded-2xl border-border bg-card shadow-xs">
-            <CardContent className="p-5 space-y-6">
+            <CardContent className="p-4 sm:p-5 space-y-6">
               {!canWrite && me && (
                 <p className="text-xs text-muted-foreground">You do not have permission to perform this action.</p>
               )}
@@ -384,8 +384,8 @@ export function AdminOrgPage() {
               {/* Logo */}
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-foreground">Logo</Label>
-                <div className="flex items-center gap-4">
-                  <div className="h-16 w-16 shrink-0 rounded-xl border border-border bg-background p-2 flex items-center justify-center">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="h-20 w-20 sm:h-16 sm:w-16 shrink-0 rounded-xl border border-border bg-background p-2 flex items-center justify-center">
                     {logoUrl && !logoError ? (
                       <img
                         src={logoUrl}

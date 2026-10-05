@@ -270,9 +270,9 @@ export function AdminUsersPage() {
  />
 
             {/* Filter Tabs & Role Dropdown */}
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               {/* Status Pills */}
-              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl">
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl overflow-x-auto max-w-full [scrollbar-width:none] [&>button]:whitespace-nowrap">
                 {[
                   { id: "all", label: "All" },
                   { id: "active", label: "Active" },
@@ -296,11 +296,11 @@ export function AdminUsersPage() {
               </div>
 
               {/* Role Filter Select */}
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={roleFilter}
                   onChange={(e) => setRoleFilter(e.target.value)}
-                  className="h-9 px-3 pr-8 text-xs font-medium bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-700 rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer appearance-none"
+                  className="h-10 sm:h-9 w-full sm:w-auto px-3 pr-8 text-sm sm:text-xs font-medium bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-700 rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer appearance-none"
                 >
                   <option value="all">All Designations</option>
                   {designations.map((r) => (
@@ -309,7 +309,7 @@ export function AdminUsersPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <ChevronDown className="absolute right-2.5 top-3.5 sm:top-3 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               </div>
             </div>
           </div>
@@ -328,7 +328,7 @@ export function AdminUsersPage() {
                     <TableHead className="w-[320px] font-semibold text-xs">User Profile</TableHead>
                     <TableHead className="font-semibold text-xs">Department & Placement</TableHead>
                     <TableHead className="font-semibold text-xs">Access</TableHead>
-                    <TableHead className="font-semibold text-xs">Identity Status</TableHead>
+                    <TableHead className="font-semibold text-xs">Status</TableHead>
                     <TableHead className="w-12 text-right pr-4 font-semibold text-xs">Action</TableHead>
                   </TableRow>
                 </TableHeader>

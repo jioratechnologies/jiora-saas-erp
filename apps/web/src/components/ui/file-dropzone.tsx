@@ -28,6 +28,20 @@ function getFileIcon(file: globalThis.File) {
   return <File className="h-6 w-6 text-primary" />;
 }
 
+const ACCEPT_LABELS: Record<string, string> = {
+  pdf: "PDF", doc: "DOC", docx: "DOCX", png: "PNG", jpg: "JPG", jpeg: "JPG", webp: "WEBP",
+  "image/png": "PNG", "image/jpeg": "JPG", "image/webp": "WEBP",
+};
+
+/** Human-readable list of allowed file types, derived from the `accept` attribute. */
+function acceptLabel(accept: string): string {
+  const labels = accept
+    .split(",")
+    .map((t) => ACCEPT_LABELS[t.trim().replace(/^\./, "").toLowerCase()])
+    .filter((l): l is string => Boolean(l));
+  return Array.from(new Set(labels)).join(", ") || "Files";
+}
+
 export function FileDropzone({
   file,
   onFileSelect,
@@ -171,7 +185,7 @@ export function FileDropzone({
               <span className="text-primary hover:underline">Click to upload</span> or drag and drop
             </p>
             <p className="text-[11px] text-muted-foreground">
-              PDF, DOCX, PNG, JPG up to {formatFileSize(maxSizeBytes)}
+              {acceptLabel(accept)} up to {formatFileSize(maxSizeBytes)}
             </p>
           </div>
         </div>

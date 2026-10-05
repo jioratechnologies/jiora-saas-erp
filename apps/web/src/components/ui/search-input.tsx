@@ -37,7 +37,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
     return (
       <div
         className={cn(
-          "relative flex h-9 w-full items-center rounded-xl border border-primary/30 bg-background transition-all duration-150",
+          "relative flex h-10 w-full items-center rounded-xl border border-primary/30 bg-background transition-all duration-150",
           "hover:border-primary/60 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20",
           className,
         )}
@@ -52,7 +52,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
           aria-label={rest["aria-label"] ?? placeholder}
           {...rest}
           className={cn(
-            "h-full w-full min-w-0 bg-transparent pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+            "h-full w-full min-w-0 bg-transparent pl-9 pr-8 text-sm sm:text-xs text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
             inputClassName,
           )}
         />
