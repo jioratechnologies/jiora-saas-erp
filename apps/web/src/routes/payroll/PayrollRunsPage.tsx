@@ -274,7 +274,7 @@ export function PayrollRunsPage() {
     mutationFn: (id: string) => api.delete(`/payroll/adjustments/${id}`),
     onSuccess: () => {
       toast.success("Adjustment removed.");
-      void queryClient.invalidateQueries({ queryKey: ["payroll", "adjustments"] });
+      void queryClient.invalidateQueries({ queryKey: ["payroll"] });
     },
     onError: (err) => toast.error(formatErrorMessage(err)),
   });
@@ -612,7 +612,7 @@ export function PayrollRunsPage() {
         onClose={() => setAdjOpen(false)}
         year={year}
         month={month}
-        onSaved={() => queryClient.invalidateQueries({ queryKey: ["payroll", "adjustments"] })}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["payroll"] })}
       />
 
       <SalaryVoucherDialog

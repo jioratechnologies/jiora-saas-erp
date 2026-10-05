@@ -37,6 +37,17 @@ export class PayrollAdjustmentsService {
     });
   }
 
+  /** True when the month already has a calculated (not yet approved) run whose payslips need refreshing. */
+  async hasEditableRun(tenantId: string, year: number, month: number) {
+    return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+      const run = await tx.payrollRun.findFirst({
+        where: { tenantId, year, month, status: { in: ["DRAFT", "CALCULATED"] } },
+        select: { id: true },
+      });
+      return Boolean(run);
+    });
+  }
+
   async list(tenantId: string, filter: { year?: number; month?: number; personId?: string }) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const where: Prisma.PayrollAdjustmentWhereInput = { tenantId };
@@ -57,7 +68,7 @@ export class PayrollAdjustmentsService {
       if (!adj) throw new NotFoundException("The requested item could not be found.");
       await this.assertMonthOpen(tx, tenantId, adj.year, adj.month);
       await tx.payrollAdjustment.deleteMany({ where: { id, tenantId } });
-      return { id };
+      return { id, year: adj.year, month: adj.month };
     });
   }
 }

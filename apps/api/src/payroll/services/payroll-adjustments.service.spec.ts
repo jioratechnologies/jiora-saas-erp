@@ -34,7 +34,7 @@ describe("PayrollAdjustmentsService", () => {
   });
   it("remove ok when open", async () => {
     const { svc, tx } = setup(false);
-    await expect(svc.remove("t1", "a1")).resolves.toEqual({ id: "a1" });
+    await expect(svc.remove("t1", "a1")).resolves.toEqual({ id: "a1", year: 2026, month: 10 });
     expect(tx.payrollAdjustment.deleteMany).toHaveBeenCalled();
   });
 });
