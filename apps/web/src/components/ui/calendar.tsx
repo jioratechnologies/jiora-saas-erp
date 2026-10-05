@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 export interface CalendarProps {
@@ -66,6 +66,8 @@ export function Calendar({
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
+  const [view, setView] = useState<"days" | "months" | "years">("days");
+  const [yearPageStart, setYearPageStart] = useState(initialDate.getFullYear() - 5);
 
   const today = useMemo(() => new Date(), []);
 
@@ -91,6 +93,7 @@ export function Calendar({
     const now = new Date();
     setViewYear(now.getFullYear());
     setViewMonth(now.getMonth());
+    setView("days");
     if (mode === "single" && onChange) {
       onChange(now);
     }
@@ -135,8 +138,8 @@ export function Calendar({
 
   const handleDayClick = (date: Date) => {
     if (isDateDisabled && isDateDisabled(date)) return;
-    if (minDate && date < new Date(minDate.setHours(0, 0, 0, 0))) return;
-    if (maxDate && date > new Date(maxDate.setHours(23, 59, 59, 999))) return;
+    if (minDate && date < new Date(new Date(minDate).setHours(0, 0, 0, 0))) return;
+    if (maxDate && date > new Date(new Date(maxDate).setHours(23, 59, 59, 999))) return;
 
     if (mode === "single") {
       onChange?.(date);
@@ -166,32 +169,100 @@ export function Calendar({
       )}
     >
       {/* Month/Year Header */}
-      <div className="mb-3 flex items-center justify-between px-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm font-semibold text-foreground">
-            {MONTH_NAMES[viewMonth]} {viewYear}
-          </span>
+      <div className="mb-3 flex items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setView(view === "months" ? "days" : "months")}
+            className={cn(
+              "flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-foreground hover:bg-accent transition-colors",
+              view === "months" && "bg-accent",
+            )}
+            aria-label="Select month"
+          >
+            {MONTH_NAMES[viewMonth]}
+            <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", view === "months" && "rotate-180")} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setYearPageStart(viewYear - 5);
+              setView(view === "years" ? "days" : "years");
+            }}
+            className={cn(
+              "flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-foreground hover:bg-accent transition-colors",
+              view === "years" && "bg-accent",
+            )}
+            aria-label="Select year"
+          >
+            {viewYear}
+            <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", view === "years" && "rotate-180")} />
+          </button>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={handlePrevMonth}
+            onClick={view === "years" ? () => setYearPageStart((y) => y - 12) : view === "months" ? () => setViewYear((y) => y - 1) : handlePrevMonth}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all"
-            aria-label="Previous month"
+            aria-label="Previous"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={handleNextMonth}
+            onClick={view === "years" ? () => setYearPageStart((y) => y + 12) : view === "months" ? () => setViewYear((y) => y + 1) : handleNextMonth}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all"
-            aria-label="Next month"
+            aria-label="Next"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </div>
 
+      {view === "months" && (
+        <div className="grid grid-cols-3 gap-2 py-1">
+          {MONTH_NAMES.map((name, i) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => {
+                setViewMonth(i);
+                setView("days");
+              }}
+              className={cn(
+                "rounded-xl py-2.5 text-xs font-medium transition-colors hover:bg-accent",
+                i === viewMonth ? "bg-primary text-primary-foreground hover:bg-primary" : "text-foreground",
+              )}
+            >
+              {name.slice(0, 3)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === "years" && (
+        <div className="grid grid-cols-3 gap-2 py-1">
+          {Array.from({ length: 12 }, (_, i) => yearPageStart + i).map((y) => (
+            <button
+              key={y}
+              type="button"
+              onClick={() => {
+                setViewYear(y);
+                setView("days");
+              }}
+              className={cn(
+                "rounded-xl py-2.5 text-xs font-medium transition-colors hover:bg-accent",
+                y === viewYear ? "bg-primary text-primary-foreground hover:bg-primary" : "text-foreground",
+                y === today.getFullYear() && y !== viewYear && "ring-1 ring-primary/40 text-primary",
+              )}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === "days" && (<>
       {/* Weekday labels */}
       <div className="mb-1.5 grid grid-cols-7 text-center">
         {WEEKDAY_NAMES.map((name) => (
@@ -261,6 +332,8 @@ export function Calendar({
           );
         })}
       </div>
+
+      </>)}
 
       {/* Footer / Today shortcut */}
       {showTodayButton && (
