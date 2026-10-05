@@ -272,19 +272,33 @@ export class PayrollRunService {
       const personIds = plans.map((p) => p.emp.id);
 
       // 3. Prefetch attendance, leave, advances, adjustments for all employees in single queries
-      const [breakdowns, advances, adjustments] = await Promise.all([
+      const [breakdowns, dueInstalments, adjustments] = await Promise.all([
         this.computeBreakdowns(tx, tenantId, ctx, plans.map((p) => p.emp)),
-        tx.salaryAdvance.findMany({
-          where: { tenantId, personId: { in: personIds }, status: { in: ["APPROVED", "RECOVERING"] } },
-          orderBy: { createdAt: "asc" },
+        tx.advanceInstalment.findMany({
+          where: {
+            tenantId,
+            status: "SCHEDULED",
+            advance: { personId: { in: personIds }, status: { in: ["APPROVED", "RECOVERING"] } },
+            OR: [{ dueYear: { lt: year } }, { dueYear: year, dueMonth: { lte: month } }],
+          },
+          orderBy: [{ advanceId: "asc" }, { number: "asc" }],
+          include: {
+            advance: {
+              select: { personId: true, tenureMonths: true, amountApproved: true, amountRequested: true, totalInterest: true, amountRecovered: true },
+            },
+          },
         }),
         tx.payrollAdjustment.findMany({
           where: { tenantId, year, month, personId: { in: personIds } },
           orderBy: { createdAt: "asc" },
         }),
       ]);
-      const advanceByPerson = new Map<string, (typeof advances)[number]>();
-      for (const adv of advances) if (!advanceByPerson.has(adv.personId)) advanceByPerson.set(adv.personId, adv);
+      const instalmentsByPerson = new Map<string, typeof dueInstalments>();
+      for (const i of dueInstalments) {
+        const list = instalmentsByPerson.get(i.advance.personId) ?? [];
+        list.push(i);
+        instalmentsByPerson.set(i.advance.personId, list);
+      }
       const adjByPerson = new Map<string, typeof adjustments>();
       for (const a of adjustments) (adjByPerson.get(a.personId) ?? adjByPerson.set(a.personId, []).get(a.personId)!).push(a);
 
@@ -315,15 +329,33 @@ export class PayrollRunService {
           if (adj.type === "DEDUCTION") deductions.push({ code: "ADJUSTMENT", name: adj.reason, amount: round2(adj.amount), adjustmentId: adj.id });
         }
 
-        // Salary advance recovery: never deduct more than the net available before the EMI.
-        const activeAdvance = advanceByPerson.get(emp.id);
-        if (activeAdvance && activeAdvance.monthlyDeduction > 0) {
-          const remainingToRecover = (activeAdvance.amountApproved ?? activeAdvance.amountRequested) - activeAdvance.amountRecovered;
-          const netBeforeEmi = Math.max(0, grossPay - deductions.reduce((sum, d) => sum + d.amount, 0));
-          const advanceEmi = round2(Math.min(activeAdvance.monthlyDeduction, Math.max(0, remainingToRecover), netBeforeEmi));
+        // Salary advance recovery from the repayment schedule: never deduct more than the net available.
+        const due = instalmentsByPerson.get(emp.id) ?? [];
+        if (due.length > 0) {
+          let available = Math.max(0, grossPay - deductions.reduce((sum, d) => sum + d.amount, 0));
+          const allocations: { instalmentId: string; amount: number }[] = [];
+          for (const inst of due) {
+            const take = round2(Math.min(Math.max(0, inst.emi - inst.paidAmount), available));
+            if (take <= 0) continue;
+            allocations.push({ instalmentId: inst.id, amount: take });
+            available = round2(available - take);
+          }
+          const advanceEmi = round2(allocations.reduce((sum, a) => sum + a.amount, 0));
           if (advanceEmi > 0) {
+            const first = due[0];
+            const adv = first.advance;
+            const payable = round2((adv.amountApproved ?? adv.amountRequested) + (adv.totalInterest ?? 0));
+            const balanceAfter = round2(Math.max(0, payable - adv.amountRecovered - advanceEmi));
+            const nums = due.filter((i) => allocations.some((a) => a.instalmentId === i.id)).map((i) => i.number);
+            const label = nums.length > 1 ? `instalments ${nums[0]}-${nums[nums.length - 1]}` : `instalment ${nums[0]}`;
             // amount is the amount actually deducted; disbursal recovers exactly this.
-            deductions.push({ code: "ADVANCE_EMI", name: "Advance EMI", amount: advanceEmi, advanceId: activeAdvance.id });
+            deductions.push({
+              code: "ADVANCE_EMI",
+              name: `Advance recovery - ${label} of ${adv.tenureMonths} (balance ${balanceAfter.toLocaleString("en-IN")})`,
+              amount: advanceEmi,
+              advanceId: first.advanceId,
+              allocations,
+            });
           }
         }
 
@@ -486,7 +518,7 @@ export class PayrollRunService {
       const pay = computeDayRatePay(grossMap.get(personId) ?? 0, ctx.workingDaysPerMonth, b.expectedDays, b.paidDays, ctx.workingDays.length);
       const adjustmentsTotal = round2(adjustments.reduce((s, a) => s + (a.type === "DEDUCTION" ? -a.amount : a.amount), 0));
       const outstandingAdvanceBalance = round2(
-        advances.reduce((s, a) => s + Math.max(0, (a.amountApproved ?? a.amountRequested) - a.amountRecovered), 0),
+        advances.reduce((s, a) => s + Math.max(0, (a.amountApproved ?? a.amountRequested) + a.totalInterest - a.amountRecovered), 0),
       );
       const approvedUnsettledClaimsTotal = round2(claims.reduce((s, c) => s + c.amount, 0));
       return {
@@ -539,24 +571,39 @@ export class PayrollRunService {
 
         // Recover exactly the amount deducted on each payslip (runs once, guarded by the claim above).
         const payslips = await tx.payslip.findMany({ where: { payrollRunId: runId, tenantId }, select: { deductions: true } });
-        const emiByAdvance = new Map<string, number>();
+        const recoveredByAdvance = new Map<string, number>();
+        const paidByInstalment = new Map<string, number>();
         for (const slip of payslips) {
           for (const d of ((slip.deductions as any[]) || [])) {
-            if (d.code === "ADVANCE_EMI" && d.advanceId && d.amount > 0) {
-              emiByAdvance.set(d.advanceId, (emiByAdvance.get(d.advanceId) ?? 0) + d.amount);
+            if (d.code !== "ADVANCE_EMI" || !d.advanceId || !(d.amount > 0)) continue;
+            recoveredByAdvance.set(d.advanceId, (recoveredByAdvance.get(d.advanceId) ?? 0) + d.amount);
+            for (const a of (d.allocations as { instalmentId: string; amount: number }[]) ?? []) {
+              paidByInstalment.set(a.instalmentId, (paidByInstalment.get(a.instalmentId) ?? 0) + a.amount);
             }
           }
         }
-        if (emiByAdvance.size > 0) {
-          const advs = await tx.salaryAdvance.findMany({ where: { id: { in: [...emiByAdvance.keys()] }, tenantId } });
+        if (paidByInstalment.size > 0) {
+          const insts = await tx.advanceInstalment.findMany({ where: { id: { in: [...paidByInstalment.keys()] }, tenantId } });
+          const paidAt = new Date();
+          for (const inst of insts) {
+            const paidAmount = round2(inst.paidAmount + (paidByInstalment.get(inst.id) ?? 0));
+            const done = paidAmount >= inst.emi - 0.01;
+            await tx.advanceInstalment.update({
+              where: { id: inst.id },
+              data: { paidAmount, status: done ? "PAID" : "SCHEDULED", paidAt: done ? paidAt : null },
+            });
+          }
+        }
+        if (recoveredByAdvance.size > 0) {
+          const advs = await tx.salaryAdvance.findMany({ where: { id: { in: [...recoveredByAdvance.keys()] }, tenantId } });
           for (const adv of advs) {
-            const newRecovered = adv.amountRecovered + (emiByAdvance.get(adv.id) ?? 0);
-            const totalTarget = adv.amountApproved ?? adv.amountRequested;
+            const newRecovered = round2(adv.amountRecovered + (recoveredByAdvance.get(adv.id) ?? 0));
+            const payable = round2((adv.amountApproved ?? adv.amountRequested) + (adv.totalInterest ?? 0));
             await tx.salaryAdvance.update({
               where: { id: adv.id },
               data: {
                 amountRecovered: newRecovered,
-                status: newRecovered >= totalTarget ? "RECOVERED" : "RECOVERING",
+                status: newRecovered >= payable - 0.01 ? "RECOVERED" : "RECOVERING",
               },
             });
           }

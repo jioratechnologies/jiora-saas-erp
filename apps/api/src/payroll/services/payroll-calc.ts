@@ -159,3 +159,50 @@ export function earningsFromSplit(earnedGross: number, split: SalarySplit): { co
 export const computePf = (basicPay: number): number => Math.round(basicPay * 0.12);
 export const computePt = (baseGross: number): number => (baseGross > 20000 ? 200 : 0);
 export const computeTds = (baseGross: number): number => (baseGross > 50000 ? Math.round(baseGross * 0.05) : 0);
+
+export type AdvanceInstalmentPlan = {
+  number: number;
+  dueYear: number;
+  dueMonth: number;
+  principal: number;
+  interest: number;
+  emi: number;
+  balanceAfter: number;
+};
+
+/**
+ * Repayment schedule for a salary advance. Interest is an annual percentage on the reducing
+ * balance (0 = interest-free, equal principal parts). The last instalment clears any rounding
+ * remainder so principal always sums exactly to the advance amount.
+ */
+export function buildAdvanceSchedule(
+  principal: number,
+  annualRatePct: number,
+  tenureMonths: number,
+  startYear: number,
+  startMonth: number,
+): AdvanceInstalmentPlan[] {
+  const n = Math.max(1, Math.floor(tenureMonths));
+  const r = annualRatePct > 0 ? annualRatePct / 12 / 100 : 0;
+  const emiFlat = r === 0 ? principal / n : (principal * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  const out: AdvanceInstalmentPlan[] = [];
+  let balance = round2(principal);
+  for (let i = 1; i <= n; i++) {
+    const interest = round2(balance * r);
+    const isLast = i === n;
+    const princ = isLast ? balance : Math.min(balance, round2(emiFlat - interest));
+    const balanceAfter = round2(balance - princ);
+    const idx = startMonth - 1 + (i - 1);
+    out.push({
+      number: i,
+      dueYear: startYear + Math.floor(idx / 12),
+      dueMonth: (idx % 12) + 1,
+      principal: princ,
+      interest,
+      emi: round2(princ + interest),
+      balanceAfter,
+    });
+    balance = balanceAfter;
+  }
+  return out;
+}

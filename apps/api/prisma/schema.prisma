@@ -49,6 +49,7 @@ model Tenant {
   payrollAdjustments        PayrollAdjustment[]
   expenseClaims             ExpenseClaim[]
   salaryAdvances            SalaryAdvance[]
+  advanceInstalments        AdvanceInstalment[]
   salaryRevisions           SalaryRevision[]
 
   @@map("tenants")
@@ -603,6 +604,8 @@ model SalaryAdvance {
   tenureMonths     Int                 @default(1) @map("tenure_months")
   monthlyDeduction Float               @default(0) @map("monthly_deduction")
   amountRecovered  Float               @default(0) @map("amount_recovered")
+  interestRate     Float               @default(0) @map("interest_rate") // annual %, reducing balance; 0 = interest-free
+  totalInterest    Float               @default(0) @map("total_interest")
   status           SalaryAdvanceStatus @default(PENDING)
   approverId       String?             @map("approver_id")
   decisionNotes    String?             @map("decision_notes")
@@ -614,10 +617,40 @@ model SalaryAdvance {
   tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   person   Person  @relation("AdvanceRequester", fields: [personId], references: [id], onDelete: Cascade)
   approver Person? @relation("AdvanceApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  instalments AdvanceInstalment[]
 
   @@index([tenantId, personId, status])
   @@index([tenantId, status, createdAt(sort: Desc)], map: "idx_salary_advances_tenant_id_status_created_at")
   @@map("salary_advances")
+}
+
+enum AdvanceInstalmentStatus {
+  SCHEDULED
+  PAID
+}
+
+/// One row of an advance's repayment schedule; paid when the payroll run that deducted it is disbursed.
+model AdvanceInstalment {
+  id           String                  @id @default(uuid())
+  tenantId     String                  @map("tenant_id")
+  advanceId    String                  @map("advance_id")
+  number       Int
+  dueYear      Int                     @map("due_year")
+  dueMonth     Int                     @map("due_month")
+  principal    Float
+  interest     Float                   @default(0)
+  emi          Float
+  balanceAfter Float                   @map("balance_after")
+  paidAmount   Float                   @default(0) @map("paid_amount")
+  status       AdvanceInstalmentStatus @default(SCHEDULED)
+  paidAt       DateTime?               @map("paid_at")
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  advance SalaryAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+
+  @@unique([advanceId, number])
+  @@index([tenantId, dueYear, dueMonth, status])
+  @@map("advance_instalments")
 }
 
 model SalaryRevision {

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ArrayMaxSize, IsArray, IsDateString, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Min, ValidateNested } from "class-validator";
+import { ArrayMaxSize, IsArray, IsDateString, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { ExpenseClaimCategory } from "@prisma/client";
 
@@ -90,6 +90,20 @@ export class DecideSalaryAdvanceDto {
   @IsNumber()
   @Min(0)
   amountApproved?: number;
+
+  @ApiPropertyOptional({ example: 0, description: "Annual interest % on the reducing balance (0 = interest-free)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(60)
+  interestRate?: number;
+
+  @ApiPropertyOptional({ example: 6, description: "Override the requested repayment tenure (1-60 months)" })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  tenureMonths?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -1,5 +1,6 @@
 import {
   attendanceCredit,
+  buildAdvanceSchedule,
   computeDayBreakdown,
   computeDayRatePay,
   computePf,
@@ -176,5 +177,21 @@ describe("statutory placeholders", () => {
   it("TDS threshold", () => {
     expect(computeTds(50000)).toBe(0);
     expect(computeTds(60000)).toBe(3000);
+  });
+});
+
+describe("buildAdvanceSchedule", () => {
+  it("interest-free splits principal evenly and clears to zero", () => {
+    const s = buildAdvanceSchedule(10000, 0, 3, 2026, 11);
+    expect(s.map((x) => x.emi)).toEqual([3333.33, 3333.33, 3333.34]);
+    expect(s[2].balanceAfter).toBe(0);
+    expect(s.map((x) => [x.dueYear, x.dueMonth])).toEqual([[2026, 11], [2026, 12], [2027, 1]]);
+  });
+  it("reducing balance charges interest on the outstanding amount", () => {
+    const s = buildAdvanceSchedule(12000, 12, 12, 2026, 1);
+    expect(s[0].interest).toBe(120);
+    expect(round2(s.reduce((a, x) => a + x.principal, 0))).toBe(12000);
+    expect(s[11].balanceAfter).toBe(0);
+    expect(s[0].emi).toBeCloseTo(1066.19, 1);
   });
 });

@@ -239,6 +239,14 @@ export class ClaimsController {
       : this.service.listAdvances(user.tenantId!, query);
   }
 
+  @Get("advances/:id/schedule")
+  @ApiOperation({ summary: "Repayment schedule and balance of a salary advance (owner or manager)" })
+  async advanceSchedule(@CurrentUser() user: AuthContext, @Param("id") id: string) {
+    const canManage = user.permissionKeys.has("payroll.advance.manage");
+    const personId = canManage ? undefined : await this.resolvePersonId(user);
+    return this.service.getAdvanceSchedule(user.tenantId!, id, { personId, canManage });
+  }
+
   @Patch("advances/:id/decide")
   @RequirePermission("payroll.advance.manage")
   @ApiOperation({ summary: "Approve or reject a salary advance request" })
