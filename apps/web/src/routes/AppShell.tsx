@@ -313,7 +313,7 @@ export function AppShell() {
           )}
 
           <p className="text-xs text-muted-foreground leading-relaxed">
-            You are signed in with Zitadel, but this email has not been provisioned as an active user in SaaS ERP. Please switch to an authorized workspace account or ask your administrator to invite you.
+            You are signed in, but this email has not been provisioned as an active user in SaaS ERP. Please switch to an authorized workspace account or ask your administrator to invite you.
           </p>
           <Button variant="outline" onClick={signOut} className="gap-2 rounded-xl w-full justify-center">
             <LogOut className="h-4 w-4" />

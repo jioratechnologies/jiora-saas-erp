@@ -313,7 +313,7 @@ export function PlatformTenantsPage() {
                               </form>
                               <p className="mt-2 text-xs text-muted-foreground">
                                 Invited users claim the "admin" (owner) role automatically the first time they log
-                                in with that exact email via Zitadel.
+                                in with that exact email.
                               </p>
                             </QueryState>
                           </TableCell>
