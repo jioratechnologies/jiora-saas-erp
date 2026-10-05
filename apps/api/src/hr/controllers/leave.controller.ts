@@ -139,6 +139,7 @@ export class LeaveController {
 
     let personId: string | undefined;
     let approverId: string | undefined;
+    let includeUnassigned = false;
 
     if (scope === "all") {
       if (!user.permissionKeys.has(HR_ADMIN_PERMISSION)) {
@@ -147,12 +148,13 @@ export class LeaveController {
     } else if (scope === "approvals") {
       if (!person) return [];
       approverId = person.id;
+      includeUnassigned = user.permissionKeys.has(HR_ADMIN_PERMISSION);
     } else {
       if (!person) return [];
       personId = person.id;
     }
 
-    return this.service.listRequests(user.tenantId!, { personId, approverId, status });
+    return this.service.listRequests(user.tenantId!, { personId, approverId, status, includeUnassigned });
   }
 
   @Patch("requests/:id/approve")

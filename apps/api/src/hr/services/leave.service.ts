@@ -274,13 +274,18 @@ export class LeaveService {
 
   async listRequests(
     tenantId: string,
-    query?: { personId?: string; approverId?: string; status?: LeaveStatus },
+    query?: { personId?: string; approverId?: string; status?: LeaveStatus; includeUnassigned?: boolean },
   ) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       const where: Prisma.LeaveRequestWhereInput = { tenantId };
 
       if (query?.personId) where.personId = query.personId;
-      if (query?.approverId) where.approverId = query.approverId;
+      if (query?.approverId) {
+        // Requests with no manager (e.g. from admins/HR) fall to HR admins, never to the requester.
+        where.OR = query.includeUnassigned
+          ? [{ approverId: query.approverId }, { approverId: null, personId: { not: query.approverId } }]
+          : [{ approverId: query.approverId }];
+      }
       if (query?.status) where.status = query.status;
 
       return tx.leaveRequest.findMany({

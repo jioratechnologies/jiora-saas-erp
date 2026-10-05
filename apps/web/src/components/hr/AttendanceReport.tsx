@@ -231,7 +231,7 @@ export function AttendanceReport() {
               onClear={() => setComboQuery("")}
             />
             {comboOpen && (
-              <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-lg py-1 text-xs">
+              <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-border bg-white dark:bg-zinc-900 text-foreground shadow-lg py-1 text-xs">
                 <li>
                   <button
                     type="button"

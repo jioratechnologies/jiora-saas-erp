@@ -346,7 +346,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground transition-colors duration-200 flex-col md:flex-row">
       {/* Mobile Top Header (visible on small/collapsed screens) */}
       <header className="md:hidden flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 z-40">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -411,7 +411,7 @@ export function AppShell() {
       {/* Sidebar Navigation */}
       <aside
         className={cn(
-          "h-screen shrink-0 flex flex-col border-r border-zinc-200/90 dark:border-zinc-800/90 bg-white dark:bg-zinc-950 transition-all duration-300 ease-in-out select-none",
+          "h-dvh shrink-0 flex flex-col border-r border-zinc-200/90 dark:border-zinc-800/90 bg-white dark:bg-zinc-950 transition-all duration-300 ease-in-out select-none",
           // Desktop styles
           "hidden md:sticky md:top-0 md:flex md:z-40",
           collapsed ? "md:w-[72px]" : "md:w-64",
