@@ -63,6 +63,7 @@ import {
   PHONE_REGEX,
 } from "../../lib/input-constraints";
 import { cn } from "../../lib/utils";
+import { PdfViewer } from "../../components/pdf-viewer";
 import { KYC_ID_TYPES, OTHER_ID_TYPE, kycHint } from "../../lib/kyc-types";
 import { exportToExcel } from "../../lib/excel-export";
 
@@ -1983,11 +1984,15 @@ export function PeoplePage() {
                   className="max-h-[62vh] max-w-full rounded-xl object-contain shadow-md"
                 />
               ) : (
-                <iframe
-                  src={previewDocUrl}
-                  title={previewDoc?.name}
-                  className="w-full h-[62vh] rounded-2xl bg-white border-0"
-                />
+                previewDoc?.mimeType === "application/pdf" || previewDoc?.name?.match(/\.pdf$/i) ? (
+                  <PdfViewer path={`/hr/persons/${selectedPersonId}/documents/${previewDoc.id}/content`} />
+                ) : (
+                  <iframe
+                    src={previewDocUrl}
+                    title={previewDoc?.name}
+                    className="w-full h-[62vh] rounded-2xl bg-white border-0"
+                  />
+                )
               )
             ) : (
               <div className="p-8 text-center space-y-2">

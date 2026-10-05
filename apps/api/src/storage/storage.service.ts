@@ -105,6 +105,13 @@ export class StorageService implements OnModuleInit {
     return getSignedUrl(this.client, command, { expiresIn });
   }
 
+  /** Reads an object fully into memory (used to proxy small documents to authenticated viewers). */
+  async getFileBuffer(key: string): Promise<Buffer> {
+    const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const bytes = await res.Body!.transformToByteArray();
+    return Buffer.from(bytes);
+  }
+
   async deleteFile(key: string): Promise<void> {
     try {
       await this.client.send(

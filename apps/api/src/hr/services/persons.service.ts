@@ -579,6 +579,16 @@ export class PersonsService {
     });
   }
 
+  /** Raw bytes of a document, for in-app preview where the browser can't render the stored file itself. */
+  async getDocumentContent(tenantId: string, personId: string, documentId: string) {
+    const doc = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
+      tx.personDocument.findFirst({ where: { id: documentId, personId, tenantId } }),
+    );
+    if (!doc) throw new NotFoundException("Document not found");
+    const buffer = await this.storage.getFileBuffer(doc.fileKey);
+    return { buffer, mimeType: doc.mimeType ?? "application/octet-stream" };
+  }
+
   async reviewDocument(
     tenantId: string,
     personId: string,

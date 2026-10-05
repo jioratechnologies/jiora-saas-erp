@@ -73,6 +73,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.json() as Promise<T>;
 }
 
+/** Authenticated binary download (e.g. a document's bytes). */
+async function getBlob(path: string): Promise<Blob> {
+  const res = await authedFetch(path, (accessToken) => ({
+    method: "GET",
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  }));
+  if (!res.ok) {
+    const rawText = await res.text().catch(() => "");
+    throw new ApiError(res.status, formatErrorMessage(rawText || res.statusText), rawText);
+  }
+  return res.blob();
+}
+
 /** Multipart/form-data upload wrapper: automatically attaches auth token & parses client-friendly error. */
 async function upload<T>(path: string, formData: FormData, method: "POST" | "PATCH" | "PUT" = "POST"): Promise<T> {
   const res = await authedFetch(path, (accessToken) => ({
@@ -94,6 +107,7 @@ async function upload<T>(path: string, formData: FormData, method: "POST" | "PAT
 
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
+  getBlob: (path: string) => getBlob(path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ForbiddenException,
   Controller,
@@ -8,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -172,6 +174,27 @@ export class PersonsController {
       }
     }
     return this.service.getDocumentUrl(user.tenantId!, id, documentId);
+  }
+
+  @Get(":id/documents/:documentId/content")
+  @RequirePermission("hr.person.read")
+  @ApiOperation({ summary: "Stream a PDF document's bytes for in-app preview" })
+  async getDocumentContent(
+    @CurrentUser() user: AuthContext,
+    @Param("id") id: string,
+    @Param("documentId") documentId: string,
+  ) {
+    if (!user.permissionKeys.has("hr.person.write")) {
+      const self = await this.personContext.get(user.tenantId!, user.userId);
+      if (!self || self.id !== id) {
+        throw new ForbiddenException("You do not have permission to perform this action.");
+      }
+    }
+    const { buffer, mimeType } = await this.service.getDocumentContent(user.tenantId!, id, documentId);
+    if (mimeType !== "application/pdf") {
+      throw new BadRequestException("Preview is only available for PDF documents.");
+    }
+    return new StreamableFile(buffer, { type: "application/pdf", disposition: "inline" });
   }
 
   @Patch(":id/documents/:documentId/review")
