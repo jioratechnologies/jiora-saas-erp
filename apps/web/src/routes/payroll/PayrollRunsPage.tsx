@@ -64,6 +64,7 @@ interface RunPayslip {
   grossPay: number;
   totalDeductions: number;
   netPay: number;
+  earnings?: { code: string; amount: number }[];
   paymentStatus: "PENDING" | "PAID";
   person: PersonName & { department?: { name: string } | null; designation?: { name: string } | null };
 }
@@ -101,6 +102,10 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+/** Bonus + allowance adjustments included in a payslip's earnings. */
+const additionsOf = (p: { earnings?: { code: string; amount: number }[] }) =>
+  (p.earnings ?? []).filter((e) => e.code === "BONUS" || e.code === "ALLOWANCE").reduce((sum, e) => sum + e.amount, 0);
 
 const inr = (n: number | undefined | null) => `₹${(n ?? 0).toLocaleString("en-IN")}`;
 
@@ -192,6 +197,7 @@ export function PayrollRunsPage() {
     enabled: canRead && !!run?.id,
   });
   const payslips = runQ.data?.payslips ?? [];
+  const totalAdditions = payslips.reduce((sum, p) => sum + additionsOf(p), 0);
 
   const refreshAll = () => queryClient.invalidateQueries({ queryKey: ["payroll"] });
 
@@ -231,6 +237,7 @@ export function PayrollRunsPage() {
           Department: p.person.department?.name ?? "",
           Designation: p.person.designation?.name ?? "",
           "Gross earned": p.grossPay,
+          "Additions (bonus & allowances)": additionsOf(p),
           Deductions: p.totalDeductions,
           "Net pay": p.netPay,
           "Payment status": p.paymentStatus,
@@ -471,10 +478,14 @@ export function PayrollRunsPage() {
           <p className="text-[11px] text-muted-foreground sm:hidden">{run ? STEPS[stepIdx]?.label : "Not calculated"}</p>
 
           {run && (
-            <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="rounded-xl border border-border p-2.5">
                 <span className="text-[10px] text-muted-foreground block">Gross</span>
                 <b>{inr(run.totalGross)}</b>
+              </div>
+              <div className="rounded-xl border border-border p-2.5">
+                <span className="text-[10px] text-muted-foreground block">Additions</span>
+                <b className="text-emerald-600 dark:text-emerald-400">+{inr(totalAdditions)}</b>
               </div>
               <div className="rounded-xl border border-border p-2.5">
                 <span className="text-[10px] text-muted-foreground block">Deductions</span>
@@ -488,11 +499,12 @@ export function PayrollRunsPage() {
           )}
 
           <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full text-xs min-w-[520px]">
+            <table className="w-full text-xs min-w-[600px]">
               <thead>
                 <tr className="border-b border-border text-muted-foreground bg-muted/40">
                   <th className="py-2.5 px-3 text-left font-semibold">Employee</th>
                   <th className="py-2.5 px-3 text-right font-semibold">Gross earned</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Additions</th>
                   <th className="py-2.5 px-3 text-right font-semibold">Deductions</th>
                   <th className="py-2.5 px-3 text-right font-semibold">Net</th>
                   <th className="py-2.5 px-3 text-center font-semibold">Payment</th>
@@ -502,7 +514,7 @@ export function PayrollRunsPage() {
                 {runsQ.isLoading || runQ.isLoading ? (
                   Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 5 }).map((__, j) => (
+                      {Array.from({ length: 6 }).map((__, j) => (
                         <td key={j} className="py-3 px-3">
                           <Skeleton className="h-4 w-full" />
                         </td>
@@ -511,7 +523,7 @@ export function PayrollRunsPage() {
                   ))
                 ) : payslips.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-8 text-center text-muted-foreground">
                       {runsQ.error || runQ.error ? formatErrorMessage(runsQ.error ?? runQ.error) : "No payslips yet."}
                     </td>
                   </tr>
@@ -523,6 +535,9 @@ export function PayrollRunsPage() {
                         <div className="text-[10px] text-muted-foreground">{p.person.department?.name ?? "-"}</div>
                       </td>
                       <td className="py-2.5 px-3 text-right">{inr(p.grossPay)}</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400">
+                        {additionsOf(p) > 0 ? `+${inr(additionsOf(p))}` : "-"}
+                      </td>
                       <td className="py-2.5 px-3 text-right text-destructive">-{inr(p.totalDeductions)}</td>
                       <td className="py-2.5 px-3 text-right font-bold">{inr(p.netPay)}</td>
                       <td className="py-2.5 px-3 text-center">
