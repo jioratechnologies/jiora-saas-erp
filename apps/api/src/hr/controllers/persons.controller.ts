@@ -26,7 +26,7 @@ import type { AuthContext } from "../../auth/auth-context";
 import { parsePaging } from "../../common/pagination";
 import { PersonsService } from "../services/persons.service";
 import { CreatePersonDto, ExitPersonDto, ReviewDocumentDto, UpdatePersonDto, UploadDocumentDto, BulkImportPersonsDto, UpdateExitChecklistDto } from "../dto/person.dto";
-import { DOCUMENT_UPLOAD } from "../../common/upload-rules";
+import { DOCUMENT_MIME, DOCUMENT_UPLOAD, INLINE_SAFE_MIME } from "../../common/upload-rules";
 
 const callerOf = (user: AuthContext) => ({
   userId: user.userId,
@@ -178,7 +178,7 @@ export class PersonsController {
 
   @Get(":id/documents/:documentId/content")
   @RequirePermission("hr.person.read")
-  @ApiOperation({ summary: "Stream a PDF document's bytes for in-app preview" })
+  @ApiOperation({ summary: "Stream a document's bytes for in-app preview" })
   async getDocumentContent(
     @CurrentUser() user: AuthContext,
     @Param("id") id: string,
@@ -191,10 +191,13 @@ export class PersonsController {
       }
     }
     const { buffer, mimeType } = await this.service.getDocumentContent(user.tenantId!, id, documentId);
-    if (mimeType !== "application/pdf") {
-      throw new BadRequestException("Preview is only available for PDF documents.");
+    if (!(DOCUMENT_MIME as readonly string[]).includes(mimeType)) {
+      throw new BadRequestException("Preview is not available for this file type.");
     }
-    return new StreamableFile(buffer, { type: "application/pdf", disposition: "inline" });
+    return new StreamableFile(buffer, {
+      type: mimeType,
+      disposition: INLINE_SAFE_MIME.includes(mimeType) ? "inline" : "attachment",
+    });
   }
 
   @Patch(":id/documents/:documentId/review")

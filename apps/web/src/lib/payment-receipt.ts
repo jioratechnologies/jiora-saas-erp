@@ -29,6 +29,8 @@ export interface AdvanceReceiptData {
   id: string;
   amountRequested: number;
   amountApproved?: number | null;
+  interestRate?: number;
+  totalInterest?: number;
   reason: string;
   tenureMonths: number;
   monthlyDeduction: number;
@@ -107,9 +109,11 @@ export function printAdvanceReceipt(a: AdvanceReceiptData, org: ReceiptOrg): voi
       ["Department", a.person.department?.name ?? ""],
       ["Reason", a.reason],
       ["Approved on", day(a.decidedAt ?? a.createdAt)],
-      ["Repayment", `${a.tenureMonths} month(s) at ${inr(a.monthlyDeduction)} per month`],
-      ["Recovered so far", inr(a.amountRecovered)],
-      ["Balance to recover", inr(Math.max(0, approved - a.amountRecovered))],
+      ["Interest", (a.interestRate ?? 0) > 0 ? `${a.interestRate}% per year (reducing balance), ${inr(a.totalInterest)} in total` : "Interest-free"],
+      ["Repayment", `${a.tenureMonths} month(s), first instalment ${inr(a.monthlyDeduction)}`],
+      ["Total to repay", inr(approved + (a.totalInterest ?? 0))],
+      ["Repaid so far", inr(a.amountRecovered)],
+      ["Balance to repay", inr(Math.max(0, approved + (a.totalInterest ?? 0) - a.amountRecovered))],
     ],
     "Advance amount",
     approved,

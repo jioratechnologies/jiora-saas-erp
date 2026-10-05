@@ -63,7 +63,7 @@ import {
   PHONE_REGEX,
 } from "../../lib/input-constraints";
 import { cn } from "../../lib/utils";
-import { PdfViewer } from "../../components/pdf-viewer";
+import { DocumentPreview } from "../../components/document-preview";
 import { KYC_ID_TYPES, OTHER_ID_TYPE, kycHint } from "../../lib/kyc-types";
 import { exportToExcel } from "../../lib/excel-export";
 
@@ -1976,24 +1976,13 @@ export function PeoplePage() {
                 </div>
               </div>
             ) : previewDocUrl ? (
-              previewDoc?.mimeType?.includes("image") ||
-              previewDoc?.name?.match(/\.(png|jpg|jpeg|webp)$/i) ? (
-                <img
-                  src={previewDocUrl}
-                  alt={previewDoc?.name}
-                  className="max-h-[62vh] max-w-full rounded-xl object-contain shadow-md"
-                />
-              ) : (
-                previewDoc?.mimeType === "application/pdf" || previewDoc?.name?.match(/\.pdf$/i) ? (
-                  <PdfViewer path={`/hr/persons/${selectedPersonId}/documents/${previewDoc.id}/content`} />
-                ) : (
-                  <iframe
-                    src={previewDocUrl}
-                    title={previewDoc?.name}
-                    className="w-full h-[62vh] rounded-2xl bg-white border-0"
-                  />
-                )
-              )
+              <DocumentPreview
+                path={`/hr/persons/${selectedPersonId}/documents/${previewDoc!.id}/content`}
+                imageUrl={previewDocUrl}
+                mimeType={previewDoc?.mimeType}
+                name={previewDoc?.name}
+                onDownload={() => previewDoc && handleDownloadDoc(previewDoc.id, previewDoc.name)}
+              />
             ) : (
               <div className="p-8 text-center space-y-2">
                 <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto" />

@@ -2,6 +2,7 @@ import { fullName } from "../../lib/input-constraints";
 import { memo, useCallback, useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { printClaimReceipt, printAdvanceReceipt } from "../../lib/payment-receipt";
+import { AdvanceLedgerModal } from "../../components/payroll/AdvanceLedger";
 import {
   CreditCard,
   Plus,
@@ -91,6 +92,8 @@ interface SalaryAdvance {
   status: "PENDING" | "APPROVED" | "REJECTED" | "RECOVERING" | "RECOVERED";
   decisionNotes?: string;
   decidedAt?: string | null;
+  interestRate?: number;
+  totalInterest?: number;
   createdAt: string;
   person: {
     id: string;
@@ -193,8 +196,9 @@ const ClaimRow = memo(function ClaimRow({ c, canAct, settling, onDecide, onSettl
   );
 });
 
-const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide, onReceipt }: {
+const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide, onReceipt, onLedger }: {
   adv: SalaryAdvance;
+  onLedger: (id: string) => void;
   onReceipt: (a: SalaryAdvance) => void;
   canAct: boolean;
   onDecide: (type: "claim" | "advance", id: string, status: "APPROVED" | "REJECTED") => void;
@@ -223,6 +227,16 @@ const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide, onReceipt }
                             <Badge variant={statusVariant} size="sm">{adv.status}</Badge>
                           </td>
                           <td className="py-2 px-3 text-center">
+                            {(adv.status === "APPROVED" || adv.status === "RECOVERING" || adv.status === "RECOVERED") && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onLedger(adv.id)}
+                                className="h-6.5 text-[11px] px-2 mr-1.5"
+                              >
+                                Ledger
+                              </Button>
+                            )}
                             {(adv.status === "APPROVED" || adv.status === "RECOVERING" || adv.status === "RECOVERED") && (
                               <Button
                                 variant="outline"
@@ -291,6 +305,9 @@ export function ClaimsPage() {
   const [decisionTargetId, setDecisionTargetId] = useState<string | null>(null);
   const [decisionStatus, setDecisionStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [decisionNotes, setDecisionNotes] = useState("");
+  const [decisionInterest, setDecisionInterest] = useState("0");
+  const [decisionTenure, setDecisionTenure] = useState("");
+  const [ledgerId, setLedgerId] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
 
@@ -378,12 +395,12 @@ export function ClaimsPage() {
   });
 
   const decideMutation = useMutation({
-    mutationFn: ({ type, id, status, decisionNotes }: any) => {
+    mutationFn: ({ type, id, status, decisionNotes, interestRate, tenureMonths }: any) => {
       const endpoint =
         type === "claim"
           ? `/payroll/claims/expenses/${id}/decide`
           : `/payroll/claims/advances/${id}/decide`;
-      return api.patch(endpoint, { status, decisionNotes });
+      return api.patch(endpoint, { status, decisionNotes, interestRate, tenureMonths });
     },
     onSuccess: () => {
       toast.success("Decision recorded successfully.");
@@ -410,6 +427,8 @@ export function ClaimsPage() {
     setDecisionTargetId(id);
     setDecisionStatus(defaultStatus);
     setDecisionNotes("");
+    setDecisionInterest("0");
+    setDecisionTenure("");
     setDecisionModalOpen(true);
   }, []);
   const settleClaim = settleMutation.mutate;
@@ -604,6 +623,14 @@ export function ClaimsPage() {
                           <span className="font-bold text-foreground text-sm">₹{c.amount.toLocaleString("en-IN")}</span>
                         </div>
 
+                        {c.status === "SETTLED" && (
+                          <div className="flex justify-end pt-1">
+                            <Button variant="outline" size="sm" onClick={() => handleClaimReceipt(c)} className="h-7 text-xs px-2.5 gap-1">
+                              <Receipt className="h-3 w-3" /> Receipt
+                            </Button>
+                          </div>
+                        )}
+
                         {filterMode === "team" && canManageClaims && (c.status === "SUBMITTED" || c.status === "APPROVED") && (
                           <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
                             {c.status === "SUBMITTED" && (
@@ -741,6 +768,17 @@ export function ClaimsPage() {
                           </div>
                         </div>
 
+                        {(adv.status === "APPROVED" || adv.status === "RECOVERING" || adv.status === "RECOVERED") && (
+                          <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
+                            <Button variant="outline" size="sm" onClick={() => setLedgerId(adv.id)} className="h-7 text-xs px-2.5">
+                              Ledger
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleAdvanceReceipt(adv)} className="h-7 text-xs px-2.5 gap-1">
+                              <Receipt className="h-3 w-3" /> Receipt
+                            </Button>
+                          </div>
+                        )}
+
                         {filterMode === "team" && canManageAdvances && adv.status === "PENDING" && (
                           <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-zinc-100 dark:border-zinc-800/80">
                             <Button
@@ -790,6 +828,7 @@ export function ClaimsPage() {
                         canAct={filterMode === "team" && canManageAdvances}
                         onDecide={handleOpenDecision}
                         onReceipt={handleAdvanceReceipt}
+                        onLedger={setLedgerId}
                       />
                     ))}
                   </tbody>
@@ -1005,6 +1044,36 @@ export function ClaimsPage() {
         description="Provide optional feedback notes regarding this decision."
       >
         <div className="space-y-4 pt-2">
+          {decisionType === "advance" && decisionStatus === "APPROVED" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Interest (% per year)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={60}
+                  step="0.1"
+                  value={decisionInterest}
+                  onChange={(e) => setDecisionInterest(e.target.value)}
+                  className="h-9 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">0 = interest-free. Charged on the reducing balance.</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Repayment months</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={decisionTenure}
+                  placeholder="As requested"
+                  onChange={(e) => setDecisionTenure(e.target.value)}
+                  className="h-9 text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">Leave empty to keep the requested months.</p>
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">Decision Notes / Remarks</label>
             <Input
@@ -1030,6 +1099,12 @@ export function ClaimsPage() {
                     id: decisionTargetId,
                     status: decisionStatus,
                     decisionNotes,
+                    ...(decisionType === "advance" && decisionStatus === "APPROVED"
+                      ? {
+                          interestRate: Number(decisionInterest) || 0,
+                          ...(decisionTenure ? { tenureMonths: Number(decisionTenure) } : {}),
+                        }
+                      : {}),
                   });
                 }
               }}
@@ -1039,6 +1114,7 @@ export function ClaimsPage() {
           </div>
         </div>
       </Modal>
+      <AdvanceLedgerModal advanceId={ledgerId} onClose={() => setLedgerId(null)} />
     </div>
   );
 }
