@@ -377,7 +377,10 @@ export function AppShell() {
               {orgName.slice(0, 1).toUpperCase()}
             </span>
           )}
-          <span className="text-base font-bold tracking-tight text-foreground truncate">{orgName}</span>
+          <div className="min-w-0 leading-tight">
+            <span className="block text-base font-bold tracking-tight text-foreground truncate">{orgName}</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-primary truncate">{userRoleLabel}</span>
+          </div>
         </div>
 
         {/* Mobile Header Right Actions: Search Button & User Avatar */}
@@ -813,6 +816,9 @@ export function AppShell() {
               <div className="hidden sm:block text-left">
                 <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors leading-tight truncate max-w-[120px]">
                   {displayName}
+                </p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-primary leading-tight truncate max-w-[140px]">
+                  {userRoleLabel}
                 </p>
               </div>
             </button>
