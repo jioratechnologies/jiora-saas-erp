@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { SearchInput } from "../components/ui/search-input";
 import { useState, useMemo } from "react";
+import { useMe } from "../auth/use-me";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase,
@@ -52,6 +53,12 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
   const confirm = useConfirm();
   const queryKey = ["admin", apiPath];
   const singular = title.replace(/s$/, "");
+  const { data: me } = useMe();
+  const resource = apiPath.split("/").pop()!.replace(/s$/, ""); // "/admin/designations" -> "designation"
+  const can = (k: string) => Boolean(me?.permissionKeys?.includes(k));
+  const canWrite = can(`admin.${resource}.write`);
+  const canDelete = can(`admin.${resource}.delete`);
+  const canManageAccess = can("admin.role.write");
 
   // Main data query
   const {
@@ -140,10 +147,12 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
         icon={Briefcase}
         stats={stats}
         action={
-          <Button onClick={() => setModalOpen(true)} className="h-9 gap-1.5 font-medium shadow-xs">
-            <Plus className="h-4 w-4" />
-            <span>Add New {singular}</span>
-          </Button>
+          canWrite ? (
+            <Button onClick={() => setModalOpen(true)} className="h-9 gap-1.5 font-medium shadow-xs">
+              <Plus className="h-4 w-4" />
+              <span>Add New {singular}</span>
+            </Button>
+          ) : undefined
         }
       />
 
@@ -189,6 +198,7 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
                         </h3>
                       </div>
 
+                      {canDelete && (
                       <button
                         type="button"
                         onClick={() => handleDelete(row)}
@@ -197,6 +207,7 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      )}
                     </div>
 
                   </div>
@@ -220,9 +231,11 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
                       <span>
                         {extraPerms} extra permission{extraPerms === 1 ? "" : "s"}
                       </span>
-                      <Link to="/admin/roles" className="font-medium text-primary hover:underline">
-                        Manage access
-                      </Link>
+                      {canManageAccess && (
+                        <Link to="/admin/roles" className="font-medium text-primary hover:underline">
+                          Manage access
+                        </Link>
+                      )}
                     </div>
                   )}
                 </div>
@@ -238,10 +251,12 @@ export function SimpleNamedListPage({ title, apiPath }: { title: string; apiPath
                 ? "No records match your query. Try a different search term."
                 : `Get started by creating your organisation's first ${singular.toLowerCase()}.`}
             </p>
-            <Button onClick={() => setModalOpen(true)} size="sm" className="h-8.5 gap-1.5 font-medium shadow-xs">
-              <Plus className="h-4 w-4" />
-              <span>Add {singular}</span>
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setModalOpen(true)} size="sm" className="h-8.5 gap-1.5 font-medium shadow-xs">
+                <Plus className="h-4 w-4" />
+                <span>Add {singular}</span>
+              </Button>
+            )}
           </Card>
         )}
       </QueryState>

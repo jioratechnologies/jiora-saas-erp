@@ -275,7 +275,8 @@ const AdvanceRow = memo(function AdvanceRow({ adv, canAct, onDecide, onReceipt, 
 export function ClaimsPage() {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
-  const canReadClaims = Boolean(me?.permissionKeys?.includes("payroll.claim.read") || me?.permissionKeys?.includes("payroll.claim.manage"));
+  // The review queue is for managers only; "payroll.claim.read" is granted to everyone for their own claims.
+  const canReadClaims = Boolean(me?.permissionKeys?.includes("payroll.claim.manage"));
   const canReadAdvances = Boolean(me?.permissionKeys?.includes("payroll.advance.manage"));
   const canManageClaims = Boolean(me?.permissionKeys?.includes("payroll.claim.manage"));
   const canManageAdvances = Boolean(me?.permissionKeys?.includes("payroll.advance.manage"));

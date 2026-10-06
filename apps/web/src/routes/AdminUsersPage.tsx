@@ -1,5 +1,6 @@
 import { SearchInput } from "../components/ui/search-input";
 import { useState, useMemo } from "react";
+import { useMe } from "../auth/use-me";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Users,
@@ -115,6 +116,9 @@ export function AdminUsersPage() {
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState("");
+  const { data: me } = useMe();
+  const canInvite = Boolean(me?.permissionKeys?.includes("admin.user.invite"));
+  const canDeactivate = Boolean(me?.permissionKeys?.includes("admin.user.deactivate"));
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "pending" | "deactivated">("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
@@ -250,10 +254,12 @@ export function AdminUsersPage() {
         icon={Users}
         stats={stats}
         action={
-          <Button onClick={handleOpenInvite} className="h-9 gap-1.5 font-medium shadow-xs">
-            <UserPlus className="h-4 w-4" />
-            <span>Invite</span>
-          </Button>
+          canInvite ? (
+            <Button onClick={handleOpenInvite} className="h-9 gap-1.5 font-medium shadow-xs">
+              <UserPlus className="h-4 w-4" />
+              <span>Invite</span>
+            </Button>
+          ) : undefined
         }
       />
 
@@ -431,7 +437,8 @@ export function AdminUsersPage() {
                         {/* Action Cell */}
                         <TableCell className="py-3 px-4 text-right">
                           {!isDeactivated ? (
-                            <button
+                            {canDeactivate && (
+<button
                               type="button"
                               onClick={async () => {
                                 const ok = await confirm({
@@ -446,6 +453,7 @@ export function AdminUsersPage() {
                             >
                               <UserMinus className="h-4 w-4" />
                             </button>
+)}
                           ) : (
                             <button
                               type="button"
@@ -533,7 +541,8 @@ export function AdminUsersPage() {
                       </div>
 
                       {!isDeactivated && (
-                        <button
+                        {canDeactivate && (
+<button
                           type="button"
                           onClick={async () => {
                             const ok = await confirm({
@@ -547,6 +556,7 @@ export function AdminUsersPage() {
                         >
                           Deactivate
                         </button>
+)}
                       )}
                       {isDeactivated && (
                         <button

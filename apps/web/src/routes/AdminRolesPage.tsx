@@ -1,5 +1,6 @@
 import { SearchInput } from "../components/ui/search-input";
 import { useState, useMemo } from "react";
+import { useMe } from "../auth/use-me";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -183,6 +184,8 @@ export function AdminRolesPage() {
 
   // Picker modal: editingRoleId null = "Grant Access" (designation chosen from dropdown)
   const [builderOpen, setBuilderOpen] = useState(false);
+  const { data: me } = useMe();
+  const canWriteRoles = Boolean(me?.permissionKeys?.includes("admin.role.write"));
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [builderRoleId, setBuilderRoleId] = useState("");
   const [builderSelectedKeys, setBuilderSelectedKeys] = useState<Set<string>>(new Set());
@@ -320,10 +323,12 @@ export function AdminRolesPage() {
         icon={ShieldCheck}
         stats={headerStats}
         action={
-          <Button onClick={handleOpenGrant} disabled={roles.length === 0} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            Grant Access
-          </Button>
+          canWriteRoles ? (
+            <Button onClick={handleOpenGrant} disabled={roles.length === 0} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Grant Access
+            </Button>
+          ) : undefined
         }
       />
 
@@ -496,7 +501,7 @@ export function AdminRolesPage() {
                               </div>
                             </div>
 
-                            {!activeRole.isProtected && activeRole.designationId && (
+                            {canWriteRoles && !activeRole.isProtected && activeRole.designationId && (
                               <Button
                                 variant="outline"
                                 size="sm"
