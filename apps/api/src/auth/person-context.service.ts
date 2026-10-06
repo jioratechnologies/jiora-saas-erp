@@ -28,12 +28,13 @@ export class PersonContextService {
     const key = `pctx:${tenantId}:${userId}`;
     const { value, gen } = await this.authzCache.read<{ p: PersonContext | null }>(key);
     let person: PersonContext | null;
-    if (value) {
+    if (value?.p) {
       person = value.p;
     } else {
       person = await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
         tx.person.findFirst({ where: { userId, tenantId }, select: { id: true, status: true } }),
       );
+      if (!person) person = await this.provision(tenantId, userId);
       await this.authzCache.write(key, gen, { p: person }, PERSON_CTX_TTL_S);
     }
     if (person?.status === PersonStatus.EXITED) {
@@ -45,5 +46,57 @@ export class PersonContextService {
   /** Own person id or null. */
   async getPersonId(tenantId: string, userId: string): Promise<string | null> {
     return (await this.get(tenantId, userId))?.id ?? null;
+  }
+
+  /**
+   * A login with no HR profile can't check in, apply for leave, claim, etc. Link an existing
+   * unlinked profile with the same email, or create a basic employee profile from the user's
+   * own details so every active member can use self-service from their first sign-in.
+   */
+  private async provision(tenantId: string, userId: string): Promise<PersonContext | null> {
+    try {
+      return await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
+        const user = await tx.user.findFirst({ where: { id: userId, tenantId, deactivatedAt: null } });
+        if (!user) return null;
+
+        const byEmail = await tx.person.findFirst({
+          where: { tenantId, userId: null, email: { equals: user.email, mode: "insensitive" } },
+          select: { id: true },
+        });
+        if (byEmail) {
+          return tx.person.update({ where: { id: byEmail.id }, data: { userId }, select: { id: true, status: true } });
+        }
+
+        const parts = user.displayName.trim().split(/\s+/).filter(Boolean);
+        const firstName = parts[0] || user.email.split("@")[0];
+        const lastName = parts.length > 1 ? parts[parts.length - 1] : "-";
+        const middleName = parts.length > 2 ? parts.slice(1, -1).join(" ") : null;
+        return tx.person.create({
+          data: {
+            tenantId,
+            userId,
+            personType: "EMPLOYEE",
+            status: "ACTIVE",
+            firstName,
+            middleName,
+            lastName,
+            email: user.email,
+            phone: user.phone,
+            avatarUrl: user.avatarUrl,
+            departmentId: user.departmentId,
+            designationId: user.designationId,
+          },
+          select: { id: true, status: true },
+        });
+      });
+    } catch (err: any) {
+      // Lost a race with a concurrent request: the profile now exists.
+      if (err?.code === "P2002") {
+        return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, (tx) =>
+          tx.person.findFirst({ where: { userId, tenantId }, select: { id: true, status: true } }),
+        );
+      }
+      throw err;
+    }
   }
 }
