@@ -437,23 +437,23 @@ export function AdminUsersPage() {
                         {/* Action Cell */}
                         <TableCell className="py-3 px-4 text-right">
                           {!isDeactivated ? (
-                            {canDeactivate && (
-<button
-                              type="button"
-                              onClick={async () => {
-                                const ok = await confirm({
-                                  title: `Deactivate ${u.displayName}?`,
-                                  description: `${u.email} will immediately lose access to this organization. You can contact an administrator to reverse this later.`,
-                                  confirmLabel: "Deactivate User",
-                                });
-                                if (ok) deactivateMutation.mutate(u.id);
-                              }}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
-                              title="Deactivate User"
-                            >
-                              <UserMinus className="h-4 w-4" />
-                            </button>
-)}
+                            canDeactivate ? (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: `Deactivate ${u.displayName}?`,
+                                    description: `${u.email} will immediately lose access to this organization. You can contact an administrator to reverse this later.`,
+                                    confirmLabel: "Deactivate User",
+                                  });
+                                  if (ok) deactivateMutation.mutate(u.id);
+                                }}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
+                                title="Deactivate User"
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </button>
+                            ) : null
                           ) : (
                             <button
                               type="button"
@@ -540,9 +540,8 @@ export function AdminUsersPage() {
                         )}
                       </div>
 
-                      {!isDeactivated && (
-                        {canDeactivate && (
-<button
+                      {!isDeactivated && canDeactivate && (
+                        <button
                           type="button"
                           onClick={async () => {
                             const ok = await confirm({
@@ -556,7 +555,6 @@ export function AdminUsersPage() {
                         >
                           Deactivate
                         </button>
-)}
                       )}
                       {isDeactivated && (
                         <button

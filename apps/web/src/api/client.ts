@@ -77,7 +77,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 async function getBlob(path: string): Promise<Blob> {
   const res = await authedFetch(path, (accessToken) => ({
     method: "GET",
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    headers: accessToken ? ({ Authorization: `Bearer ${accessToken}` } as HeadersInit) : {},
   }));
   if (!res.ok) {
     const rawText = await res.text().catch(() => "");
