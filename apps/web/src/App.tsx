@@ -22,6 +22,7 @@ import { LeaveApprovalsPage } from "./routes/hr/LeaveApprovalsPage";
 import { LeavePoliciesPage } from "./routes/hr/LeavePoliciesPage";
 import { CompensationPage } from "./routes/payroll/CompensationPage";
 import { PayrollRunsPage } from "./routes/payroll/PayrollRunsPage";
+import { LoginRoute } from "./routes/LoginRoute";
 import { ClaimsPage } from "./routes/payroll/ClaimsPage";
 import { MyPayslipsPage } from "./routes/payroll/MyPayslipsPage";
 import { AdminDepartmentsPage } from "./routes/AdminDepartmentsPage";
@@ -58,6 +59,7 @@ export function App() {
             <BrowserRouter>
             <Routes>
               <Route path="/callback" element={<CallbackPage />} />
+              <Route path="/login" element={<LoginRoute />} />
               <Route
                 element={
                   <RequireAuth>

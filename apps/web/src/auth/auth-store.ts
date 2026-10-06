@@ -7,7 +7,7 @@ interface AuthState {
   isLoading: boolean;
   /** True once the session could not be renewed; UI shows "Your session has expired. Please sign in again." */
   sessionExpired: boolean;
-  signIn: (prompt?: "select_account" | "login") => Promise<void>;
+  signIn: (prompt?: "select_account" | "login", loginHint?: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Called once at app boot and after the /callback redirect to load any existing session. */
   loadUser: () => Promise<void>;
@@ -17,9 +17,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: true,
   sessionExpired: false,
-  signIn: async (prompt = "select_account") => {
+  signIn: async (prompt = "select_account", loginHint) => {
     await userManager.signinRedirect({
+      // login_hint pre-fills the invited email so the person signs in with the address that was invited.
       extraQueryParams: { prompt },
+      ...(loginHint ? { login_hint: loginHint } : {}),
     });
   },
   signOut: async () => {

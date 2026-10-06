@@ -18,6 +18,8 @@ export function LoginPage() {
   const signIn = useAuthStore((s) => s.signIn);
   const [mounted, setMounted] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  // Invitation emails link to /login?email=<invited address>.
+  const invitedEmail = new URLSearchParams(window.location.search).get("email")?.trim() || "";
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 40);
@@ -27,7 +29,7 @@ export function LoginPage() {
   const handleSignIn = async (prompt: "select_account" | "login" = "select_account") => {
     try {
       setIsSigningIn(true);
-      await signIn(prompt);
+      await signIn(prompt, invitedEmail || undefined);
     } catch {
       setIsSigningIn(false);
     }
@@ -304,6 +306,12 @@ export function LoginPage() {
                   Sign in to authenticate with your enterprise organization account.
                 </p>
               </div>
+
+              {invitedEmail && (
+                <div className="mb-4 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3.5 py-2.5 text-xs text-blue-100">
+                  You were invited as <b className="text-white">{invitedEmail}</b>. Sign in with this exact email address to join your workspace.
+                </div>
+              )}
 
               {/* Enterprise Auth Options */}
               <div className="space-y-3.5">
