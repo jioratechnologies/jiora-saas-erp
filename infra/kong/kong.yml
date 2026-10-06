@@ -3,7 +3,7 @@
 # Kong does NOT validate JWTs: each service verifies the Zitadel token itself.
 # No auth plugin is configured, so the Authorization header is forwarded as-is.
 #
-# TODAY all three services point at the single backend (backend:3000).
+# TODAY all three services point at the single backend (api:3000).
 # FUTURE per-service split is a config-only change: edit the `target:` of each
 # upstream below (see the FUTURE comments):
 #   api-identity -> api-identity:3000
@@ -35,7 +35,7 @@ upstreams:
         healthy: {successes: 5, http_statuses: [200, 201, 204, 301, 302, 304]}
         unhealthy: {http_failures: 5, tcp_failures: 3, timeouts: 3, http_statuses: [502, 503, 504]}
     targets:
-      - target: backend:3000   # FUTURE: api-identity:3000
+      - target: api:3000   # FUTURE: api-identity:3000
   - name: api-hr
     algorithm: round-robin
     healthchecks:
@@ -50,7 +50,7 @@ upstreams:
         healthy: {successes: 5, http_statuses: [200, 201, 204, 301, 302, 304]}
         unhealthy: {http_failures: 5, tcp_failures: 3, timeouts: 3, http_statuses: [502, 503, 504]}
     targets:
-      - target: backend:3000   # FUTURE: api-hr:3000
+      - target: api:3000   # FUTURE: api-hr:3000
   - name: api-payroll
     algorithm: round-robin
     healthchecks:
@@ -65,7 +65,7 @@ upstreams:
         healthy: {successes: 5, http_statuses: [200, 201, 204, 301, 302, 304]}
         unhealthy: {http_failures: 5, tcp_failures: 3, timeouts: 3, http_statuses: [502, 503, 504]}
     targets:
-      - target: backend:3000   # FUTURE: api-payroll:3000
+      - target: api:3000   # FUTURE: api-payroll:3000
 
 services:
   - name: api-identity

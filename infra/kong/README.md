@@ -11,9 +11,9 @@ Kong does not check JWTs. Each service verifies the Zitadel token itself, and Ko
 
 | Kong service | Paths | Today points at |
 |---|---|---|
-| api-identity | /auth, /admin, /platform, /public, /health | backend:3000 |
-| api-hr | /hr | backend:3000 |
-| api-payroll | /payroll | backend:3000 |
+| api-identity | /auth, /admin, /platform, /public, /health | api:3000 |
+| api-hr | /hr | api:3000 |
+| api-payroll | /payroll | api:3000 |
 
 Paths are not stripped, so the backend keeps its prefixes.
 
@@ -27,7 +27,7 @@ Paths are not stripped, so the backend keeps its prefixes.
 
 1. Add an `upstreams:` entry with its own `targets:` (for example `api-hr:3000`).
 2. Add a `services:` entry whose `host` equals the upstream name, with its routes.
-3. Split an existing one: only change `target:` of that upstream from `backend:3000` to the new host.
+3. Split an existing one: only change `target:` of that upstream from `api:3000` to the new host.
 4. Add the new container to the compose files on the same network, validate, restart Kong.
 
 ## Plugins

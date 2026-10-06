@@ -181,7 +181,7 @@ services:
     # ever talks to web's own domain though — nothing here changes that.
     networks:
       saas-erp-internal:
-        # Kong's upstreams are written as backend:3000 (same name as the dev stack).
+        # Kong upstreams target api:3000; the extra "backend" alias is kept for older configs.
         aliases:
           - backend
       dokploy-network: {}
