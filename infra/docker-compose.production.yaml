@@ -146,6 +146,7 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     depends_on:
+      - pgbouncer
       - redis
     environment:
       # Runtime traffic: restricted app_runtime role via pgbouncer so RLS applies.
