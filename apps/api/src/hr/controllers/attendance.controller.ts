@@ -46,6 +46,13 @@ export class AttendanceController {
     return this.service.getVisiblePersonIds(user.tenantId!, personId ?? undefined);
   }
 
+  @Get("cloud-time")
+  @RequirePermission("hr.attendance.read")
+  @ApiOperation({ summary: "Get verified cloud time (IST / configured timezone) from open-source time API" })
+  async getCloudTime(@CurrentUser() user: AuthContext, @Query("timezone") timezone?: string) {
+    return this.service.getCloudTime(user.tenantId!, timezone);
+  }
+
   @Post("check-in")
   @RequirePermission("hr.attendance.checkin")
   @ApiOperation({ summary: "Submit daily check-in (Office, Remote, or Field)" })
@@ -80,8 +87,11 @@ export class AttendanceController {
     @Query("pageSize") pageSize?: string,
     @Query("month") month?: string,
   ) {
-    const personId = await this.resolvePersonId(user);
     const paging = parsePaging(page, pageSize);
+    const personId = user.tenantId ? await this.personContext.getPersonId(user.tenantId, user.userId) : null;
+    if (!personId) {
+      return paging ? { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 } : [];
+    }
     if (paging) return this.service.listMine(user.tenantId!, personId, month, paging);
     return this.service.list(user.tenantId!, { personId });
   }

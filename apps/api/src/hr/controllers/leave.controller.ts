@@ -146,9 +146,17 @@ export class LeaveController {
         throw new ForbiddenException("You do not have permission to perform this action.");
       }
     } else if (scope === "approvals") {
-      if (!person) return [];
-      approverId = person.id;
-      includeUnassigned = user.permissionKeys.has(HR_ADMIN_PERMISSION);
+      if (!person) {
+        if (user.permissionKeys.has(HR_ADMIN_PERMISSION)) {
+          approverId = undefined;
+          includeUnassigned = true;
+        } else {
+          return [];
+        }
+      } else {
+        approverId = person.id;
+        includeUnassigned = user.permissionKeys.has(HR_ADMIN_PERMISSION);
+      }
     } else {
       if (!person) return [];
       personId = person.id;

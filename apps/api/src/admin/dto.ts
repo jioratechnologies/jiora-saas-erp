@@ -102,4 +102,22 @@ export class UpdateWorkScheduleDto {
   @ValidateNested()
   @Type(() => SalarySplitDto)
   salarySplit!: SalarySplitDto;
+
+  @IsOptional()
+  @IsString()
+  timezone?: string;
+
+  @IsOptional()
+  @IsString()
+  officeInTime?: string;
+
+  @IsOptional()
+  @IsString()
+  officeOutTime?: string;
+
+  @IsOptional()
+  @IsNumber({}, { message: "Maximum work hours must be between 1 and 24." })
+  @Min(1)
+  @Max(24)
+  maxWorkHours?: number;
 }

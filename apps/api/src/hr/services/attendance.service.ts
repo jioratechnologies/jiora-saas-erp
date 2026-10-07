@@ -32,8 +32,8 @@ export class AttendanceService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Today's date key in the business timezone (ATTENDANCE_TIMEZONE, default Asia/Kolkata), as UTC midnight. */
-  private getTodayDate(): Date {
-    const tz = process.env.ATTENDANCE_TIMEZONE || "Asia/Kolkata";
+  private getTodayDate(timezone?: string): Date {
+    const tz = timezone || process.env.ATTENDANCE_TIMEZONE || "Asia/Kolkata";
     let ymd: string;
     try {
       ymd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -41,6 +41,51 @@ export class AttendanceService {
       ymd = new Date().toISOString().slice(0, 10);
     }
     return new Date(`${ymd}T00:00:00.000Z`);
+  }
+
+  async getCloudTime(tenantId?: string, requestedTz?: string) {
+    let tz = requestedTz;
+    if (!tz && tenantId) {
+      const tenant = await this.prisma.runInTenantContext(
+        { tenantId, isPlatformContext: false },
+        (tx) =>
+          tx.tenant.findUnique({
+            where: { id: tenantId },
+            select: { timezone: true, officeInTime: true, officeOutTime: true, maxWorkHours: true },
+          }),
+      );
+      tz = tenant?.timezone;
+    }
+    tz = tz || "Asia/Kolkata";
+
+    let source = "open-source-api";
+    let now = new Date();
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(`https://timeapi.io/api/v1/time/current/zone?timeZone=${encodeURIComponent(tz)}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        if (data?.date_time) {
+          now = new Date(data.date_time);
+        }
+      } else {
+        source = "server-ntp";
+      }
+    } catch {
+      source = "server-ntp";
+    }
+
+    return {
+      iso: now.toISOString(),
+      epochMs: now.getTime(),
+      timezone: tz,
+      source,
+    };
   }
 
   async checkIn(tenantId: string, personId: string, dto: CheckInDto) {

@@ -1,5 +1,5 @@
 import { fullName } from "../../lib/input-constraints";
-import { memo, useCallback, useState, useRef } from "react";
+import { memo, useCallback, useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { printClaimReceipt, printAdvanceReceipt } from "../../lib/payment-receipt";
 import { AdvanceLedgerModal } from "../../components/payroll/AdvanceLedger";
@@ -281,8 +281,15 @@ export function ClaimsPage() {
   const canManageClaims = Boolean(me?.permissionKeys?.includes("payroll.claim.manage"));
   const canManageAdvances = Boolean(me?.permissionKeys?.includes("payroll.advance.manage"));
 
+  const isPlatformAdmin = Boolean(me?.isPlatformContext);
   const [activeSection, setActiveSection] = useState<"expenses" | "advances">("expenses");
-  const [filterMode, setFilterMode] = useState<"my" | "team">(canReadClaims || canReadAdvances ? "team" : "my");
+  const [filterMode, setFilterMode] = useState<"my" | "team">(isPlatformAdmin || canReadClaims || canReadAdvances ? "team" : "my");
+
+  useEffect(() => {
+    if (isPlatformAdmin && filterMode === "my") {
+      setFilterMode("team");
+    }
+  }, [isPlatformAdmin, filterMode]);
 
   // Claim Submit Modal
   const [claimModalOpen, setClaimModalOpen] = useState(false);
@@ -488,16 +495,18 @@ export function ClaimsPage() {
                 <span className="hidden sm:inline">Export Excel</span>
               </Button>
             )}
-            {activeSection === "expenses" ? (
-              <Button size="sm" onClick={() => setClaimModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
-                <Plus className="h-3.5 w-3.5" />
-                <span>Submit Claim</span>
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => setAdvanceModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
-                <Plus className="h-3.5 w-3.5" />
-                <span>Request Advance</span>
-              </Button>
+            {!isPlatformAdmin && (
+              activeSection === "expenses" ? (
+                <Button size="sm" onClick={() => setClaimModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Submit Claim</span>
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => setAdvanceModalOpen(true)} className="gap-1.5 text-xs rounded-xl shadow-sm h-8 px-2.5 sm:px-3">
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Request Advance</span>
+                </Button>
+              )
             )}
           </div>
         }
@@ -546,8 +555,8 @@ export function ClaimsPage() {
           </button>
         </div>
 
-        {/* Filter scope: My vs Team */}
-        {(canReadClaims || canReadAdvances) && (
+        {/* Filter scope: My vs Team (Hidden for Platform Admin who reviews team queue) */}
+        {!isPlatformAdmin && (canReadClaims || canReadAdvances) && (
           <div className="flex items-center bg-white/70 dark:bg-zinc-950/70 p-0.5 rounded-lg text-xs border border-zinc-200/60 dark:border-zinc-800/60 shrink-0 self-end sm:self-auto">
             <button
               onClick={() => setFilterMode("my")}

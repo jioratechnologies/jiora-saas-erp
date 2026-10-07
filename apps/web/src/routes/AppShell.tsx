@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Tenant } from "@saas-erp/shared-types";
 import {
   Building2,
@@ -34,8 +34,14 @@ import {
   RefreshCw,
   UserX,
   Loader2,
+  Crown,
+  Check,
+  ChevronsUpDown,
+  Globe,
+  Plus,
 } from "lucide-react";
 import { api } from "../api/client";
+import { toast } from "../components/ui/toast";
 import { useAuthStore } from "../auth/auth-store";
 import { useMe } from "../auth/use-me";
 import { Avatar } from "../components/ui/avatar";
@@ -87,9 +93,9 @@ const navItems: NavItem[] = [
   { to: "/payroll/my-payslips", label: "My Payslips", icon: Receipt, section: "payroll" },
 
   // Admin Module
-  { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.read", section: "admin" },
-  { to: "/admin/departments", label: "Departments", icon: Network, permission: "admin.department.read", section: "admin" },
-  { to: "/admin/designations", label: "Designations", icon: IdCard, permission: "admin.designation.read", section: "admin" },
+  { to: "/admin/org", label: "Organisation", icon: Building2, permission: "admin.org.write", section: "admin" },
+  { to: "/admin/departments", label: "Departments", icon: Network, permission: "admin.department.write", section: "admin" },
+  { to: "/admin/designations", label: "Designations", icon: IdCard, permission: "admin.designation.write", section: "admin" },
   { to: "/admin/roles", label: "Access Control", icon: ShieldCheck, permission: "admin.role.read", section: "admin" },
   { to: "/admin/users", label: "Users", icon: UserCheck, permission: "admin.user.read", section: "admin" },
 ];
@@ -101,6 +107,81 @@ function SectionLabel({ children }: { children: ReactNode }) {
       <span className="h-3 w-0.5 rounded-full bg-primary/70" />
       {children}
     </p>
+  );
+}
+
+function CollapsibleSection({
+  label,
+  icon: Icon,
+  isOpen,
+  onToggle,
+  collapsed,
+  count,
+  hasActiveRoute,
+  children,
+}: {
+  label: string;
+  icon?: any;
+  isOpen: boolean;
+  onToggle: () => void;
+  collapsed: boolean;
+  count?: number;
+  hasActiveRoute?: boolean;
+  children: ReactNode;
+}) {
+  if (collapsed) {
+    return <div className="space-y-1">{children}</div>;
+  }
+
+  return (
+    <div className="space-y-1 select-none">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className={cn(
+          "group flex w-full items-center justify-between px-2.5 py-1.5 rounded-xl text-[11px] font-semibold uppercase tracking-[0.14em] transition-all duration-150 cursor-pointer",
+          isOpen
+            ? "text-primary hover:bg-primary/5"
+            : hasActiveRoute
+              ? "text-primary bg-primary/10 hover:bg-primary/15"
+              : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60",
+        )}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className={cn(
+              "h-3 w-0.5 rounded-full transition-colors",
+              isOpen || hasActiveRoute
+                ? "bg-primary"
+                : "bg-zinc-300 dark:bg-zinc-700 group-hover:bg-zinc-400",
+            )}
+          />
+          {Icon && <Icon className="h-3.5 w-3.5 shrink-0 opacity-75" />}
+          <span className="truncate">{label}</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!isOpen && count !== undefined && count > 0 && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-zinc-200/70 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 normal-case tracking-normal">
+              {count}
+            </span>
+          )}
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 transition-transform duration-200",
+              isOpen ? "rotate-0 text-primary" : "-rotate-90 text-zinc-400 dark:text-zinc-500",
+            )}
+          />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="space-y-1 transition-all duration-200 ease-in-out">
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -221,16 +302,54 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
-  // Tenant branding — platform staff have no tenant (isPlatformContext),
-  // so this never fires for them; GET /admin/org has nothing meaningful to
-  // return without a tenantId.
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Tenant branding — active whenever a tenant is scoped (normal member or Super Admin in tenant view)
   const { data: org } = useQuery({
-    queryKey: ["org", "theme"],
+    queryKey: ["org", "theme", me?.tenantId],
     queryFn: () => api.get<Tenant>("/admin/org"),
-    enabled: Boolean(user) && me?.isPlatformContext === false,
+    enabled: Boolean(user) && Boolean(me?.tenantId),
     staleTime: 60 * 1000,
   });
+
+  const availableTenants = me?.availableTenants || [];
+  const activeTenantId = me?.tenantId || (typeof window !== "undefined" ? localStorage.getItem("saas_erp_active_tenant_id") : null);
+  const activeTenant = availableTenants.find((t) => t.id === activeTenantId);
+
+  // Automatically default Super Admin to the first active tenant on initial load
+  useEffect(() => {
+    if (typeof window !== "undefined" && me?.isPlatformContext && availableTenants.length > 0) {
+      const stored = localStorage.getItem("saas_erp_active_tenant_id");
+      if (!stored) {
+        localStorage.setItem("saas_erp_active_tenant_id", availableTenants[0].id);
+        queryClient.invalidateQueries();
+      }
+    }
+  }, [me?.isPlatformContext, availableTenants.length]);
+
+  const handleSelectTenant = (tenantId: string | null) => {
+    setSwitcherOpen(false);
+    if (tenantId) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("saas_erp_active_tenant_id", tenantId);
+      }
+      queryClient.invalidateQueries();
+      const targetName = availableTenants.find((t) => t.id === tenantId)?.name || "organisation";
+      toast.success("Switched Tenant Scope", `Now managing ${targetName}`);
+      if (location.pathname.startsWith("/platform")) {
+        navigate("/admin/org");
+      }
+    } else {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("saas_erp_active_tenant_id");
+      }
+      queryClient.invalidateQueries();
+      navigate("/platform/tenants");
+    }
+  };
 
   // User profile
   const { data: profileData } = useQuery({
@@ -263,8 +382,8 @@ export function AppShell() {
       : "Tenant Member";
 
   const avatarUrl = profileData?.user?.avatarUrl || profileData?.person?.avatarUrl;
-  const orgName = org?.name || "saas-erp";
-  const orgLogo = org?.logoUrl || undefined;
+  const orgName = org?.name || activeTenant?.name || "saas-erp";
+  const orgLogo = org?.logoUrl || activeTenant?.logoUrl || undefined;
   const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
@@ -273,14 +392,133 @@ export function AppShell() {
 
   const showLogo = Boolean(orgLogo && !logoError);
 
-  const can = (permission?: string) => !permission || Boolean(me?.permissionKeys?.includes(permission));
+  // Super Admin can access all administrative modules; filter out personal employee self-service items
+  const isPlatformAdmin = Boolean(me?.isPlatformContext);
+  const can = (permission?: string) => !permission || isPlatformAdmin || Boolean(me?.permissionKeys?.includes(permission));
   const visibleNav = navItems
-    .map((item) => (item.children ? { ...item, children: item.children.filter((c) => can(c.permission)) } : item))
-    .filter((item) => (item.children ? item.children.length > 0 : can(item.permission)));
+    .map((item) => {
+      if (item.children) {
+        return {
+          ...item,
+          children: item.children.filter((c) => {
+            // Platform Admin does not take personal leaves
+            if (isPlatformAdmin && c.to === "/hr/leave") return false;
+            return can(c.permission);
+          }),
+        };
+      }
+      return item;
+    })
+    .filter((item) => {
+      // Platform Admin does not have personal payslips
+      if (isPlatformAdmin && item.to === "/payroll/my-payslips") return false;
+      return item.children ? item.children.length > 0 : can(item.permission);
+    });
   const hrNavItems = visibleNav.filter((item) => item.section === "hr");
   const payrollNavItems = visibleNav.filter((item) => item.section === "payroll");
   const adminNavItems = visibleNav.filter((item) => item.section === "admin");
   const hasNavItems = hrNavItems.length > 0 || payrollNavItems.length > 0 || adminNavItems.length > 0;
+
+  // Role specialization classification for intelligent default accordion states
+  const rawRoles = (me?.roles || []).map((r) => r.toLowerCase());
+  const permKeys = me?.permissionKeys || [];
+
+  const isOwner = rawRoles.some((r) => r.includes("owner"));
+  const isAdmin =
+    isOwner ||
+    rawRoles.some((r) => r.includes("admin") && !r.includes("hr") && !r.includes("payroll")) ||
+    permKeys.includes("admin.org.write") ||
+    permKeys.includes("admin.role.write");
+
+  const isHr =
+    rawRoles.some((r) => r.includes("hr") || r.includes("people") || r.includes("talent")) ||
+    (permKeys.includes("hr.person.write") && !isAdmin);
+
+  const isPayroll =
+    rawRoles.some((r) => r.includes("payroll") || r.includes("finance") || r.includes("account")) ||
+    (permKeys.includes("payroll.run.manage") && !isAdmin && !isHr);
+
+  const computeDefaultSections = () => {
+    const hrActive = location.pathname.startsWith("/hr");
+    const payrollActive = location.pathname.startsWith("/payroll");
+    const adminActive = location.pathname.startsWith("/admin");
+    const platformActive = location.pathname.startsWith("/platform");
+
+    if (isPlatformAdmin) {
+      return {
+        platform: true,
+        admin: true,
+        hr: hrActive,
+        payroll: payrollActive,
+      };
+    }
+    if (isAdmin) {
+      return {
+        admin: true,
+        hr: hrActive,
+        payroll: payrollActive,
+        platform: platformActive,
+      };
+    }
+    if (isHr) {
+      return {
+        hr: true,
+        payroll: payrollActive,
+        admin: adminActive,
+        platform: false,
+      };
+    }
+    if (isPayroll) {
+      return {
+        payroll: true,
+        hr: hrActive,
+        admin: adminActive,
+        platform: false,
+      };
+    }
+    // General employee / self-service
+    return {
+      hr: true,
+      payroll: true,
+      admin: adminActive,
+      platform: false,
+    };
+  };
+
+  const [sectionOpenState, setSectionOpenState] = useState<Record<string, boolean>>(() => computeDefaultSections());
+
+  // Update default states when identity or role changes
+  useEffect(() => {
+    if (!me) return;
+    const defaults = computeDefaultSections();
+    setSectionOpenState((prev) => ({
+      ...defaults,
+      hr: defaults.hr || (prev.hr && location.pathname.startsWith("/hr")),
+      payroll: defaults.payroll || (prev.payroll && location.pathname.startsWith("/payroll")),
+      admin: defaults.admin || (prev.admin && location.pathname.startsWith("/admin")),
+      platform: defaults.platform || (prev.platform && location.pathname.startsWith("/platform")),
+    }));
+  }, [me?.userId, me?.tenantId, me?.isPlatformContext, (me?.roles || []).join(",")]);
+
+  // Auto-expand section on navigation
+  useEffect(() => {
+    if (location.pathname.startsWith("/hr")) {
+      setSectionOpenState((prev) => (prev.hr ? prev : { ...prev, hr: true }));
+    } else if (location.pathname.startsWith("/payroll")) {
+      setSectionOpenState((prev) => (prev.payroll ? prev : { ...prev, payroll: true }));
+    } else if (location.pathname.startsWith("/admin")) {
+      setSectionOpenState((prev) => (prev.admin ? prev : { ...prev, admin: true }));
+    } else if (location.pathname.startsWith("/platform")) {
+      setSectionOpenState((prev) => (prev.platform ? prev : { ...prev, platform: true }));
+    }
+  }, [location.pathname]);
+
+  const toggleSection = (sectionKey: string) => {
+    setSectionOpenState((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  };
 
   if (isMeLoading) {
     return (
@@ -498,14 +736,19 @@ export function AppShell() {
 
         {/* Navigation items */}
         <nav className="flex-1 space-y-1.5 px-3 py-4 overflow-y-auto">
-          {!me?.isPlatformContext && (
+          {(Boolean(me?.tenantId) || me?.isPlatformContext) && (
             <>
               {/* HR Core Section */}
               {hrNavItems.length > 0 && (
-                <div className="space-y-1">
-                  {!collapsed && (
-                    <SectionLabel>Workforce</SectionLabel>
-                  )}
+                <CollapsibleSection
+                  label="Workforce"
+                  icon={Users}
+                  isOpen={sectionOpenState.hr !== false}
+                  onToggle={() => toggleSection("hr")}
+                  collapsed={collapsed}
+                  count={hrNavItems.length}
+                  hasActiveRoute={location.pathname.startsWith("/hr")}
+                >
                   {hrNavItems.map(({ to, label, icon: Icon, children }) =>
                     children ? (
                       <NavGroup
@@ -518,41 +761,46 @@ export function AppShell() {
                         onNavigate={() => setMobileOpen(false)}
                       />
                     ) : (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      title={collapsed ? label : undefined}
-                      className={({ isActive }) =>
-                        cn(
-                          "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
-                          collapsed
-                            ? "h-11 w-11 mx-auto justify-center"
-                            : "gap-3 px-3.5 py-2.5",
-                          isActive
-                            ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
-                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
-                        )
-                      }
-                    >
-                      <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
-                      {!collapsed && <span className="truncate">{label}</span>}
-                    </NavLink>
+                      <NavLink
+                        key={to}
+                        to={to}
+                        title={collapsed ? label : undefined}
+                        className={({ isActive }) =>
+                          cn(
+                            "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
+                            collapsed
+                              ? "h-11 w-11 mx-auto justify-center"
+                              : "gap-3 px-3.5 py-2.5",
+                            isActive
+                              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
+                              : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                          )
+                        }
+                      >
+                        <Icon className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
+                        {!collapsed && <span className="truncate">{label}</span>}
+                      </NavLink>
                     ),
                   )}
-                </div>
+                </CollapsibleSection>
               )}
 
               {/* Section Divider */}
               {hrNavItems.length > 0 && (payrollNavItems.length > 0 || adminNavItems.length > 0) && (
-                <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-2")} />
+                <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-1")} />
               )}
 
               {/* Payroll & Claims Section */}
               {payrollNavItems.length > 0 && (
-                <div className="space-y-1">
-                  {!collapsed && (
-                    <SectionLabel>Pay & Expenses</SectionLabel>
-                  )}
+                <CollapsibleSection
+                  label="Pay & Expenses"
+                  icon={Banknote}
+                  isOpen={sectionOpenState.payroll !== false}
+                  onToggle={() => toggleSection("payroll")}
+                  collapsed={collapsed}
+                  count={payrollNavItems.length}
+                  hasActiveRoute={location.pathname.startsWith("/payroll")}
+                >
                   {payrollNavItems.map(({ to, label, icon: Icon }) => (
                     <NavLink
                       key={to}
@@ -574,20 +822,25 @@ export function AppShell() {
                       {!collapsed && <span className="truncate">{label}</span>}
                     </NavLink>
                   ))}
-                </div>
+                </CollapsibleSection>
               )}
 
               {/* Section Divider */}
               {payrollNavItems.length > 0 && adminNavItems.length > 0 && (
-                <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-2")} />
+                <div className={cn(collapsed ? "my-2 border-t border-zinc-200 dark:border-zinc-800 mx-2" : "pt-1")} />
               )}
 
               {/* Administration Section */}
               {adminNavItems.length > 0 && (
-                <div className="space-y-1">
-                  {!collapsed && (
-                    <SectionLabel>Workspace Setup</SectionLabel>
-                  )}
+                <CollapsibleSection
+                  label="Workspace Setup"
+                  icon={Building2}
+                  isOpen={sectionOpenState.admin !== false}
+                  onToggle={() => toggleSection("admin")}
+                  collapsed={collapsed}
+                  count={adminNavItems.length}
+                  hasActiveRoute={location.pathname.startsWith("/admin")}
+                >
                   {adminNavItems.map(({ to, label, icon: Icon }) => (
                     <NavLink
                       key={to}
@@ -609,7 +862,7 @@ export function AppShell() {
                       {!collapsed && <span className="truncate">{label}</span>}
                     </NavLink>
                   ))}
-                </div>
+                </CollapsibleSection>
               )}
 
               {!hasNavItems && !collapsed && (
@@ -621,24 +874,36 @@ export function AppShell() {
           )}
 
           {me?.isPlatformContext && (
-            <NavLink
-              to="/platform/tenants"
-              title={collapsed ? "Tenants" : undefined}
-              className={({ isActive }) =>
-                cn(
-                  "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
-                  collapsed
-                    ? "h-11 w-11 mx-auto justify-center"
-                    : "gap-3 px-3.5 py-2.5",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
-                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
-                )
-              }
-            >
-              <Building className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
-              {!collapsed && <span className="truncate">Tenants</span>}
-            </NavLink>
+            <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 mt-2 space-y-1">
+              <CollapsibleSection
+                label="Platform"
+                icon={Building}
+                isOpen={sectionOpenState.platform !== false}
+                onToggle={() => toggleSection("platform")}
+                collapsed={collapsed}
+                count={1}
+                hasActiveRoute={location.pathname.startsWith("/platform")}
+              >
+                <NavLink
+                  to="/platform/tenants"
+                  title={collapsed ? "Tenants Console" : undefined}
+                  className={({ isActive }) =>
+                    cn(
+                      "group relative flex items-center rounded-xl font-medium text-sm transition-all duration-150",
+                      collapsed
+                        ? "h-11 w-11 mx-auto justify-center"
+                        : "gap-3 px-3.5 py-2.5",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold"
+                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                    )
+                  }
+                >
+                  <Building className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4")} />
+                  {!collapsed && <span className="truncate">Tenants Console</span>}
+                </NavLink>
+              </CollapsibleSection>
+            </div>
           )}
         </nav>
 
@@ -796,6 +1061,101 @@ export function AppShell() {
                 {location.pathname.replace(/^\//, "").replace(/\//g, " › ") || "Dashboard"}
               </span>
             </div>
+
+            {/* Super Admin Tenant Context Switcher */}
+            {me?.isPlatformContext && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSwitcherOpen((v) => !v)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-medium text-xs transition-colors shadow-xs cursor-pointer"
+                  title="Super Admin Workspace Switcher"
+                >
+                  <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  <span className="max-w-[140px] truncate font-semibold">
+                    {activeTenant ? activeTenant.name : "Platform Overview"}
+                  </span>
+                  <ChevronsUpDown className="h-3 w-3 opacity-60 shrink-0" />
+                </button>
+
+                {switcherOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setSwitcherOpen(false)} />
+                    <div className="absolute left-0 mt-2 w-72 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
+                      <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                          <Crown className="h-4 w-4 text-amber-500" />
+                          <span>Super Admin Workspace Switcher</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Switch tenant scope across all modules</p>
+                      </div>
+
+                      <div className="py-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectTenant(null)}
+                          className={cn(
+                            "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left cursor-pointer",
+                            !activeTenantId
+                              ? "bg-primary text-primary-foreground font-semibold"
+                              : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-3.5 w-3.5" />
+                            <span>🌐 Platform Console (All Tenants)</span>
+                          </div>
+                          {!activeTenantId && <Check className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+
+                      {availableTenants.length > 0 && (
+                        <div className="pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                          <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Organisations ({availableTenants.length})
+                          </p>
+                          <div className="max-h-56 overflow-y-auto space-y-1">
+                            {availableTenants.map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => handleSelectTenant(t.id)}
+                                className={cn(
+                                  "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left cursor-pointer",
+                                  activeTenantId === t.id
+                                    ? "bg-primary text-primary-foreground font-semibold"
+                                    : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                                )}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Building2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                  <span className="truncate">{t.name}</span>
+                                </div>
+                                {activeTenantId === t.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pt-1.5 border-t border-zinc-100 dark:border-zinc-800 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSwitcherOpen(false);
+                            navigate("/platform/tenants");
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-primary hover:bg-primary/10 font-semibold transition-colors text-left cursor-pointer"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>+ Provision New Organisation</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Global Search Box */}

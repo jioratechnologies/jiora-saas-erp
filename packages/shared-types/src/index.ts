@@ -20,6 +20,13 @@ export interface Tenant {
   showPoweredBy: boolean;
   createdAt: string;
   suspendedAt: string | null;
+  timezone?: string;
+  officeInTime?: string;
+  officeOutTime?: string;
+  maxWorkHours?: number;
+  workingDaysPerMonth?: number;
+  workHoursPerDay?: number;
+  salarySplit?: { basic: number; hra: number; other: number };
 }
 
 export interface Permission {

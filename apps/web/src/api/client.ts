@@ -53,6 +53,12 @@ async function authedFetch(path: string, build: (token: string | null) => Reques
   return retry;
 }
 
+function getActiveTenantHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const activeTenantId = localStorage.getItem("saas_erp_active_tenant_id");
+  return activeTenantId ? { "x-tenant-id": activeTenantId } : {};
+}
+
 /** Thin fetch wrapper: attaches the bearer token, throws client-friendly ApiError on non-2xx. */
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await authedFetch(path, (accessToken) => ({
@@ -60,6 +66,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: {
       "Content-Type": "application/json",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...getActiveTenantHeaders(),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }));
@@ -77,7 +84,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 async function getBlob(path: string): Promise<Blob> {
   const res = await authedFetch(path, (accessToken) => ({
     method: "GET",
-    headers: accessToken ? ({ Authorization: `Bearer ${accessToken}` } as HeadersInit) : {},
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...getActiveTenantHeaders(),
+    } as HeadersInit,
   }));
   if (!res.ok) {
     const rawText = await res.text().catch(() => "");
@@ -92,6 +102,7 @@ async function upload<T>(path: string, formData: FormData, method: "POST" | "PAT
     method,
     headers: {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...getActiveTenantHeaders(),
     },
     body: formData,
   }));

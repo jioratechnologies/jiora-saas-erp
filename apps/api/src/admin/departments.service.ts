@@ -33,6 +33,7 @@ export class DepartmentsService {
               firstName: true, middleName: true,
               lastName: true,
               email: true,
+              phone: true,
               avatarUrl: true,
               status: true,
               personType: true,

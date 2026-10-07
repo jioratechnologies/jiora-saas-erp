@@ -65,7 +65,21 @@ export class ClaimInviteController {
   @UseGuards(ZitadelAuthGuard)
   async me(@CurrentUser() user: AuthContext) {
     let roles: string[] = [];
-    if (user.tenantId) {
+    let availableTenants: Array<{ id: string; name: string; slug: string; logoUrl: string | null }> = [];
+    if (user.isPlatformContext) {
+      availableTenants = await this.prisma.runInTenantContext(
+        { tenantId: null, isPlatformContext: true },
+        (tx) =>
+          tx.tenant.findMany({
+            where: { suspendedAt: null },
+            select: { id: true, name: true, slug: true, logoUrl: true },
+            orderBy: { name: "asc" },
+          }),
+      );
+      roles = user.tenantId
+        ? ["Platform Super Admin", "Tenant Owner (Super Admin)"]
+        : ["Platform Super Admin"];
+    } else if (user.tenantId) {
       const tenantId = user.tenantId;
       // Roles/designation change only via writes that bump the authz generation, so cache them like the guard identity (one Redis read, no DB tx on a hit).
       const key = `me:roles:${tenantId}:${user.userId}`;
@@ -87,8 +101,6 @@ export class ClaimInviteController {
         roles = [...(profile?.roles.map((ur) => ur.role.name) ?? []), ...(designationName ? [designationName] : [])];
         await this.authzCache.write(key, gen, roles, 300);
       }
-    } else if (user.isPlatformContext) {
-      roles = ["Platform Admin"];
     }
 
     return {
@@ -97,6 +109,7 @@ export class ClaimInviteController {
       isPlatformContext: user.isPlatformContext,
       roles,
       permissionKeys: Array.from(user.permissionKeys),
+      availableTenants,
     };
   }
 }

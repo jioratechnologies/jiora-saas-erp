@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         post_logout_redirect_uri: postLogoutRedirectUri,
         id_token_hint: idTokenHint,
         extraQueryParams: {
-          client_id: import.meta.env.VITE_ZITADEL_CLIENT_ID || "392943470081278469",
+          client_id: import.meta.env.VITE_ZITADEL_CLIENT_ID || "393668131073099267",
         },
       });
     } catch (err) {

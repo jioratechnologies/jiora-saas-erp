@@ -61,7 +61,7 @@ services:
       OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY}
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-saas-erp-documents}
       ZITADEL_ISSUER: ${ZITADEL_ISSUER:-https://authsaaserp.jioratech.com}
-      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID:-392943311536521733}
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID:-393668008364475907}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
@@ -123,7 +123,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-https://authsaaserp.jioratech.com}
-        VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-392943470081278469}
+        VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-393668131073099267}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: saas-erp-frontend
     restart: unless-stopped

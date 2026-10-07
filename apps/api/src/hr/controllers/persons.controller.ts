@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   ForbiddenException,
+  NotFoundException,
   Controller,
   Delete,
   Get,
@@ -78,15 +79,27 @@ export class PersonsController {
     @Query("pageSize") pageSize?: string,
   ) {
     const paging = parsePaging(page, pageSize);
+    if (!user.tenantId) {
+      return paging
+        ? {
+            items: [],
+            total: 0,
+            page: 1,
+            pageSize: 20,
+            totalPages: 0,
+            counts: { all: 0, employees: 0, volunteers: 0, active: 0, onLeave: 0 },
+          }
+        : [];
+    }
     if (paging) {
-      const res = await this.service.listPaged(user.tenantId!, { personType, departmentId, status, search }, paging);
+      const res = await this.service.listPaged(user.tenantId, { personType, departmentId, status, search }, paging);
       if (user.permissionKeys.has("hr.person.write")) return res;
       // Directory readers never see reporting lines.
       return { ...res, items: res.items.map(({ manager: _manager, ...rest }) => rest) };
     }
-    const rows = await this.service.list(user.tenantId!, { personType, departmentId, status, search });
+    const rows = await this.service.list(user.tenantId, { personType, departmentId, status, search });
     if (user.permissionKeys.has("hr.person.write")) return rows;
-    const self = await this.personContext.get(user.tenantId!, user.userId);
+    const self = await this.personContext.get(user.tenantId, user.userId);
     return rows.map((p) => (self && p.id === self.id ? p : toDirectoryEntry(p)));
   }
 
@@ -94,11 +107,13 @@ export class PersonsController {
   @RequirePermission("hr.person.read")
   @ApiOperation({ summary: "Get person profile with reporting hierarchy and documents" })
   async getById(@CurrentUser() user: AuthContext, @Param("id") id: string) {
-    const person = await this.service.getById(user.tenantId!, id);
+    if (!user.tenantId) {
+      throw new NotFoundException("The requested person could not be found.");
+    }
+    const person = await this.service.getById(user.tenantId, id);
     if (user.permissionKeys.has("hr.person.write")) return person;
-    const self = await this.personContext.get(user.tenantId!, user.userId);
-    if (self && self.id === id) return person;
-    return toDirectoryEntry(person);
+    const self = await this.personContext.get(user.tenantId, user.userId);
+    return self && self.id === id ? person : toDirectoryEntry(person);
   }
 
   @Post("bulk-import")

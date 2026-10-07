@@ -155,7 +155,15 @@ export class TenantsService {
 
   async updateWorkSchedule(
     tenantId: string,
-    dto: { workingDaysPerMonth: number; workHoursPerDay: number; salarySplit: { basic: number; hra: number; other: number } },
+    dto: {
+      workingDaysPerMonth: number;
+      workHoursPerDay: number;
+      salarySplit: { basic: number; hra: number; other: number };
+      timezone?: string;
+      officeInTime?: string;
+      officeOutTime?: string;
+      maxWorkHours?: number;
+    },
   ) {
     const result = await this.updateWorkScheduleInTx(tenantId, dto);
     await this.invalidateOrg(tenantId);
@@ -164,7 +172,15 @@ export class TenantsService {
 
   private async updateWorkScheduleInTx(
     tenantId: string,
-    dto: { workingDaysPerMonth: number; workHoursPerDay: number; salarySplit: { basic: number; hra: number; other: number } },
+    dto: {
+      workingDaysPerMonth: number;
+      workHoursPerDay: number;
+      salarySplit: { basic: number; hra: number; other: number };
+      timezone?: string;
+      officeInTime?: string;
+      officeOutTime?: string;
+      maxWorkHours?: number;
+    },
   ) {
     return this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
       await this.assertExists(tx, tenantId);
@@ -175,6 +191,10 @@ export class TenantsService {
           workingDaysPerMonth: dto.workingDaysPerMonth,
           workHoursPerDay: dto.workHoursPerDay,
           salarySplit: { basic, hra, other },
+          ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+          ...(dto.officeInTime !== undefined ? { officeInTime: dto.officeInTime } : {}),
+          ...(dto.officeOutTime !== undefined ? { officeOutTime: dto.officeOutTime } : {}),
+          ...(dto.maxWorkHours !== undefined ? { maxWorkHours: dto.maxWorkHours } : {}),
         },
       });
     });

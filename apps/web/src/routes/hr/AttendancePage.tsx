@@ -41,6 +41,7 @@ import { AttendanceReport } from "../../components/hr/AttendanceReport";
 import { Pagination, usePagination } from "../../components/ui/pagination";
 import { Skeleton } from "../../components/ui/skeleton";
 import { usePagedQuery } from "../../lib/use-paged-query";
+import type { Tenant } from "@saas-erp/shared-types";
 
 interface AttendanceRecord {
   id: string;
@@ -187,15 +188,55 @@ const LogSkeletonRows = ({ rows, cols }: { rows: number; cols: number }) => (
 export function AttendancePage() {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const isPlatformAdmin = Boolean(me?.isPlatformContext);
   const canManageAttendance = !!me?.permissionKeys?.includes("hr.attendance.manage");
   const canReadAttendance = !!me?.permissionKeys?.includes("hr.attendance.read");
 
-  // Real-time clock
+  // Tenant Org Work Schedule & Cloud Time
+  const { data: org } = useQuery({
+    queryKey: ["org", "theme"],
+    queryFn: () => api.get<Tenant>("/admin/org"),
+    staleTime: 60 * 1000,
+  });
+
+  const cloudTimeQuery = useQuery({
+    queryKey: ["attendance", "cloud-time"],
+    queryFn: () => api.get<{ iso: string; epochMs: number; timezone: string; source: string }>("/hr/attendance/cloud-time"),
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  const [clockOffset, setClockOffset] = useState<number>(0);
+  useEffect(() => {
+    if (cloudTimeQuery.data?.epochMs) {
+      const offset = cloudTimeQuery.data.epochMs - Date.now();
+      setClockOffset(offset);
+    }
+  }, [cloudTimeQuery.data?.epochMs]);
+
+  // Real-time clock synchronized with Cloud Time (IST)
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const timer = setInterval(() => {
+      setCurrentTime(new Date(Date.now() + clockOffset));
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [clockOffset]);
+
+  const tz = org?.timezone || cloudTimeQuery.data?.timezone || "Asia/Kolkata";
+  const timeFormatted = currentTime.toLocaleTimeString("en-IN", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  const dateFormatted = currentTime.toLocaleDateString("en-IN", {
+    timeZone: tz,
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   // Mode & Check-in form state
   const [selectedMode, setSelectedMode] = useState<"OFFICE" | "REMOTE" | "FIELD">("OFFICE");
@@ -203,8 +244,14 @@ export function AttendancePage() {
   const [locationName, setLocationName] = useState("");
   const [checkOutNotes, setCheckOutNotes] = useState("");
 
-  // Tab State: "personal" | "team"
-  const [activeTab, setActiveTab] = useState<"personal" | "team" | "report">("personal");
+  // Tab State: "personal" | "team" | "report" (Platform Admin defaults to team overview)
+  const [activeTab, setActiveTab] = useState<"personal" | "team" | "report">(() => (isPlatformAdmin ? "team" : "personal"));
+
+  useEffect(() => {
+    if (isPlatformAdmin && activeTab === "personal") {
+      setActiveTab("team");
+    }
+  }, [isPlatformAdmin, activeTab]);
 
   // Filter State for Team View
   const [selectedDate, setSelectedDate] = useState(() => localDateStr(new Date()));
@@ -220,10 +267,11 @@ export function AttendancePage() {
   const [regCheckOut, setRegCheckOut] = useState("18:00");
   const [regReason, setRegReason] = useState("");
 
-  // Queries
+  // Queries (disabled for Platform Admin)
   const { data: todayStatus, isLoading: statusLoading } = useQuery({
     queryKey: ["hr", "attendance", "today"],
     queryFn: () => api.get<AttendanceRecord | null>("/hr/attendance/today"),
+    enabled: !isPlatformAdmin,
   });
 
   const [logMonth, setLogMonth] = useState(() => localDateStr(new Date()).slice(0, 7));
@@ -237,6 +285,7 @@ export function AttendancePage() {
     path: "/hr/attendance/my-logs",
     params: { month: logMonth },
     pageSize: 25,
+    enabled: !isPlatformAdmin && activeTab === "personal",
   });
   const myAttendance = myLogs.items;
   const myLogsLoading = myLogs.isLoading;
@@ -457,22 +506,30 @@ export function AttendancePage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             {/* Clock & Status Indicator */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <Clock className="h-4 w-4 text-primary" />
-                <span>
-                  {currentTime.toLocaleDateString(undefined, {
-                    weekday: "long",
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-wrap">
+                <Clock className="h-4 w-4 text-primary shrink-0" />
+                <span>{dateFormatted}</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono font-medium text-primary uppercase">
+                  Cloud Time ({tz === "Asia/Kolkata" ? "IST" : tz})
                 </span>
               </div>
               <div className="text-4xl font-extrabold tracking-tight text-foreground font-mono">
-                {currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {timeFormatted}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 px-2 py-0.5 rounded-lg font-medium text-[11px]">
+                  Shift Hours: <span className="font-semibold text-foreground">{org?.officeInTime || "09:30"} – {org?.officeOutTime || "18:30"}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 px-2 py-0.5 rounded-lg font-medium text-[11px]">
+                  Target: <span className="font-semibold text-foreground">{org?.workHoursPerDay || 8}h</span> (Max: <span className="font-semibold text-foreground">{org?.maxWorkHours || 9}h</span>)
+                </span>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                {statusLoading ? (
+                {isPlatformAdmin ? (
+                  <Badge variant="secondary" dot>
+                    Platform Administrator (Management Mode)
+                  </Badge>
+                ) : statusLoading ? (
                   <Badge variant="outline">Checking status…</Badge>
                 ) : isCheckedOut ? (
                   <Badge variant="success" dot>
@@ -480,7 +537,7 @@ export function AttendancePage() {
                   </Badge>
                 ) : isCheckedIn ? (
                   <Badge variant="warning" dot>
-                    Checked In at {new Date(todayStatus.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ({todayStatus.mode})
+                    Checked In at {new Date(todayStatus.checkInTime).toLocaleTimeString("en-IN", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: true })} ({todayStatus.mode})
                   </Badge>
                 ) : (
                   <Badge variant="outline" dot>
@@ -492,14 +549,22 @@ export function AttendancePage() {
 
             {/* Check-in / Check-out Interactive Panel */}
             <div className="w-full md:w-auto md:min-w-[340px]">
-              {isCheckedOut ? (
+              {isPlatformAdmin ? (
+                <div className="p-4 rounded-xl bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 text-center space-y-1">
+                  <ShieldCheck className="h-5 w-5 text-primary mx-auto" />
+                  <p className="text-xs font-bold text-foreground">Platform Administrator</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Management & audit view • Reviewing team attendance across organisations
+                  </p>
+                </div>
+              ) : isCheckedOut ? (
                 <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-1">
                   <CheckCircle2 className="h-6 w-6 text-emerald-500 mx-auto" />
                   <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
                     Shift Logged Successfully
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    Checked in at {new Date(todayStatus.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} • Checked out at {new Date(todayStatus.checkOutTime!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    Checked in at {new Date(todayStatus.checkInTime).toLocaleTimeString("en-IN", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: true })} • Checked out at {new Date(todayStatus.checkOutTime!).toLocaleTimeString("en-IN", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: true })}
                   </p>
                 </div>
               ) : isCheckedIn ? (
@@ -573,17 +638,19 @@ export function AttendancePage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">
-        <button
-          onClick={() => setActiveTab("personal")}
-          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all ${
-            activeTab === "personal"
-              ? "bg-primary text-primary-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          }`}
-        >
-          <Calendar className="h-4 w-4" />
-          <span>My Attendance Log</span>
-        </button>
+        {!isPlatformAdmin && (
+          <button
+            onClick={() => setActiveTab("personal")}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all ${
+              activeTab === "personal"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
+          >
+            <Calendar className="h-4 w-4" />
+            <span>My Attendance Log</span>
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("team")}
           className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all ${

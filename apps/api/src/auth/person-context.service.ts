@@ -24,7 +24,8 @@ export class PersonContextService {
   ) {}
 
   /** Own person or null when no profile is linked. Throws 403 for an EXITED person (same rule as PersonsService.getByUserId). */
-  async get(tenantId: string, userId: string): Promise<PersonContext | null> {
+  async get(tenantId: string | null | undefined, userId: string): Promise<PersonContext | null> {
+    if (!tenantId) return null;
     const key = `pctx:${tenantId}:${userId}`;
     const { value, gen } = await this.authzCache.read<{ p: PersonContext | null }>(key);
     let person: PersonContext | null;
@@ -44,7 +45,8 @@ export class PersonContextService {
   }
 
   /** Own person id or null. */
-  async getPersonId(tenantId: string, userId: string): Promise<string | null> {
+  async getPersonId(tenantId: string | null | undefined, userId: string): Promise<string | null> {
+    if (!tenantId) return null;
     return (await this.get(tenantId, userId))?.id ?? null;
   }
 

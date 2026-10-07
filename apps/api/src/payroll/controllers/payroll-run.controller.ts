@@ -64,8 +64,14 @@ export class PayrollRunController {
     @Query("page") page?: string,
     @Query("pageSize") pageSize?: string,
   ) {
-    const personId = await this.resolvePersonId(user);
     const paging = parsePaging(page, pageSize);
+    const person = user.tenantId ? await this.personContext.get(user.tenantId, user.userId) : null;
+    if (!person) {
+      return paging
+        ? { items: [], total: 0, page: 1, pageSize: 10, totalPages: 0, stats: { totalDisbursed: 0, count: 0 } }
+        : [];
+    }
+    const personId = person.id;
     if (paging) return this.service.getMyPayslipsPaged(user.tenantId!, personId, paging);
     return this.service.getMyPayslips(user.tenantId!, personId);
   }

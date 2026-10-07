@@ -52,7 +52,7 @@ export class ClaimsService {
     tenantId: string,
     query?: { personId?: string; status?: ExpenseClaimStatus; category?: ExpenseClaimCategory; search?: string },
   ): Prisma.ExpenseClaimWhereInput {
-    const where: Prisma.ExpenseClaimWhereInput = { tenantId };
+    const where: Prisma.ExpenseClaimWhereInput = tenantId ? { tenantId } : {};
     if (query?.personId) where.personId = query.personId;
     if (query?.status) where.status = query.status;
     if (query?.category) where.category = query.category;
@@ -240,7 +240,7 @@ export class ClaimsService {
     tenantId: string,
     query?: { personId?: string; status?: SalaryAdvanceStatus; search?: string },
   ): Prisma.SalaryAdvanceWhereInput {
-    const where: Prisma.SalaryAdvanceWhereInput = { tenantId };
+    const where: Prisma.SalaryAdvanceWhereInput = tenantId ? { tenantId } : {};
     if (query?.personId) where.personId = query.personId;
     if (query?.status) where.status = query.status;
     const term = query?.search?.trim();

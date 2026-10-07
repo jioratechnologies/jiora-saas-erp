@@ -125,7 +125,7 @@ export class PersonsService {
     tenantId: string,
     query?: { personType?: PersonType; departmentId?: string; status?: PersonStatus; search?: string },
   ): Prisma.PersonWhereInput {
-    const where: Prisma.PersonWhereInput = { tenantId };
+    const where: Prisma.PersonWhereInput = tenantId ? { tenantId } : {};
 
     if (query?.personType) where.personType = query.personType;
     if (query?.departmentId) where.departmentId = query.departmentId;

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api } from "../../api/client";
 import { useAuthStore } from "../../auth/auth-store";
+import { useMe } from "../../auth/use-me";
 import { Modal } from "../ui/modal";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -325,8 +326,10 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
     }
   };
 
+  const { data: me } = useMe();
   const user = profileData?.user;
   const person = profileData?.person;
+  const isPlatformAdmin = Boolean(me?.isPlatformContext || !person);
   const documents = profileData?.documents || [];
   const kycDocs = documents.filter((d) => d.category === "KYC");
 
@@ -338,7 +341,11 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
       isOpen={isOpen}
       onClose={onClose}
       title="My Account Profile"
-      description="Manage your personal details, profile picture, and official KYC documents."
+      description={
+        isPlatformAdmin
+          ? "Manage your platform administrator account profile details and avatar."
+          : "Manage your personal details, profile picture, and official KYC documents."
+      }
       maxWidth="xl"
     >
       <div className="space-y-6">
@@ -428,24 +435,27 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
             <span>Profile Photo</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("kyc")}
-            className={cn(
-              "px-4 py-2 text-xs font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-2",
-              activeTab === "kyc"
-                ? "border-primary text-primary bg-primary/5"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900",
-            )}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            <span>KYC Documents</span>
-            {kycDocs.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-primary/10 text-primary font-bold">
-                {kycDocs.length}
-              </span>
-            )}
-          </button>
+          {/* KYC Documents only for Tenant Employees */}
+          {!isPlatformAdmin && person && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("kyc")}
+              className={cn(
+                "px-4 py-2 text-xs font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-2",
+                activeTab === "kyc"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900",
+              )}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>KYC Documents</span>
+              {kycDocs.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-primary/10 text-primary font-bold">
+                  {kycDocs.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Tab 1: Personal Info */}
@@ -480,7 +490,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                 <Input id="profile-email" value={user?.email || ""} disabled className="bg-muted opacity-80" />
               </div>
 
-              {profileData?.person && (
+              {!isPlatformAdmin && profileData?.person && (
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-middle-name">Middle Name</Label>
                   <Input
@@ -493,7 +503,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                 </div>
               )}
 
-              {profileData?.person && (
+              {!isPlatformAdmin && profileData?.person && (
                 <Select
                   label="Gender"
                   required
@@ -505,7 +515,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
                 />
               )}
 
-              {profileData?.person && (
+              {!isPlatformAdmin && profileData?.person && (
                 <DatePicker
                   label="Date of Birth"
                   isRequired
@@ -519,126 +529,130 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
               <PhoneField
                 id="profile-phone"
                 label="Phone Number"
-                required={!!profileData?.person}
+                required={!isPlatformAdmin && !!profileData?.person}
                 value={phone}
                 onChange={setPhone}
                 placeholder="Enter mobile number"
                 error={showErrors ? contactErrors.phone : undefined}
               />
 
-              <div className="sm:col-span-2">
-                <PhoneField
-                  id="profile-alt-phone"
-                  label="Alternate Mobile Number"
-                  value={altPhone}
-                  onChange={setAltPhone}
-                  placeholder="Optional alternate number"
-                  error={showErrors ? contactErrors.altPhone : undefined}
-                />
-              </div>
-
-              <div className="sm:col-span-2 p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 space-y-3">
-                <div className="flex items-center gap-2">
-                  <HeartHandshake className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-bold text-foreground">Emergency Contact Details</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-3">
+              {!isPlatformAdmin && profileData?.person && (
+                <>
+                  <div className="sm:col-span-2">
                     <PhoneField
-                      id="emergency-phone"
-                      label="Emergency Phone Number"
-                      value={emergencyPhone}
-                      onChange={setEmergencyPhone}
-                      placeholder="Emergency contact phone"
-                      error={showErrors ? contactErrors.emergencyPhone : undefined}
+                      id="profile-alt-phone"
+                      label="Alternate Mobile Number"
+                      value={altPhone}
+                      onChange={setAltPhone}
+                      placeholder="Optional alternate number"
+                      error={showErrors ? contactErrors.altPhone : undefined}
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="emergency-relation">Relation</Label>
-                    <Select
-                      value={emergencyRelation}
-                      onChange={(e) => setEmergencyRelation(e.target.value as EmergencyRelation)}
-                      options={EMERGENCY_RELATIONS.map((r) => ({ value: r, label: r }))}
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2 space-y-1.5">
-                    <Label htmlFor="emergency-name">Contact Person Name</Label>
-                    <Input
-                      id="emergency-name"
-                      value={emergencyName}
-                      onChange={(e) => setEmergencyName(e.target.value)}
-                      placeholder="e.g. Sunita Sharma"
-                      maxLength={INPUT_LIMITS.EMERGENCY_NAME_MAX}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Addresses: Current & Permanent */}
-              <div className="sm:col-span-2 space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="current-address">Current Residential Address</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="current-address"
-                      value={currentAddress}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setCurrentAddress(val);
-                        if (sameAsCurrentAddress) {
-                          setPermanentAddress(val);
-                        }
-                      }}
-                      placeholder="Current address: Flat/House, Street, City, State, Pincode"
-                      maxLength={INPUT_LIMITS.ADDRESS_MAX}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="permanent-address">Permanent Address</Label>
-                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
-                      <input
-                        type="checkbox"
-                        checked={sameAsCurrentAddress}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setSameAsCurrentAddress(checked);
-                          if (checked) setPermanentAddress(currentAddress);
-                        }}
-                        className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
-                      />
-                      <span>Same as Current address</span>
-                    </label>
-                  </div>
-                  {!sameAsCurrentAddress ? (
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="permanent-address"
-                        value={permanentAddress}
-                        onChange={(e) => setPermanentAddress(e.target.value)}
-                        placeholder="Permanent address: Hometown / Official permanent address"
-                        maxLength={INPUT_LIMITS.ADDRESS_MAX}
-                        className="pl-9"
-                      />
+                  <div className="sm:col-span-2 p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <HeartHandshake className="h-4 w-4 text-primary" />
+                      <span className="text-xs font-bold text-foreground">Emergency Contact Details</span>
                     </div>
-                  ) : (
-                    <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs text-muted-foreground flex items-center justify-between">
-                      <span className="truncate">{currentAddress || "Same as current residential address"}</span>
-                      <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
-                        Synced with Current
-                      </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-3">
+                        <PhoneField
+                          id="emergency-phone"
+                          label="Emergency Phone Number"
+                          value={emergencyPhone}
+                          onChange={setEmergencyPhone}
+                          placeholder="Emergency contact phone"
+                          error={showErrors ? contactErrors.emergencyPhone : undefined}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="emergency-relation">Relation</Label>
+                        <Select
+                          value={emergencyRelation}
+                          onChange={(e) => setEmergencyRelation(e.target.value as EmergencyRelation)}
+                          options={EMERGENCY_RELATIONS.map((r) => ({ value: r, label: r }))}
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <Label htmlFor="emergency-name">Contact Person Name</Label>
+                        <Input
+                          id="emergency-name"
+                          value={emergencyName}
+                          onChange={(e) => setEmergencyName(e.target.value)}
+                          placeholder="e.g. Sunita Sharma"
+                          maxLength={INPUT_LIMITS.EMERGENCY_NAME_MAX}
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+
+                  {/* Addresses: Current & Permanent */}
+                  <div className="sm:col-span-2 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="current-address">Current Residential Address</Label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="current-address"
+                          value={currentAddress}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCurrentAddress(val);
+                            if (sameAsCurrentAddress) {
+                              setPermanentAddress(val);
+                            }
+                          }}
+                          placeholder="Current address: Flat/House, Street, City, State, Pincode"
+                          maxLength={INPUT_LIMITS.ADDRESS_MAX}
+                          className="pl-9"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="permanent-address">Permanent Address</Label>
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-foreground select-none">
+                          <input
+                            type="checkbox"
+                            checked={sameAsCurrentAddress}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setSameAsCurrentAddress(checked);
+                              if (checked) setPermanentAddress(currentAddress);
+                            }}
+                            className="rounded-md border-input h-3.5 w-3.5 text-primary focus:ring-primary cursor-pointer"
+                          />
+                          <span>Same as Current address</span>
+                        </label>
+                      </div>
+                      {!sameAsCurrentAddress ? (
+                        <div className="relative">
+                          <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="permanent-address"
+                            value={permanentAddress}
+                            onChange={(e) => setPermanentAddress(e.target.value)}
+                            placeholder="Permanent address: Hometown / Official permanent address"
+                            maxLength={INPUT_LIMITS.ADDRESS_MAX}
+                            className="pl-9"
+                          />
+                        </div>
+                      ) : (
+                        <div className="px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-xs text-muted-foreground flex items-center justify-between">
+                          <span className="truncate">{currentAddress || "Same as current residential address"}</span>
+                          <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
+                            Synced with Current
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="pt-2 flex justify-end">

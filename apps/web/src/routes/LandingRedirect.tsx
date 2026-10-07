@@ -107,50 +107,53 @@ export function LandingRedirect() {
   }
 
   if (me.isPlatformContext) {
+    if (me.tenantId) {
+      return <Navigate to="/admin/org" replace />;
+    }
+    if (me.availableTenants && me.availableTenants.length > 0) {
+      const defaultTenantId = me.availableTenants[0].id;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("saas_erp_active_tenant_id", defaultTenantId);
+      }
+      return <Navigate to="/admin/org" replace />;
+    }
     return <Navigate to="/platform/tenants" replace />;
   }
 
-  // Priority 1: Admin modules (Tenant owners and administrators land on Organisation)
-  if (me.permissionKeys.includes("admin.org.read")) {
+  const roleNames = (me.roles ?? []).map((r) => r.toLowerCase());
+  const hasPerm = (p: string) => me.permissionKeys.includes(p);
+
+  // 1. Owner: Tenant Owners / Directors with org administration rights land on Organisation
+  const isOwner =
+    hasPerm("admin.org.write") ||
+    roleNames.some((r) => r.includes("owner") || r.includes("founder") || r.includes("director"));
+  if (isOwner) {
     return <Navigate to="/admin/org" replace />;
   }
-  if (me.permissionKeys.includes("admin.user.read")) {
-    return <Navigate to="/admin/users" replace />;
-  }
-  if (me.permissionKeys.includes("admin.department.read")) {
+
+  // 2. Admin: System administrators land on Departments
+  const isAdmin =
+    roleNames.some((r) => r.includes("admin") && !r.includes("hr")) ||
+    hasPerm("admin.department.write") ||
+    hasPerm("admin.user.read") ||
+    hasPerm("admin.role.read");
+  if (isAdmin) {
     return <Navigate to="/admin/departments" replace />;
   }
 
-  // Priority 2: HR modules (HR specialists and managers land on Person Master)
-  if (me.permissionKeys.includes("hr.person.read")) {
+  // 3. HR: HR specialists & managers land on Person Master (People)
+  const isHR =
+    roleNames.some((r) => r.includes("hr")) ||
+    (hasPerm("hr.person.read") && hasPerm("hr.person.write"));
+  if (isHR || hasPerm("hr.person.read")) {
     return <Navigate to="/hr/people" replace />;
   }
-  if (me.permissionKeys.includes("hr.attendance.read")) {
+
+  // 4. Normal user (e.g. Nirmal, employee/volunteer) lands on Attendance Portal
+  if (hasPerm("hr.attendance.read")) {
     return <Navigate to="/hr/attendance" replace />;
   }
-  if (me.permissionKeys.includes("hr.leave.read")) {
-    return <Navigate to="/hr/leave" replace />;
-  }
-  if (me.permissionKeys.includes("hr.holiday.read")) {
-    return <Navigate to="/hr/holidays" replace />;
-  }
 
-  // Priority 3: Payroll & Claims modules
-  if (me.permissionKeys.includes("payroll.salary.read")) {
-    return <Navigate to="/payroll/salary" replace />;
-  }
-  if (me.permissionKeys.includes("payroll.run.read")) {
-    return <Navigate to="/payroll/runs" replace />;
-  }
-
-  // Fallback Admin modules
-  if (me.permissionKeys.includes("admin.designation.read")) {
-    return <Navigate to="/admin/designations" replace />;
-  }
-  if (me.permissionKeys.includes("admin.role.read")) {
-    return <Navigate to="/admin/roles" replace />;
-  }
-
-  // Default Employee Self-Service destination for all tenant members
+  // Default Employee Self-Service fallback
   return <Navigate to="/payroll/my-payslips" replace />;
 }

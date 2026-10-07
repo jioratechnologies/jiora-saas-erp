@@ -132,11 +132,13 @@ export function MyPayslipsPage() {
   const { data: me } = useMe();
   const [selectedPayslipId, setSelectedPayslipId] = useState<string | null>(null);
 
-  // Queries
+  // Queries (disabled for Platform Admin)
+  const isPlatformAdmin = Boolean(me?.isPlatformContext);
   const payslipsQuery = usePagedQuery<Payslip, PayslipsPaged>({
     key: ["payroll", "runs", "my-payslips"],
     path: "/payroll/runs/my-payslips",
     pageSize: 10,
+    enabled: !isPlatformAdmin,
   });
   const paginatedPayslips = payslipsQuery.items;
   const isLoading = payslipsQuery.isLoading;
@@ -155,6 +157,36 @@ export function MyPayslipsPage() {
     queryKey: ["org", "theme"],
     queryFn: () => api.get<{ name: string; logoUrl: string | null }>("/admin/org"),
   });
+
+  if (isPlatformAdmin) {
+    return (
+      <div className="space-y-6 w-full max-w-4xl mx-auto py-10">
+        <Card className="text-center p-8 sm:p-12 border-dashed bg-zinc-50/50 dark:bg-zinc-900/40">
+          <div className="h-16 w-16 mx-auto rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
+            <Receipt className="h-8 w-8" />
+          </div>
+          <h2 className="mt-4 text-xl font-bold text-foreground">Platform Administrator Account</h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-lg mx-auto">
+            You are logged in with Platform Administrator privileges. Individual salary slips are generated only for tenant staff enrolled in payroll runs.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link to="/payroll/runs">
+              <Button className="gap-2">
+                <FileText className="h-4 w-4" />
+                <span>Manage Payroll Runs</span>
+              </Button>
+            </Link>
+            <Link to="/payroll/salary">
+              <Button variant="outline" className="gap-2">
+                <CreditCard className="h-4 w-4" />
+                <span>Compensation Structures</span>
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3.5 sm:space-y-5 md:space-y-6 w-full">

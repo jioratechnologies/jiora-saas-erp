@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Network, Plus, Trash2, UserPlus, UserX } from "lucide-react";
+import { ChevronDown, Mail, Network, Phone, Plus, Trash2, UserPlus, UserX } from "lucide-react";
 import { ApiError, api } from "../api/client";
 import { useMe } from "../auth/use-me";
 import { PageHeader } from "../components/page-header";
@@ -25,6 +25,8 @@ interface Name {
 }
 interface DeptPerson extends Name {
   id: string;
+  email?: string;
+  phone?: string | null;
   avatarUrl?: string;
   managerId?: string | null;
   designation?: { id: string; name: string } | null;
@@ -219,10 +221,38 @@ export function AdminDepartmentsPage() {
                       <p className="font-semibold truncate">{d.name}</p>
                       <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                         {head ? (
-                          <>
+                          <div className="relative group/head flex items-center gap-1.5 min-w-0">
                             <Avatar name={fullName(head)} src={head.avatarUrl} size="xs" />
                             <span className="truncate">{fullName(head)}</span>
-                          </>
+                            {/* Contact Details Hover Card for Head */}
+                            <div className="pointer-events-none opacity-0 group-hover/head:opacity-100 group-hover/head:pointer-events-auto transition-all duration-200 delay-75 absolute left-0 bottom-full mb-2 z-50 w-60 p-3 rounded-2xl border border-border bg-card/95 backdrop-blur-md shadow-xl text-xs space-y-2 text-left">
+                              <div className="flex items-center gap-2 pb-1.5 border-b border-border">
+                                <Avatar name={fullName(head)} src={head.avatarUrl} size="sm" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-foreground truncate">{fullName(head)}</p>
+                                  <p className="text-[10px] text-muted-foreground truncate">{head.designation?.name || "Department Head"}</p>
+                                </div>
+                              </div>
+                              <div className="space-y-1 text-[11px]">
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <Mail className="h-3 w-3 text-primary shrink-0" />
+                                  {head.email ? (
+                                    <span className="truncate text-foreground font-medium">{head.email}</span>
+                                  ) : (
+                                    <span className="italic text-zinc-400">No email</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <Phone className="h-3 w-3 text-primary shrink-0" />
+                                  {head.phone ? (
+                                    <span className="truncate text-foreground font-medium font-mono">{head.phone}</span>
+                                  ) : (
+                                    <span className="italic text-zinc-400">No phone</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         ) : (
                           <span>No head</span>
                         )}
@@ -253,7 +283,7 @@ export function AdminDepartmentsPage() {
                       ) : (
                         <ul className="space-y-1">
                           {d.persons.map((p) => (
-                            <li key={p.id} className="flex items-center gap-2.5 py-1.5">
+                            <li key={p.id} className="relative group/person flex items-center gap-2.5 py-1.5 px-2 rounded-xl hover:bg-muted/40 transition-colors">
                               <Avatar name={fullName(p)} src={p.avatarUrl} size="sm" />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium truncate">{fullName(p)}</p>
@@ -261,6 +291,40 @@ export function AdminDepartmentsPage() {
                                   {p.designation?.name || "No designation"}
                                 </p>
                               </div>
+
+                              {/* Contact Details Hover Card */}
+                              <div className="pointer-events-none opacity-0 group-hover/person:opacity-100 group-hover/person:pointer-events-auto transition-all duration-200 delay-75 absolute left-10 bottom-full mb-1.5 z-50 w-64 p-3 rounded-2xl border border-border bg-card/95 backdrop-blur-md shadow-xl text-xs space-y-2.5">
+                                <div className="flex items-center gap-2.5 pb-2 border-b border-border">
+                                  <Avatar name={fullName(p)} src={p.avatarUrl} size="sm" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-foreground truncate">{fullName(p)}</p>
+                                    <p className="text-[11px] text-muted-foreground truncate">{p.designation?.name || "No designation"}</p>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5 text-[11px]">
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <Mail className="h-3.5 w-3.5 text-primary shrink-0" />
+                                    {p.email ? (
+                                      <a href={`mailto:${p.email}`} className="truncate hover:text-primary transition-colors text-foreground font-medium underline-offset-2 hover:underline">
+                                        {p.email}
+                                      </a>
+                                    ) : (
+                                      <span className="italic text-zinc-400">No email available</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <Phone className="h-3.5 w-3.5 text-primary shrink-0" />
+                                    {p.phone ? (
+                                      <a href={`tel:${p.phone}`} className="truncate hover:text-primary transition-colors text-foreground font-medium font-mono">
+                                        {p.phone}
+                                      </a>
+                                    ) : (
+                                      <span className="italic text-zinc-400">No phone available</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
                               {canWrite && (
                                 <button
                                   type="button"

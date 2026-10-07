@@ -26,9 +26,13 @@ model Tenant {
   createdAt     DateTime  @default(now()) @map("created_at")
   suspendedAt   DateTime? @map("suspended_at")
 
-  workingDaysPerMonth Int   @default(22) @map("working_days_per_month")
-  workHoursPerDay     Float @default(8) @map("work_hours_per_day")
-  salarySplit         Json  @default("{\"basic\":50,\"hra\":25,\"other\":25}") @map("salary_split")
+  workingDaysPerMonth Int     @default(22) @map("working_days_per_month")
+  workHoursPerDay     Float   @default(8) @map("work_hours_per_day")
+  salarySplit         Json    @default("{\"basic\":50,\"hra\":25,\"other\":25}") @map("salary_split")
+  timezone            String  @default("Asia/Kolkata") @map("timezone")
+  officeInTime        String  @default("09:30") @map("office_in_time")
+  officeOutTime       String  @default("18:30") @map("office_out_time")
+  maxWorkHours        Float   @default(9) @map("max_work_hours")
 
   users           User[]
   departments     Department[]

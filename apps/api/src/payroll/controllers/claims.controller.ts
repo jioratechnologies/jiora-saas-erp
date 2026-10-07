@@ -156,8 +156,23 @@ export class ClaimsController {
     query: { personId?: string; status?: ExpenseClaimStatus; category?: ExpenseClaimCategory; search?: string },
     paging: ReturnType<typeof parsePaging>,
   ) {
-    if (!paging) return this.signReceipts(await this.service.listClaims(user.tenantId!, query));
-    const res = await this.service.listClaimsPaged(user.tenantId!, query, paging);
+    if (!user.tenantId) {
+      return paging
+        ? {
+            data: [],
+            total: 0,
+            page: paging.page,
+            pageSize: paging.pageSize,
+            totalPages: 0,
+            stats: {
+              byStatus: { DRAFT: 0, SUBMITTED: 0, APPROVED: 0, REJECTED: 0, SETTLED: 0 },
+              totalApprovedAmount: 0,
+            },
+          }
+        : [];
+    }
+    if (!paging) return this.signReceipts(await this.service.listClaims(user.tenantId, query));
+    const res = await this.service.listClaimsPaged(user.tenantId, query, paging);
     return { ...res, items: await this.signReceipts(res.items) };
   }
 
@@ -218,9 +233,12 @@ export class ClaimsController {
   ) {
     const query = { personId, status, search };
     const paging = parsePaging(page, pageSize);
+    if (!user.tenantId) {
+      return paging ? { data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } : [];
+    }
     return paging
-      ? this.service.listAdvancesPaged(user.tenantId!, query, paging)
-      : this.service.listAdvances(user.tenantId!, query);
+      ? this.service.listAdvancesPaged(user.tenantId, query, paging)
+      : this.service.listAdvances(user.tenantId, query);
   }
 
   @Get("advances/my")
@@ -231,12 +249,23 @@ export class ClaimsController {
     @Query("page") page?: string,
     @Query("pageSize") pageSize?: string,
   ) {
-    const personId = await this.resolvePersonId(user);
-    const query = { personId, search };
     const paging = parsePaging(page, pageSize);
+    if (!user.tenantId) {
+      return paging
+        ? { data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }
+        : [];
+    }
+    const person = await this.personContext.get(user.tenantId, user.userId);
+    if (!person) {
+      return paging
+        ? { data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }
+        : [];
+    }
+    const personId = person.id;
+    const query = { personId, search };
     return paging
-      ? this.service.listAdvancesPaged(user.tenantId!, query, paging)
-      : this.service.listAdvances(user.tenantId!, query);
+      ? this.service.listAdvancesPaged(user.tenantId, query, paging)
+      : this.service.listAdvances(user.tenantId, query);
   }
 
   @Get("advances/:id/schedule")

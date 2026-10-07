@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -8,8 +9,11 @@ import {
   Upload,
   FileText,
   Download,
+  UserCheck,
+  ShieldCheck,
 } from "lucide-react";
 import { api } from "../../api/client";
+import { useMe } from "../../auth/use-me";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
@@ -77,6 +81,8 @@ export interface LeaveRequest {
 
 export function LeavePage() {
   const queryClient = useQueryClient();
+  const { data: me } = useMe();
+  const isPlatformAdmin = Boolean(me?.isPlatformContext);
 
   const [applyModalOpen, setApplyModalOpen] = useState(false);
 
@@ -133,6 +139,7 @@ export function LeavePage() {
   const { data: leaveBalances } = useQuery({
     queryKey: ["hr", "leave", "balances"],
     queryFn: () => api.get<LeaveBalance[]>("/hr/leave/balances"),
+    enabled: !isPlatformAdmin,
   });
 
   const {
@@ -142,6 +149,7 @@ export function LeavePage() {
   } = useQuery({
     queryKey: ["hr", "leave", "requests", "own"],
     queryFn: () => api.get<LeaveRequest[]>("/hr/leave/requests?scope=own"),
+    enabled: !isPlatformAdmin,
   });
 
   // Mutations
@@ -212,6 +220,36 @@ export function LeavePage() {
 
   // Pagination
   const myRequestsPagination = usePagination(myRequests ?? [], 10);
+
+  if (isPlatformAdmin) {
+    return (
+      <div className="space-y-6 w-full max-w-4xl mx-auto py-10">
+        <Card className="text-center p-8 sm:p-12 border-dashed bg-zinc-50/50 dark:bg-zinc-900/40">
+          <div className="h-16 w-16 mx-auto rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
+            <PlaneTakeoff className="h-8 w-8" />
+          </div>
+          <h2 className="mt-4 text-xl font-bold text-foreground">Platform Administrator Account</h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-lg mx-auto">
+            You are logged in with Platform Administrator privileges. Self-service leave quotas and requests are managed on an individual employee basis. To review pending staff requests or configure organisation leave policies, select an administrative tool below.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link to="/hr/leave/approvals">
+              <Button className="gap-2">
+                <UserCheck className="h-4 w-4" />
+                <span>Leave Approvals Queue</span>
+              </Button>
+            </Link>
+            <Link to="/hr/leave/policies">
+              <Button variant="outline" className="gap-2">
+                <CalendarDays className="h-4 w-4" />
+                <span>Leave Policies & Holidays</span>
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3.5 sm:space-y-5 md:space-y-6">
