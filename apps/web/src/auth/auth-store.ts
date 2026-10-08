@@ -7,7 +7,7 @@ interface AuthState {
   isLoading: boolean;
   /** True once the session could not be renewed; UI shows "Your session has expired. Please sign in again." */
   sessionExpired: boolean;
-  signIn: (prompt?: "select_account" | "login", loginHint?: string) => Promise<void>;
+  signIn: (prompt?: "select_account" | "login" | "create", loginHint?: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Called once at app boot and after the /callback redirect to load any existing session. */
   loadUser: () => Promise<void>;

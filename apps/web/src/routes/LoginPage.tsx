@@ -26,7 +26,7 @@ export function LoginPage() {
     return () => clearTimeout(t);
   }, []);
 
-  const handleSignIn = async (prompt: "select_account" | "login" = "select_account") => {
+  const handleSignIn = async (prompt: "select_account" | "login" | "create" = "select_account") => {
     try {
       setIsSigningIn(true);
       await signIn(prompt, invitedEmail || undefined);
@@ -326,6 +326,17 @@ export function LoginPage() {
                   <span>{isSigningIn ? "Connecting..." : "Sign in securely"}</span>
                   <ArrowRight className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-1" />
                 </button>
+
+                {invitedEmail && (
+                  <button
+                    type="button"
+                    disabled={isSigningIn}
+                    onClick={() => handleSignIn("create")}
+                    className="group flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2.5 text-xs font-semibold text-blue-100 transition-all hover:bg-blue-500/20 cursor-pointer"
+                  >
+                    <span>First time here? Create your account</span>
+                  </button>
+                )}
 
                 {/* Secondary Option: Switch / Different Account */}
                 <button

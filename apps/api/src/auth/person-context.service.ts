@@ -59,7 +59,8 @@ export class PersonContextService {
     try {
       return await this.prisma.runInTenantContext({ tenantId, isPlatformContext: false }, async (tx) => {
         const user = await tx.user.findFirst({ where: { id: userId, tenantId, deactivatedAt: null } });
-        if (!user) return null;
+        // Machine identities have no HR profile.
+        if (!user || user.email.endsWith("@zitadel.service.local")) return null;
 
         const byEmail = await tx.person.findFirst({
           where: { tenantId, userId: null, email: { equals: user.email, mode: "insensitive" } },

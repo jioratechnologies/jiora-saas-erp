@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { PERMISSION_CATALOG, SELF_SERVICE_PERMISSION_KEYS } from "@saas-erp/permissions";
 import { PrismaService } from "../prisma/prisma.service";
-import { bearerTokenFrom, verifyZitadelToken } from "./verify-token";
+import { bearerTokenFrom, fetchUserInfo, verifyZitadelToken } from "./verify-token";
 import { AUTHZ_CACHE_TTL_S, AuthzCacheService } from "./authz-cache.service";
 import type { AuthContext } from "./auth-context";
 
@@ -42,6 +42,18 @@ function resolvePermissionsForRole(roleName: string): string[] {
   return PERMISSION_CATALOG.filter((p) => !p.key.startsWith("platform.")).map((p) => p.key);
 }
 
+/**
+ * Machine identities (CI, developer tooling) are only accepted when their Zitadel subject is listed in
+ * ZITADEL_SERVICE_ACCOUNT_SUBJECTS. An unknown human identity is never turned into an account automatically.
+ */
+function isAllowedServiceSubject(subject: string): boolean {
+  const allowed = (process.env.ZITADEL_SERVICE_ACCOUNT_SUBJECTS ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return allowed.includes(subject);
+}
+
 @Injectable()
 export class ZitadelAuthGuard implements CanActivate {
   constructor(
@@ -53,8 +65,9 @@ export class ZitadelAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
 
     let subject: string;
+    let token: string;
     try {
-      const token = bearerTokenFrom(request.headers?.authorization);
+      token = bearerTokenFrom(request.headers?.authorization);
       const payload = await verifyZitadelToken(token);
       if (!payload.sub) throw new Error("token has no sub claim");
       subject = payload.sub;
@@ -74,6 +87,24 @@ export class ZitadelAuthGuard implements CanActivate {
       let found = rows[0];
 
       if (!found) {
+        // First sign-in of an invited person: link their Zitadel identity to the pending invite by the
+        // verified email (Zitadel's own UserInfo), so access never depends on the client calling claim-invite first.
+        try {
+          const info = await fetchUserInfo(token);
+          if (info.email) {
+            await this.prisma.$queryRaw`SELECT * FROM claim_invite(${subject}, ${info.email})`;
+            found = (
+              await this.prisma.$queryRaw<Array<Omit<CachedAuthz, "suspended"> & { suspended: boolean | null }>>`
+                SELECT l.*, CASE WHEN l.tenant_id IS NULL THEN false ELSE auth_tenant_suspended(l.tenant_id) END AS suspended
+                FROM auth_lookup_by_subject(${subject}) AS l`
+            )[0];
+          }
+        } catch {
+          // fall through to the "no account" handling below
+        }
+      }
+
+      if (!found && isAllowedServiceSubject(subject)) {
         // Check if this is a verified Service Account or Developer Machine Account from Zitadel
         const defaultTenant = await this.prisma.runInTenantContext(
           { tenantId: null, isPlatformContext: true },
@@ -118,20 +149,23 @@ export class ZitadelAuthGuard implements CanActivate {
         }
       }
 
+      if (!found) throw new UnauthorizedException("No account found for this identity");
+
       row = { ...found, suspended: !!found.suspended };
       await this.authzCache.write(cacheKey, gen, row, AUTHZ_CACHE_TTL_S());
     }
 
     // Dynamic headers: allow Super Admin and Service Accounts to switch tenant context and test roles
-    const requestedTenantId = (request.headers["x-tenant-id"] as string | undefined)?.trim();
-    const requestedRole = (request.headers["x-role"] as string | undefined)?.trim();
-    const requestedPermissions = (request.headers["x-permissions"] as string | undefined)?.trim();
+    // Only platform staff may switch tenant or impersonate a role/permission set; for everyone else these headers are ignored.
+    const requestedTenantId = row.is_platform ? (request.headers["x-tenant-id"] as string | undefined)?.trim() : undefined;
+    const requestedRole = row.is_platform ? (request.headers["x-role"] as string | undefined)?.trim() : undefined;
+    const requestedPermissions = row.is_platform ? (request.headers["x-permissions"] as string | undefined)?.trim() : undefined;
 
     let effectiveTenantId = row.tenant_id;
     let isSuspended = row.suspended;
 
     // Platform Super Admin or Service Account switching tenant scope
-    if ((row.is_platform || row.tenant_id !== null) && requestedTenantId) {
+    if (row.is_platform && requestedTenantId) {
       const targetTenant = await this.prisma.runInTenantContext(
         { tenantId: null, isPlatformContext: true },
         (tx) =>
